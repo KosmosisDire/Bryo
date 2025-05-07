@@ -24,7 +24,7 @@ void parse(std::string input)
 
     try
     {
-        // 1. Lexing
+        // Lexing
         std::cout << "\n--- Lexing ---" << std::endl;
         Lexer lexer(input);
         tokens = lexer.tokenizeAll();
@@ -34,14 +34,14 @@ void parse(std::string input)
         }
         std::cout << "--------------" << std::endl;
 
-        // 2. Parsing
+        // Parsing
         std::cout << "\n--- Parsing ---" << std::endl;
         Parser parser(tokens);
         astRoot = parser.parseProgram();
         std::cout << "Parsing Successful!" << std::endl;
         std::cout << "---------------" << std::endl;
 
-        // 3. Print AST
+        // Print AST
         std::cout << "\n--- AST ---" << std::endl;
         if (astRoot)
         {
@@ -67,7 +67,7 @@ void parse(std::string input)
 
 int main()
 {
-    HotReload fileReloader({"test.mui"}, [](const std::string &filePath, const std::string &newContent)
+    HotReload fileReloader({"tests/test.mui"}, [](const std::string &filePath, const std::string &newContent)
                            {
                                std::cout << "\n--- " << filePath << " Reloaded ---" << std::endl;
                                parse(newContent); // Call the parse function with the new content

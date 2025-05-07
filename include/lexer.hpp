@@ -1,6 +1,6 @@
 #pragma once
 
-#include "token.hpp" // Needs Token and TokenType
+#include "token.hpp"
 #include <vector>
 #include <string>
 #include <string_view>

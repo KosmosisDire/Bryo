@@ -1,6 +1,6 @@
 #include "lexer.hpp"
-#include <cctype>    // For isalpha, isalnum, isspace
-#include <stdexcept> // For errors like unterminated strings
+#include <cctype>
+#include <stdexcept>
 #include <iostream>
 
 namespace Mycelium::UI::Lang
