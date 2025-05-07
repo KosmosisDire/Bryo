@@ -1,6 +1,6 @@
 #include "lexer.hpp"
 #include "parser.hpp"
-#include "ast.hpp" // For ProgramNode and printing
+#include "ast.hpp"
 #include "hot_reload.hpp"
 #include <iostream>
 #include <string>
@@ -10,6 +10,8 @@
 #include <thread>
 #include <chrono>
 
+using namespace Mycelium::UI::Lang;
+
 void parse(std::string input)
 {
 
@@ -17,33 +19,32 @@ void parse(std::string input)
     std::cout << input << std::endl;
     std::cout << "-------------" << std::endl;
 
-    std::vector<Mycelium::UI::Lang::Token> tokens;
-    std::unique_ptr<Mycelium::UI::Lang::ProgramNode> astRoot;
+    std::vector<Token> tokens;
+    std::unique_ptr<ProgramNode> astRoot;
 
     try
     {
         // 1. Lexing
         std::cout << "\n--- Lexing ---" << std::endl;
-        Mycelium::UI::Lang::Lexer lexer(input);
-        tokens = lexer.tokenizeAll(); // tokenizeAll handles its own warnings now
+        Lexer lexer(input);
+        tokens = lexer.tokenizeAll();
         for (const auto &token : tokens)
         {
-            std::cout << "Token { Type: " << Mycelium::UI::Lang::tokenTypeToString(token.type)
-                      << ", Text: \"" << token.text << "\" }" << std::endl;
+            std::cout << "Token - \"" << token.text << "\"" << std::endl;
         }
         std::cout << "--------------" << std::endl;
 
         // 2. Parsing
         std::cout << "\n--- Parsing ---" << std::endl;
-        Mycelium::UI::Lang::Parser parser(tokens);
-        astRoot = parser.parseProgram(); // Can throw std::runtime_error
+        Parser parser(tokens);
+        astRoot = parser.parseProgram();
         std::cout << "Parsing Successful!" << std::endl;
         std::cout << "---------------" << std::endl;
 
-        // 3. Print AST (only if parsing succeeded)
+        // 3. Print AST
         std::cout << "\n--- AST ---" << std::endl;
         if (astRoot)
-        { // Should always be true if no exception was thrown
+        {
             astRoot->print();
         }
         else
@@ -54,18 +55,13 @@ void parse(std::string input)
     }
     catch (const std::runtime_error &e)
     {
-        // Catch errors from Parser (Lexer errors are handled as warnings for now)
         std::cerr << "\n*** PARSING FAILED ***" << std::endl;
-        // Parser::parseProgram already prints details, but we add context
         std::cerr << "Error during parsing phase: " << e.what() << std::endl;
-        return; // Indicate failure
     }
     catch (const std::exception &e)
     {
-        // Catch any other standard exceptions
         std::cerr << "\n*** UNEXPECTED ERROR ***" << std::endl;
         std::cerr << "Caught exception: " << e.what() << std::endl;
-        return;
     }
 }
 

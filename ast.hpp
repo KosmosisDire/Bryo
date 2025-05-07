@@ -2,64 +2,69 @@
 
 #include <vector>
 #include <string>
-#include <memory> // For std::unique_ptr
-#include <iostream> // For printing
-#include <optional> // For optional block name
+#include <memory>  
+#include <iostream>
+#include <optional>
 
-namespace Mycelium::UI::Lang {
+namespace Mycelium::UI::Lang
+{
+    struct ValueNode; // forward decl
+    
+    struct AstNode
+    {
+        virtual ~AstNode() = default;
+        virtual void print(int indent = 0) const = 0;
+    };
 
-// Forward declare nodes that might reference each other (optional here, good practice)
-struct BlockNode;
+    struct BlockNode : AstNode
+    {
+        std::string typeIdentifier;                       
+        std::vector<std::unique_ptr<ValueNode>> args;
+        std::vector<std::unique_ptr<AstNode>> statements;
 
-// Base class for all AST nodes
-struct AstNode {
-    virtual ~AstNode() = default;
-    virtual void print(int indent = 0) const = 0;
-};
+        BlockNode(std::string typeId) : typeIdentifier(std::move(typeId)) {}
 
-// Node representing a block like "Box { ... }" or "Box("Name") { ... }"
-struct BlockNode : AstNode {
-    std::string typeIdentifier;                   // e.g., "Box"
-    std::optional<std::string> nameArgument;      // e.g., "Main" if Box("Main")
-    std::vector<std::unique_ptr<AstNode>> statements; // Nested statements (Blocks, Properties, etc.)
+        void print(int indent = 0) const override;
+    };
 
-    BlockNode(std::string typeId) : typeIdentifier(std::move(typeId)) {}
+    struct ProgramNode : AstNode
+    {
+        std::vector<std::unique_ptr<AstNode>> definitions;
 
-    void print(int indent = 0) const override; // Implementation in ast.cpp
-};
+        void print(int indent = 0) const override;
+    };
 
+    struct ValueNode : AstNode
+    {
+    };
 
-// Root node for the entire program
-struct ProgramNode : AstNode {
-    std::vector<std::unique_ptr<AstNode>> definitions; // Top-level definitions (currently only Blocks)
+    struct NumberLiteralNode : ValueNode
+    {
+        double value;      
+        bool isPercentage;
 
-    void print(int indent = 0) const override; // Implementation in ast.cpp
-};
+        NumberLiteralNode(double val, bool perc = false) : value(val), isPercentage(perc) {}
+        
+        void print(int indent = 0) const override;
+    };
 
-struct ValueNode : AstNode { /* ... */ };
+    struct StringLiteralValueNode : ValueNode
+    {
+        std::string value;
 
-struct NumberLiteralNode : ValueNode {
-    double value; // Or int, depending on needs
-    bool isPercentage; // To handle '100%' vs '100'
-    // std::string unit; // Optional: for "px", "em" later
-    NumberLiteralNode(double val, bool perc = false) : value(val), isPercentage(perc) {}
-    void print(int indent = 0) const override;
-};
+        StringLiteralValueNode(std::string val) : value(std::move(val)) {}
 
-struct StringLiteralValueNode : ValueNode {
-    std::string value;
-    StringLiteralValueNode(std::string val) : value(std::move(val)) {}
-    void print(int indent = 0) const override;
-};
+        void print(int indent = 0) const override;
+    };
 
-struct PropertyNode : AstNode { // Or make it inherit from a new "StatementNode" base
-    std::string name;
-    std::unique_ptr<ValueNode> value;
+    struct PropertyNode : AstNode
+    {
+        std::string name;
+        std::unique_ptr<ValueNode> value;
 
-    PropertyNode(std::string n, std::unique_ptr<ValueNode> v)
-        : name(std::move(n)), value(std::move(v)) {}
+        PropertyNode(std::string n, std::unique_ptr<ValueNode> v) : name(std::move(n)), value(std::move(v)) {}
 
-    void print(int indent = 0) const override;
-};
+        void print(int indent = 0) const override;
+    };
 
-} // namespace Mycelium::UI::Lang
+}

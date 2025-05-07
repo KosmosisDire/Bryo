@@ -26,7 +26,6 @@ namespace Mycelium::UI::Lang
     }
 
     // --- Grammar Rule Parsers ---
-
     std::unique_ptr<AstNode> Parser::parseDefinition()
     {
         if (check(TokenType::IDENTIFIER))
@@ -46,14 +45,18 @@ namespace Mycelium::UI::Lang
 
         if (match(TokenType::LPAREN))
         {
-            Token nameToken = consume(TokenType::STRING_LITERAL, "Expected string literal argument inside parentheses for block '" + typeIdToken.text + "'");
-            blockNode->nameArgument = nameToken.text;
-            consume(TokenType::RPAREN, "Expected ')' after string literal argument for block '" + typeIdToken.text + "'");
+            blockNode->args.push_back(parseValue());
+            while (!check(TokenType::RPAREN) && !isAtEnd())
+            {
+                consume(TokenType::COMMA, "Expected ',' between arguments for block '" + typeIdToken.text + "'");
+                blockNode->args.push_back(parseValue());
+            }
+            
+            consume(TokenType::RPAREN, "Expected ')' after arguments for block '" + typeIdToken.text + "'");
         }
 
         consume(TokenType::LBRACE, "Expected '{' to start block body for '" + typeIdToken.text + "'");
 
-        // Parse Statements*
         while (!check(TokenType::RBRACE) && !isAtEnd())
         {
             blockNode->statements.push_back(parseStatement());
@@ -74,11 +77,10 @@ namespace Mycelium::UI::Lang
                 return parseProperty();
             }
             else if (next.type == TokenType::LPAREN || next.type == TokenType::LBRACE || check(TokenType::LBRACE))
-            { // check LBRACE for IDENTIFIER LBRACE case
-
+            { 
                 if (check(TokenType::IDENTIFIER) && (peekToken().type == TokenType::LBRACE || (peekToken().type == TokenType::LPAREN)))
                 {
-                    return parseBlock(); // Existing logic
+                    return parseBlock();
                 }
             }
 
@@ -94,12 +96,11 @@ namespace Mycelium::UI::Lang
         throw std::runtime_error("Expected a statement (e.g., nested block, property) inside block, but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
     }
 
-    // Property -> IDENTIFIER COLON Value SEMICOLON
     std::unique_ptr<PropertyNode> Parser::parseProperty()
     {
         Token nameToken = consume(TokenType::IDENTIFIER, "Expected property name.");
         consume(TokenType::COLON, "Expected ':' after property name '" + nameToken.text + "'.");
-        std::unique_ptr<ValueNode> valNode = parseValue(); // New function
+        std::unique_ptr<ValueNode> valNode = parseValue();
         consume(TokenType::SEMICOLON, "Expected ';' after property value for '" + nameToken.text + "'.");
         return std::make_unique<PropertyNode>(nameToken.text, std::move(valNode));
     }
@@ -109,10 +110,10 @@ namespace Mycelium::UI::Lang
         if (check(TokenType::NUMBER))
         {
             Token numToken = consume(TokenType::NUMBER, "Expected number.");
-            double numValue = std::stod(numToken.text); // Error handling for stod needed
+            double numValue = std::stod(numToken.text);
             bool isPercent = false;
             if (match(TokenType::PERCENTAGE_SIGN))
-            { // match consumes if present
+            {
                 isPercent = true;
             }
             return std::make_unique<NumberLiteralNode>(numValue, isPercent);
@@ -122,13 +123,11 @@ namespace Mycelium::UI::Lang
             Token strToken = consume(TokenType::STRING_LITERAL, "Expected string literal value.");
             return std::make_unique<StringLiteralValueNode>(strToken.text);
         }
-        // Add other value types (keywords, etc.)
-        throw std::runtime_error("Expected a value (number, string, etc.) but found " +
-                                 tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
+
+        throw std::runtime_error("Expected a value (number, string, etc.) but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
     }
 
     // --- Parser Helper Methods ---
-
     const Token &Parser::currentToken() const
     {
         if (m_currentTokenIndex < m_tokens.size())
@@ -136,7 +135,7 @@ namespace Mycelium::UI::Lang
             return m_tokens[m_currentTokenIndex];
         }
         // Return reference to a static EOF token to avoid issues if called when at end
-        static Token eof_token = {TokenType::END_OF_FILE, "", /*line*/ 0, /*col*/ 0};
+        static Token eof_token = {TokenType::END_OF_FILE, "", 0, 0};
         return eof_token;
     }
 
@@ -147,17 +146,15 @@ namespace Mycelium::UI::Lang
         {
             return m_tokens[index];
         }
-        static Token eof_token = {TokenType::END_OF_FILE, "", /*line*/ 0, /*col*/ 0};
+        static Token eof_token = {TokenType::END_OF_FILE, "", 0, 0};
         return eof_token;
     }
 
     bool Parser::isAtEnd() const
     {
-        // We consider being at EOF token as the end.
         return currentToken().type == TokenType::END_OF_FILE;
     }
 
-    // Check current token type without consuming
     bool Parser::check(TokenType type) const
     {
         if (isAtEnd())
@@ -165,7 +162,6 @@ namespace Mycelium::UI::Lang
         return currentToken().type == type;
     }
 
-    // Consume if matches, return true/false
     bool Parser::match(TokenType type)
     {
         if (check(type))
@@ -182,19 +178,18 @@ namespace Mycelium::UI::Lang
         if (token.type == expectedType)
         {
             advance();
-            return m_tokens[m_currentTokenIndex - 1]; // Return the token *before* advancing
+            return m_tokens[m_currentTokenIndex - 1];
         }
         else
         {
             std::string error = errorMessage;
             error += " Found " + tokenTypeToString(token.type);
             error += " ('" + token.text + "') instead.";
-            // Add line/col info from token if available
+
             throw std::runtime_error(error);
         }
     }
 
-    // Consume whatever token is current, return it
     Token Parser::consume()
     {
         if (isAtEnd())
@@ -206,13 +201,32 @@ namespace Mycelium::UI::Lang
         return current;
     }
 
+    Token Parser::consumeAny(std::vector<TokenType> expectedTypes, const std::string &errorMessage)
+    {
+        const Token &token = currentToken();
+        for (const auto &type : expectedTypes)
+        {
+            if (token.type == type)
+            {
+                advance();
+                return m_tokens[m_currentTokenIndex - 1];
+            }
+        }
+
+        std::string error = errorMessage;
+        error += " Found " + tokenTypeToString(token.type);
+        error += " ('" + token.text + "') instead.";
+
+        throw std::runtime_error(error);
+    }
+
     void Parser::advance()
     {
-        // Don't advance past the EOF token
+
         if (m_currentTokenIndex < m_tokens.size() && m_tokens[m_currentTokenIndex].type != TokenType::END_OF_FILE)
         {
             m_currentTokenIndex++;
         }
     }
 
-} // namespace Mycelium::UI::Lang
+}

@@ -1,16 +1,14 @@
 #pragma once
 
-#include "token.hpp" // Needs Token, TokenType
-#include "ast.hpp"   // Needs AST node types (forward declared is ok)
+#include "token.hpp"
+#include "ast.hpp"  
 #include <vector>
-#include <memory>    // For unique_ptr
-#include <string>    // For error messages
-#include <stdexcept> // For runtime_error
+#include <memory>   
+#include <string>   
+#include <stdexcept>
 
 namespace Mycelium::UI::Lang
 {
-
-    // Forward declare AST node types used as return types
     struct ProgramNode;
     struct AstNode;
     struct BlockNode;
@@ -20,28 +18,27 @@ namespace Mycelium::UI::Lang
     public:
         Parser(const std::vector<Token> &tokens);
 
-        std::unique_ptr<ProgramNode> parseProgram(); // Entry point
+        std::unique_ptr<ProgramNode> parseProgram();
 
     private:
-        // --- Recursive Descent Methods (one per grammar rule) ---
-        std::unique_ptr<AstNode> parseDefinition(); // Dispatches to Block, etc.
+        std::unique_ptr<AstNode> parseDefinition();
         std::unique_ptr<BlockNode> parseBlock();
-        std::unique_ptr<AstNode> parseStatement();     // Dispatches to Block, Property, etc.
-        std::unique_ptr<PropertyNode> parseProperty(); // New method for properties
-        std::unique_ptr<ValueNode> parseValue();       // New method for values (numbers, strings, etc.)
+        std::unique_ptr<AstNode> parseStatement();     
+        std::unique_ptr<PropertyNode> parseProperty(); 
+        std::unique_ptr<ValueNode> parseValue();       
 
-        // --- Parser Helper Methods ---
         const Token &currentToken() const;
-        const Token &peekToken(size_t lookahead = 1) const; // Look ahead
+        const Token &peekToken(size_t lookahead = 1) const;
         bool isAtEnd() const;
         Token consume(TokenType expectedType, const std::string &errorMessage);
-        Token consume(); // Consume whatever token is current
+        Token consume();
+        Token consumeAny(std::vector<TokenType> expectedTypes, const std::string &errorMessage);
         void advance();
-        bool check(TokenType type) const; // Check current token type without consuming
-        bool match(TokenType type);       // Consume if matches, return true/false
+        bool check(TokenType type) const;
+        bool match(TokenType type);      
 
         const std::vector<Token> &m_tokens;
         size_t m_currentTokenIndex;
     };
 
-} // namespace Mycelium::UI::Lang
+}

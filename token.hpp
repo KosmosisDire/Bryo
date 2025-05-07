@@ -1,34 +1,36 @@
 #pragma once
 
 #include <string>
-#include <string_view> // Keep using string_view where efficient
+#include <string_view>
 
-namespace Mycelium::UI::Lang {
+namespace Mycelium::UI::Lang
+{
 
-enum class TokenType {
-    IDENTIFIER,
-    LPAREN,
-    RPAREN,
-    LBRACE,
-    RBRACE,
-    COLON,
-    SEMICOLON,
-    NUMBER,
-    PERCENTAGE_SIGN,
-    STRING_LITERAL,
-    END_OF_FILE,
-    UNKNOWN
-};
+    enum class TokenType
+    {
+        IDENTIFIER,
+        LPAREN,
+        RPAREN,
+        LBRACE,
+        RBRACE,
+        COLON,
+        SEMICOLON,
+        COMMA,
+        PERCENTAGE_SIGN,
+        NUMBER,
+        STRING_LITERAL,
+        END_OF_FILE,
+        UNKNOWN
+    };
 
-// Helper function declaration (implementation can be in a .cpp or stay header-only)
-std::string tokenTypeToString(TokenType type);
+    std::string tokenTypeToString(TokenType type);
 
+    struct Token
+    {
+        TokenType type;
+        std::string text; 
+        size_t line;
+        size_t column;
+    };
 
-struct Token {
-    TokenType type;
-    std::string text; // The actual text matched
-    size_t line;
-    size_t column;
-};
-
-} // namespace Mycelium::UI::Lang
+}
