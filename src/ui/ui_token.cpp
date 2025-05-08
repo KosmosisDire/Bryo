@@ -1,4 +1,4 @@
-#include "token.hpp"
+#include "ui_token.hpp"
 
 namespace Mycelium::UI::Lang
 {

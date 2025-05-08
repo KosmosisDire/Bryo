@@ -1,4 +1,4 @@
-#include "parser.hpp"
+#include "ui_parser.hpp"
 #include <iostream>
 
 namespace Mycelium::UI::Lang
@@ -7,9 +7,9 @@ namespace Mycelium::UI::Lang
     Parser::Parser(const std::vector<Token> &tokens) : m_tokens(tokens), m_currentTokenIndex(0) {}
 
     // --- Entry Point ---
-    std::unique_ptr<ProgramNode> Parser::parseProgram()
+    std::shared_ptr<ProgramNode> Parser::parseProgram()
     {
-        auto program = std::make_unique<ProgramNode>();
+        auto program = std::make_shared<ProgramNode>();
         while (!isAtEnd())
         {
             try
@@ -26,11 +26,11 @@ namespace Mycelium::UI::Lang
     }
 
     // --- Grammar Rule Parsers ---
-    std::unique_ptr<AstNode> Parser::parseDefinition()
+    std::shared_ptr<AstNode> Parser::parseDefinition()
     {
         if (check(TokenType::IDENTIFIER))
         {
-            return parseBlock();
+            return parseBlock(nullptr);
         }
         else
         {
@@ -38,10 +38,10 @@ namespace Mycelium::UI::Lang
         }
     }
 
-    std::unique_ptr<BlockNode> Parser::parseBlock()
+    std::shared_ptr<BlockNode> Parser::parseBlock(std::shared_ptr<BlockNode> parent)
     {
         Token typeIdToken = consume(TokenType::IDENTIFIER, "Expected block type identifier (e.g., 'Box')");
-        auto blockNode = std::make_unique<BlockNode>(typeIdToken.text);
+        auto blockNode = std::make_shared<BlockNode>(parent, typeIdToken.text);
 
         if (match(TokenType::LPAREN))
         {
@@ -59,7 +59,7 @@ namespace Mycelium::UI::Lang
 
         while (!check(TokenType::RBRACE) && !isAtEnd())
         {
-            blockNode->statements.push_back(parseStatement());
+            blockNode->statements.push_back(parseStatement(blockNode));
         }
 
         consume(TokenType::RBRACE, "Expected '}' to close block body for '" + typeIdToken.text + "'");
@@ -67,20 +67,20 @@ namespace Mycelium::UI::Lang
         return blockNode;
     }
 
-    std::unique_ptr<AstNode> Parser::parseStatement()
+    std::shared_ptr<AstNode> Parser::parseStatement(std::shared_ptr<BlockNode> parent)
     {
         if (check(TokenType::IDENTIFIER))
         {
             Token next = peekToken();
             if (next.type == TokenType::COLON)
             {
-                return parseProperty();
+                return parseProperty(parent);
             }
             else if (next.type == TokenType::LPAREN || next.type == TokenType::LBRACE || check(TokenType::LBRACE))
             { 
                 if (check(TokenType::IDENTIFIER) && (peekToken().type == TokenType::LBRACE || (peekToken().type == TokenType::LPAREN)))
                 {
-                    return parseBlock();
+                    return parseBlock(parent);
                 }
             }
 
@@ -89,23 +89,23 @@ namespace Mycelium::UI::Lang
                 (peekToken().type == TokenType::LPAREN && peekToken(1).type == TokenType::RPAREN && peekToken(2).type == TokenType::LBRACE)                                                      // IDENTIFIER () { -- if you allow this for components later
             )
             {
-                return parseBlock();
+                return parseBlock(parent);
             }
         }
 
         throw std::runtime_error("Expected a statement (e.g., nested block, property) inside block, but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
     }
 
-    std::unique_ptr<PropertyNode> Parser::parseProperty()
+    std::shared_ptr<PropertyAssignmentNode> Parser::parseProperty(std::shared_ptr<BlockNode> parent)
     {
         Token nameToken = consume(TokenType::IDENTIFIER, "Expected property name.");
         consume(TokenType::COLON, "Expected ':' after property name '" + nameToken.text + "'.");
-        std::unique_ptr<ValueNode> valNode = parseValue();
+        std::shared_ptr<ValueNode> valNode = parseValue();
         consume(TokenType::SEMICOLON, "Expected ';' after property value for '" + nameToken.text + "'.");
-        return std::make_unique<PropertyNode>(nameToken.text, std::move(valNode));
+        return std::make_shared<PropertyAssignmentNode>(parent, nameToken.text, valNode);
     }
 
-    std::unique_ptr<ValueNode> Parser::parseValue()
+    std::shared_ptr<ValueNode> Parser::parseValue()
     {
         if (check(TokenType::NUMBER))
         {
@@ -116,12 +116,12 @@ namespace Mycelium::UI::Lang
             {
                 isPercent = true;
             }
-            return std::make_unique<NumberLiteralNode>(numValue, isPercent);
+            return std::make_shared<NumberLiteralNode>(numValue, isPercent);
         }
         else if (check(TokenType::STRING_LITERAL))
         {
             Token strToken = consume(TokenType::STRING_LITERAL, "Expected string literal value.");
-            return std::make_unique<StringLiteralValueNode>(strToken.text);
+            return std::make_shared<StringLiteralValueNode>(strToken.text);
         }
 
         throw std::runtime_error("Expected a value (number, string, etc.) but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "token.hpp"
-#include "ast.hpp"  
+#include "ui_token.hpp"
+#include "ui_ast.hpp"  
 #include <vector>
 #include <memory>   
 #include <string>   
@@ -18,14 +18,14 @@ namespace Mycelium::UI::Lang
     public:
         Parser(const std::vector<Token> &tokens);
 
-        std::unique_ptr<ProgramNode> parseProgram();
+        std::shared_ptr<ProgramNode> parseProgram();
 
     private:
-        std::unique_ptr<AstNode> parseDefinition();
-        std::unique_ptr<BlockNode> parseBlock();
-        std::unique_ptr<AstNode> parseStatement();     
-        std::unique_ptr<PropertyNode> parseProperty(); 
-        std::unique_ptr<ValueNode> parseValue();       
+        std::shared_ptr<AstNode> parseDefinition();
+        std::shared_ptr<BlockNode> parseBlock(std::shared_ptr<BlockNode> parent);
+        std::shared_ptr<AstNode> parseStatement(std::shared_ptr<BlockNode> parent);    
+        std::shared_ptr<PropertyAssignmentNode> parseProperty(std::shared_ptr<BlockNode> parent);
+        std::shared_ptr<ValueNode> parseValue();
 
         const Token &currentToken() const;
         const Token &peekToken(size_t lookahead = 1) const;
