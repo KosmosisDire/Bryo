@@ -1,68 +1,69 @@
-namespace My.App;
+namespace My.LoopDemo;
 
-public class Processor
+public class DataProcessor
 {
-    int value;
-    int anotherValue;
-    bool flag;
+    // M10: Array type in field declaration
+    public int[] dataValues;
+    public string[][] categories; // Jagged array type
+    public int x, y, z;
+    public List<string> listTest;
 
-    // Method to test statement parsing inside its body
-    public void ProcessValues()
+    public DataProcessor(int size)
     {
-        // Assignment Expression Statements
-        value = 10;
-        anotherValue = value; 
-        value += 5;
-        anotherValue -= 2;
-
-        // Unary Expression Statements
-        ++value;
-        --anotherValue;
-        // flag = !flag; // This would be `flag = UnaryOp(!, Identifier(flag))`
-
-        // Local Variable Declarations (from M3, now with initializers using M5 expressions)
-        int localVar = 100;
-        int simpleInit = value;
-        bool invertedFlag = !flag; // `!flag` is UnaryOp(!, Identifier(flag))
-
-        // Return Statements
-        return; 
+        // Array creation `new int[size]` is more advanced (not explicitly M10 parsing, but type is)
+        // For now, assume dataValues is initialized elsewhere or null.
+        // this.dataValues = new int[size]; 
+        this.dataValues = null; // M3: null literal
     }
 
-    // Method returning a value
-    public int GetCalculatedValue()
+    public int SumValues()
     {
-        int intermediate = value;
-        return ++intermediate; // Returns the result of pre-increment
+        int sum = 0;
+        // M10: ForEach loop
+        // For M10, dataValues will be an IdentifierExpression.
+        // If dataValues is null, this would be a runtime error, not a parse error.
+        if (this.dataValues != null) // M6: check for null
+        {
+            foreach (int value in this.dataValues) 
+            {
+                sum += value; // M5: compound assignment
+            }
+        }
+        return sum;
     }
 
-    public bool GetFlag()
+    public void ProcessCategories(int limit)
     {
-        return flag;
-    }
+        // M10: For loop
+        for (int i = 0; i < limit && i < 10; i = i + 1) // M3: local var decl; M6: conditions; M5: assignment
+        {
+            if (i == 5) // M6: equality
+            {
+                // M10: Continue statement
+                continue; 
+            }
 
-    public bool GetInvertedFlag()
-    {
-        bool currentFlag = flag;
-        return !currentFlag;
+            // string currentCategory = this.categories[i][0]; // Array element access is future
+            string placeholder = "Processing category index "; // M3
+            placeholder = placeholder + i; // M6
+
+            if (i == 8)
+            {
+                // M10: Break statement
+                break;
+            }
+        }
     }
     
-    public void EmptyReturnMethod()
+    public string[] GetSampleStrings() 
     {
-        return;
+        // M10: Array type as return type
+        return null; // M5: return null
     }
-}
 
-public class InitializersTest
-{
-    // Field initializers using M5 expressions
-    int x = 100;
-    int y = -50; // Unary minus on a literal
-    int z = x;   // Identifier
-    bool active = true;
-    bool inactive = !active; // Unary not on an identifier
-    // string text = "hello"; // String literal (M3)
-
-    // This would still require 'new' to be more fully integrated beyond a primary expression stub for ObjectCreation.
-    // MyType complex = new MyType;
+    public List<List<string>> GetSampleLists() 
+    {
+        // M10: List type as return type
+        return null; // M5: return null
+    }
 }

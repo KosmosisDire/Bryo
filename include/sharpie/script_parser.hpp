@@ -11,6 +11,14 @@
 namespace Mycelium::Scripting::Lang
 {
 
+struct ParsedDeclarationParts
+{
+    std::shared_ptr<Mycelium::Scripting::Lang::TypeNameNode> type;
+    bool isVar;
+    std::vector<std::shared_ptr<Mycelium::Scripting::Lang::VariableDeclaratorNode>> declarators;
+    Mycelium::Scripting::Lang::SourceLocation startLocation; // Location of the first token of the declaration part
+};
+
 class ParseError : public std::runtime_error
 {
 public:
@@ -51,6 +59,8 @@ private:
     size_t m_currentIndex;
     std::weak_ptr<AstNode> m_currentParentNode; 
 
+    bool can_parse_as_generic_method_arguments() const;
+    
     bool is_at_end() const;
     const Token& peek_token(int offset = 0) const; 
     const Token& current_token() const;           
@@ -97,6 +107,7 @@ private:
     std::shared_ptr<NamespaceMemberDeclarationNode> parse_file_level_declaration();
     std::string parse_file_scoped_namespace_directive(); 
 
+    ParsedDeclarationParts parse_variable_declaration_parts(bool isForLoopContext = false);
     std::shared_ptr<ClassDeclarationNode> parse_class_declaration(std::vector<ModifierKind> modifiers, const Token& startToken, const std::string& name);
     std::shared_ptr<TypeDeclarationNode> parse_type_declaration(std::vector<ModifierKind> modifiers, const Token& nameToken);
 
@@ -106,7 +117,7 @@ private:
 
 public: 
     std::shared_ptr<TypeNameNode> parse_type_name();
-    std::shared_ptr<MemberDeclarationNode> parse_member_declaration(const Token& startToken);
+    std::shared_ptr<MemberDeclarationNode> parse_member_declaration(const Token& startToken, const std::optional<std::string>& currentClassName);
     std::shared_ptr<FieldDeclarationNode> parse_field_declaration(std::vector<ModifierKind> mods, std::shared_ptr<TypeNameNode> type, const Token& start);
     std::shared_ptr<ExpressionNode> parse_expression();
     std::shared_ptr<ExpressionNode> parse_assignment_expression();

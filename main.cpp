@@ -225,6 +225,8 @@ std::string SharpieToC(std::string input)
         std::cout << "Parsing Successful!" << std::endl;
         std::cout << "---------------" << std::endl;
 
+        astRoot->print(std::cout); // Print the AST with indentation
+
     }
     catch (const std::runtime_error &e)
     {
