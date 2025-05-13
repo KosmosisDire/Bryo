@@ -1,14 +1,19 @@
 
 class Program
 {
+    static int Blah()
+    {
+        return 1239087;
+    }
+
     static int Main()
     {
-        var a = 1;
-        var b = a + 17;
+        int a = 1;
+        int b = a + 17;
 
         if (b == 18)
         {
-            return 69;
+            return Program.Blah();
         }
 
         return 0;

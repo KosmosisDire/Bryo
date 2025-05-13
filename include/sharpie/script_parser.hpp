@@ -1,6 +1,6 @@
 #pragma once
 
-#include "script_ast.hpp"
+#include "script_ast.hpp" // Assumed to be simplified accordingly
 #include "script_token.hpp"
 #include <vector>
 #include <memory>
@@ -12,10 +12,10 @@
 namespace Mycelium::Scripting::Lang
 {
 
+// Simplified: No 'isVar' as 'var' keyword is removed.
 struct ParsedDeclarationParts
 {
     std::shared_ptr<TypeNameNode> type;
-    bool isVar;
     std::vector<std::shared_ptr<VariableDeclaratorNode>> declarators;
     SourceLocation startLocation;
 };
@@ -78,6 +78,7 @@ private:
         node->parent = m_currentParentNode;
         if (m_currentIndex < m_tokens.size())
         {
+            // Set initial location, will be finalized
             node->location = current_token().location;
         }
         return node;
@@ -85,35 +86,26 @@ private:
 
     void finalize_node_location(std::shared_ptr<AstNode> node, const SourceLocation& startLocation);
     void finalize_node_location(std::shared_ptr<AstNode> node, const Token& startToken);
-
-    // Helper for managing m_currentParentNode contextually
     void with_parent_context(const std::shared_ptr<AstNode>& newParentNode, const std::function<void()>& parserFunc);
 
-    // Parsing rules (private)
-    std::shared_ptr<UsingDirectiveNode> parse_using_directive();
-    std::shared_ptr<NamespaceMemberDeclarationNode> parse_file_level_declaration(const Token& declarationStartToken);
-    std::string parse_file_scoped_namespace_directive();
+    // Parsing rules (simplified)
+    std::shared_ptr<TypeDeclarationNode> parse_file_level_declaration(const Token& declarationStartToken); // Simplified from NamespaceMemberDeclarationNode
 
-    std::vector<ModifierKind> parse_modifiers();
+    std::vector<ModifierKind> parse_modifiers(); // To support public, private, static
     std::string parse_identifier_name(const std::string& contextMessage = "Expected identifier");
-    std::string parse_qualified_identifier(const std::string& contextMessageStart, const std::string& contextMessagePart);
+    std::string parse_qualified_identifier(const std::string& contextMessageStart, const std::string& contextMessagePart); // For Type.Member potentially
 
-    ParsedDeclarationParts parse_variable_declaration_parts();
-    std::shared_ptr<TypeDeclarationNode> parse_type_declaration(std::vector<ModifierKind> modifiers, const Token& keywordToken, const Token& actualStartToken);
-    std::shared_ptr<ClassDeclarationNode> parse_class_declaration(std::vector<ModifierKind> modifiers, const Token& classKeywordToken, const std::string& className, const Token& actualStartToken);
-    std::shared_ptr<StructDeclarationNode> parse_struct_declaration(std::vector<ModifierKind> modifiers, const Token& structKeywordToken, const std::string& structName, const Token& actualStartToken);
+    ParsedDeclarationParts parse_variable_declaration_parts(); // No 'var'
+    std::shared_ptr<ClassDeclarationNode> parse_class_declaration(std::vector<ModifierKind> modifiers, const Token& classKeywordToken, const std::string& className, const Token& actualStartToken); // No generics, no base list
 
-    std::shared_ptr<TypeNameNode> parse_type_name();
+    std::shared_ptr<TypeNameNode> parse_type_name(); // No generics, no arrays
     std::shared_ptr<MemberDeclarationNode> parse_member_declaration(const Token& memberStartToken, const std::optional<std::string>& currentClassName);
     std::shared_ptr<FieldDeclarationNode> parse_field_declaration(std::vector<ModifierKind> modifiers, std::shared_ptr<TypeNameNode> type, const Token& fieldDeclStartToken);
-    std::shared_ptr<MethodDeclarationNode> parse_method_declaration(std::vector<ModifierKind> modifiers, std::shared_ptr<TypeNameNode> returnType, const std::string& methodName, const Token& methodDeclStartToken);
+    std::shared_ptr<MethodDeclarationNode> parse_method_declaration(std::vector<ModifierKind> modifiers, std::shared_ptr<TypeNameNode> returnType, const std::string& methodName, const Token& methodDeclStartToken); // No generics
     std::shared_ptr<ConstructorDeclarationNode> parse_constructor_declaration(std::vector<ModifierKind> modifiers, const std::string& constructorName, const Token& constructorNameToken, const Token& actualStartToken);
 
-    std::vector<std::shared_ptr<TypeParameterNode>> parse_optional_type_parameter_list();
-    std::shared_ptr<TypeParameterNode> parse_type_parameter();
     std::vector<std::shared_ptr<ParameterDeclarationNode>> parse_parameter_list();
-    std::shared_ptr<ParameterDeclarationNode> parse_parameter_declaration();
-    std::vector<std::shared_ptr<TypeNameNode>> parse_base_list();
+    std::shared_ptr<ParameterDeclarationNode> parse_parameter_declaration(); // No default values
 
     std::vector<std::shared_ptr<VariableDeclaratorNode>> parse_variable_declarator_list();
     std::shared_ptr<VariableDeclaratorNode> parse_variable_declarator();
@@ -121,36 +113,27 @@ private:
     // Statements
     std::shared_ptr<StatementNode> parse_statement();
     std::shared_ptr<BlockStatementNode> parse_block_statement();
-    std::shared_ptr<LocalVariableDeclarationStatementNode> parse_local_variable_declaration_statement();
+    std::shared_ptr<LocalVariableDeclarationStatementNode> parse_local_variable_declaration_statement(); // No 'var'
     std::shared_ptr<ExpressionStatementNode> parse_expression_statement();
     std::shared_ptr<IfStatementNode> parse_if_statement();
-    std::shared_ptr<WhileStatementNode> parse_while_statement();
-    std::shared_ptr<ForStatementNode> parse_for_statement();
-    std::shared_ptr<ForEachStatementNode> parse_for_each_statement();
     std::shared_ptr<ReturnStatementNode> parse_return_statement();
-    std::shared_ptr<BreakStatementNode> parse_break_statement();
-    std::shared_ptr<ContinueStatementNode> parse_continue_statement();
 
     // Expressions
     std::shared_ptr<ExpressionNode> parse_expression();
-    std::shared_ptr<ExpressionNode> parse_assignment_expression();
-    std::shared_ptr<ExpressionNode> parse_logical_or_expression();
-    std::shared_ptr<ExpressionNode> parse_logical_and_expression();
+    std::shared_ptr<ExpressionNode> parse_assignment_expression(); // Only basic '='
+    // Removed logical_or, logical_and to simplify if conditions for now.
+    // If condition will be parse_equality_expression directly or parse_expression.
     std::shared_ptr<ExpressionNode> parse_equality_expression();
     std::shared_ptr<ExpressionNode> parse_relational_expression();
     std::shared_ptr<ExpressionNode> parse_additive_expression();
     std::shared_ptr<ExpressionNode> parse_multiplicative_expression();
-    std::shared_ptr<ExpressionNode> parse_unary_expression();
-    std::shared_ptr<ExpressionNode> parse_postfix_expression();
-    std::shared_ptr<ExpressionNode> parse_primary_expression();
+    std::shared_ptr<ExpressionNode> parse_unary_expression(); // Keep '!', unary '-'
+    std::shared_ptr<ExpressionNode> parse_postfix_expression(); // No generics
+    std::shared_ptr<ExpressionNode> parse_primary_expression(); // Simplified literals
 
-    std::shared_ptr<ObjectCreationExpressionNode> parse_object_creation_expression();
-    std::optional<std::vector<std::shared_ptr<TypeNameNode>>> parse_optional_type_argument_list();
+    std::shared_ptr<ObjectCreationExpressionNode> parse_object_creation_expression(); // Simplified
     std::shared_ptr<ArgumentListNode> parse_argument_list();
-    std::shared_ptr<ArgumentNode> parse_argument();
-
-    // Lookahead helpers
-    bool can_parse_as_generic_method_arguments() const;
+    std::shared_ptr<ArgumentNode> parse_argument(); // No named args
 };
 
 } // namespace Mycelium::Scripting::Lang

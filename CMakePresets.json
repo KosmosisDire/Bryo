@@ -1,0 +1,100 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 20,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "windows-vcpkg-ninja-debug",
+            "displayName": "Windows (vcpkg) - Ninja - Debug",
+            "description": "Debug build using Ninja generator with vcpkg toolchain.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE",
+                "CMAKE_TOOLCHAIN_FILE": {
+                    "type": "FILEPATH",
+                    "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
+                },
+                "CMAKE_C_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
+                },
+                "CMAKE_CXX_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
+                }
+            },
+            "environment": {
+                "VCPKG": "$env{VCPKG_ROOT}"
+            }
+        },
+        {
+            "name": "windows-vcpkg-ninja-release",
+            "displayName": "Windows (vcpkg) - Ninja - Release",
+            "description": "Release build using Ninja generator with vcpkg toolchain.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE",
+                "CMAKE_TOOLCHAIN_FILE": {
+                    "type": "FILEPATH",
+                    "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
+                },
+                "CMAKE_C_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
+                },
+                "CMAKE_CXX_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
+                }
+            },
+            "environment": {
+                "VCPKG": "$env{VCPKG_ROOT}"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug-build",
+            "displayName": "Build (Debug)",
+            "configurePreset": "windows-vcpkg-ninja-debug",
+            "description": "Build the Debug configuration."
+        },
+        {
+            "name": "release-build",
+            "displayName": "Build (Release)",
+            "configurePreset": "windows-vcpkg-ninja-release",
+            "description": "Build the Release configuration."
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "debug-test",
+            "displayName": "Test (Debug)",
+            "configurePreset": "windows-vcpkg-ninja-debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "release-test",
+            "displayName": "Test (Release)",
+            "configurePreset": "windows-vcpkg-ninja-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        }
+    ]
+}
