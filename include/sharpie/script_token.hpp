@@ -1,6 +1,6 @@
 #pragma once
 
-#include "script_ast.hpp"
+#include "script_ast.hpp" // For SourceLocation
 #include <string>
 #include <vector>
 #include <optional>
@@ -22,46 +22,43 @@ enum class TokenType
     Identifier,
 
     // Literals
-    IntegerLiteral,     // 123, 123L
-    DoubleLiteral,      // 1.23, 1.23d, 1.23f (or actual double)
-    StringLiteral,      // "hello"
-    CharLiteral,        // 'c'
+    IntegerLiteral,
+    DoubleLiteral,
+    StringLiteral,
+    CharLiteral,
 
     // Operators & Punctuation
-    OpenParen, CloseParen,       // ( )
-    OpenBrace, CloseBrace,       // { }
-    OpenBracket, CloseBracket,   // [ ]
-    Semicolon, Colon, Comma, Dot, // ; : , .
-    QuestionMark,                // ?
+    OpenParen, CloseParen,
+    OpenBrace, CloseBrace,
+    OpenBracket, CloseBracket,
+    Semicolon, Colon, Comma, Dot,
+    QuestionMark,
 
     // Assignment & Arithmetic
-    Assign,                      // =
-    Plus, Minus, Asterisk, Slash, Percent, // + - * / %
-    PlusAssign, MinusAssign, AsteriskAssign, SlashAssign, PercentAssign, // += -= *= /= %=
-    Increment, Decrement,        // ++ --
+    Assign,
+    Plus, Minus, Asterisk, Slash, Percent,
+    PlusAssign, MinusAssign, AsteriskAssign, SlashAssign, PercentAssign,
+    Increment, Decrement,
 
     // Logical & Relational
-    LogicalAnd, LogicalOr, LogicalNot, // && || !
-    EqualsEquals, NotEquals,            // == !=
-    LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual, // < > <= >=
-
-    // Comments (usually skipped, but token type can exist for tools)
-    // LineComment,
-    // BlockComment,
+    LogicalAnd, LogicalOr, LogicalNot,
+    EqualsEquals, NotEquals,
+    LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual,
 
     // Special
+    At,
     EndOfFile,
-    Unknown // For errors or unrecognized characters
+    Unknown // For errors or unrecognized characters (primarily for tokenizer internal use before throwing)
 };
 
 struct Token
 {
     TokenType type;
     std::string lexeme;
-    // Optional: std::variant<long long, double, std::string, bool, char> value;
     Mycelium::Scripting::Lang::SourceLocation location;
 };
 
 // Helper function to convert TokenType to a string (useful for debugging)
 std::string token_type_to_string(TokenType type);
-}
+
+} // namespace Mycelium::Scripting::Lang

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string>
 #include <vector>
 #include <stdexcept> // For std::runtime_error
@@ -6,6 +8,44 @@
 #ifdef _WIN32
     #include <windows.h>
     // For MAX_PATH, though we'll use a dynamic buffer
+
+    
+inline bool launchDebugger()
+{
+    // Get System directory, typically c:\windows\system32
+    std::wstring systemDir(MAX_PATH+1, '\0');
+    UINT nChars = GetSystemDirectoryW(&systemDir[0], systemDir.length());
+    if (nChars == 0) return false; // failed to get system directory
+    systemDir.resize(nChars);
+
+    // Get process ID and create the command line
+    DWORD pid = GetCurrentProcessId();
+    std::wostringstream s;
+    s << systemDir << L"\\vsjitdebugger.exe -p " << pid;
+    std::wstring cmdLine = s.str();
+
+    // Start debugger process
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(pi));
+
+    if (!CreateProcessW(NULL, &cmdLine[0], NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) return false;
+
+    // Close debugger process handles to eliminate resource leak
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    // Wait for the debugger to attach
+    while (!IsDebuggerPresent()) Sleep(100);
+
+    // Stop execution so the debugger can take over
+    DebugBreak();
+    return true;
+}
+
 #elif defined(__linux__)
     #include <unistd.h>  // For readlink
     #include <limits.h>  // For PATH_MAX (as a starting guess)
@@ -16,7 +56,7 @@
     #error "Unsupported platform: Cannot determine executable path."
 #endif
 
-std::string getExecutablePath() {
+inline std::string getExecutablePath() {
 #ifdef _WIN32
     std::vector<char> buffer(MAX_PATH);
     DWORD pathLen = 0;
@@ -87,7 +127,7 @@ std::string getExecutablePath() {
 }
 
 // Optional: A helper to get the directory of the executable
-std::string getExecutableDir() {
+inline std::string getExecutableDir() {
     std::string exePath = getExecutablePath();
     size_t lastSlash = exePath.find_last_of("/\\");
     if (lastSlash != std::string::npos) {

@@ -4,8 +4,8 @@
 #include <string>
 #include <memory>
 #include <optional>
-#include <iostream> // For std::ostream
-#include <sstream>  // For std::stringstream
+#include <iostream>
+#include <sstream>
 
 namespace Mycelium::Scripting::Lang
 {
@@ -58,7 +58,7 @@ namespace Mycelium::Scripting::Lang
     enum class BinaryOperatorKind { Add, Subtract, Multiply, Divide, Modulo, LogicalAnd, LogicalOr, Equals, NotEquals, LessThan, GreaterThan, LessThanOrEqual, GreaterThanOrEqual };
     enum class AssignmentOperator { Assign, AddAssign, SubtractAssign, MultiplyAssign, DivideAssign };
 
-    // Enum string conversion helpers (inline in header)
+    // Enum string conversion helpers
     inline std::string to_string(ModifierKind kind) {
         switch (kind) {
             case ModifierKind::Public: return "public";
@@ -160,6 +160,49 @@ namespace Mycelium::Scripting::Lang
         AstNode();
         virtual ~AstNode() = default;
         virtual void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const;
+
+    protected:
+        template<typename NodeCollection>
+        void print_child_list(std::ostream& out, const std::string& parentIndent,
+                              bool isThisListLastOverall, const std::string& listName,
+                              const NodeCollection& children) const {
+            if (children.empty()) return;
+
+            out << parentIndent << (isThisListLastOverall ? "|__ " : "|-- ") << listName
+                << " [" << children.size() << "]:" << std::endl;
+            std::string itemIndent = parentIndent + (isThisListLastOverall ? "    " : "|   ");
+            for (size_t i = 0; i < children.size(); ++i) {
+                if (children[i]) {
+                    children[i]->print(out, itemIndent, i == children.size() - 1);
+                } else {
+                    out << itemIndent << (i == children.size() - 1 ? "|__ " : "|-- ") << "(null item)" << std::endl;
+                }
+            }
+        }
+
+        template<typename NodeType>
+        void print_optional_child(std::ostream& out, const std::string& parentIndent,
+                                  bool isThisChildLastOverall, const std::string& childName,
+                                  const std::optional<std::shared_ptr<NodeType>>& childOpt) const {
+            if (!childOpt || !(*childOpt)) return;
+
+            out << parentIndent << (isThisChildLastOverall ? "|__ " : "|-- ") << childName << ":" << std::endl;
+            std::string itemIndent = parentIndent + (isThisChildLastOverall ? "    " : "|   ");
+            (*childOpt)->print(out, itemIndent, true);
+        }
+        
+        template<typename NodeType>
+        void print_mandatory_child(std::ostream& out, const std::string& parentIndent,
+                                   bool isThisChildLastOverall, const std::string& childName,
+                                   const std::shared_ptr<NodeType>& child) const {
+            if (!child) {
+                 out << parentIndent << (isThisChildLastOverall ? "|__ " : "|-- ") << childName << ": (null)" << std::endl;
+                 return;
+            }
+            out << parentIndent << (isThisChildLastOverall ? "|__ " : "|-- ") << childName << ":" << std::endl;
+            std::string itemIndent = parentIndent + (isThisChildLastOverall ? "    " : "|   ");
+            child->print(out, itemIndent, true);
+        }
     };
 
     struct TypeParameterNode : AstNode
@@ -214,18 +257,21 @@ namespace Mycelium::Scripting::Lang
 
     struct MemberDeclarationNode : DeclarationNode
     {
-        std::optional<std::shared_ptr<TypeNameNode>> type;
+        std::optional<std::shared_ptr<TypeNameNode>> type; // Return type for methods, type for fields
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };
 
     struct FieldDeclarationNode : MemberDeclarationNode
     {
+        // Note: 'name' from DeclarationNode is not typically used here if multiple declarators.
+        // 'type' from MemberDeclarationNode is the common type for all declarators.
         std::vector<std::shared_ptr<VariableDeclaratorNode>> declarators;
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };
 
     struct MethodDeclarationNode : MemberDeclarationNode
     {
+        // 'type' from MemberDeclarationNode is the return type.
         std::vector<std::shared_ptr<TypeParameterNode>> typeParameters;
         std::vector<std::shared_ptr<ParameterDeclarationNode>> parameters;
         std::optional<std::shared_ptr<BlockStatementNode>> body;
@@ -234,13 +280,16 @@ namespace Mycelium::Scripting::Lang
 
     struct ConstructorDeclarationNode : MemberDeclarationNode
     {
+        // 'name' from DeclarationNode is the class name.
+        // 'type' from MemberDeclarationNode should be nullopt for constructors.
         std::vector<std::shared_ptr<ParameterDeclarationNode>> parameters;
-        std::shared_ptr<BlockStatementNode> body;
+        std::shared_ptr<BlockStatementNode> body; // Constructors must have a body
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };
 
     struct ParameterDeclarationNode : DeclarationNode
     {
+        // 'name' from DeclarationNode is the parameter name.
         std::shared_ptr<TypeNameNode> type;
         std::optional<std::shared_ptr<ExpressionNode>> defaultValue;
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
@@ -286,7 +335,7 @@ namespace Mycelium::Scripting::Lang
 
     struct LocalVariableDeclarationStatementNode : StatementNode
     {
-        std::shared_ptr<TypeNameNode> type;
+        std::shared_ptr<TypeNameNode> type; // If isVarDeclaration, this might represent 'var'
         bool isVarDeclaration = false;
         std::vector<std::shared_ptr<VariableDeclaratorNode>> declarators;
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
@@ -295,9 +344,9 @@ namespace Mycelium::Scripting::Lang
     struct ForStatementNode : StatementNode
     {
         std::optional<std::shared_ptr<LocalVariableDeclarationStatementNode>> declaration;
-        std::vector<std::shared_ptr<ExpressionStatementNode>> initializers;
+        std::vector<std::shared_ptr<ExpressionNode>> initializers; // Changed from ExpressionStatementNode
         std::optional<std::shared_ptr<ExpressionNode>> condition;
-        std::vector<std::shared_ptr<ExpressionStatementNode>> incrementors;
+        std::vector<std::shared_ptr<ExpressionNode>> incrementors; // Changed from ExpressionStatementNode
         std::shared_ptr<StatementNode> body;
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };
@@ -391,15 +440,16 @@ namespace Mycelium::Scripting::Lang
 
     struct TypeNameNode : AstNode
     {
-        std::string name;
+        std::string name; // For qualified names, this is the first part. Full resolution is semantic.
         std::vector<std::shared_ptr<TypeNameNode>> typeArguments;
         bool isArray = false;
+        // For multiple array ranks like T[][], isArray is true. More detail (ranks) is semantic.
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };
 
     struct ArgumentNode : AstNode
     {
-        std::optional<std::string> name;
+        std::optional<std::string> name; // For named arguments
         std::shared_ptr<ExpressionNode> expression;
         void print(std::ostream& out, const std::string& indent = "", bool isLastChild = true) const override;
     };

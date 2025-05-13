@@ -1,12 +1,9 @@
 #include "script_tokenizer.hpp"
-#include "script_ast.hpp"
-#include <stdexcept>
-#include <cctype>
+#include <cctype> // For std::tolower, std::toupper
 
 namespace Mycelium::Scripting::Lang
 {
 
-// --- TokenType to String Helper (Implementation) ---
 std::string token_type_to_string(TokenType type)
 {
     switch (type)
@@ -81,14 +78,12 @@ std::string token_type_to_string(TokenType type)
         case TokenType::GreaterThan: return "GreaterThan";
         case TokenType::LessThanOrEqual: return "LessThanOrEqual";
         case TokenType::GreaterThanOrEqual: return "GreaterThanOrEqual";
+        case TokenType::At: return "At";
         case TokenType::EndOfFile: return "EndOfFile";
         case TokenType::Unknown: return "Unknown";
         default: return "UnhandledTokenType(" + std::to_string(static_cast<int>(type)) + ")";
     }
 }
-
-
-// --- ScriptTokenizer Implementation ---
 
 const std::unordered_map<std::string, TokenType> ScriptTokenizer::s_keywords =
 {
@@ -120,6 +115,14 @@ ScriptTokenizer::ScriptTokenizer(const std::string& source)
 {
 }
 
+TokenizerError ScriptTokenizer::create_tokenizer_error(const std::string& message) const
+{
+    // Use m_lexemeStartLine/Column if error is about the current token being formed
+    // Or m_currentLine/Column for errors at current peeking position
+    return TokenizerError(message, m_lexemeStartLine, m_lexemeStartColumn);
+}
+
+
 std::vector<Token> ScriptTokenizer::tokenize_source()
 {
     m_tokens.clear();
@@ -144,12 +147,15 @@ std::vector<Token> ScriptTokenizer::tokenize_source()
 
     Token eofToken;
     eofToken.type = TokenType::EndOfFile;
-    eofToken.lexeme = ""; // Empty lexeme for EOF
+    eofToken.lexeme = "";
     eofToken.location.line_start = m_currentLine;
     eofToken.location.column_start = static_cast<int>(m_currentIndex - m_currentLineStartOffset) + 1;
     eofToken.location.line_end = m_currentLine;
-    eofToken.location.column_end = static_cast<int>(m_currentIndex - m_currentLineStartOffset); // End before start for 0-length
-    if (eofToken.location.column_end < 1) eofToken.location.column_end = 1; // Ensure positive column
+    eofToken.location.column_end = static_cast<int>(m_currentIndex - m_currentLineStartOffset);
+    if (eofToken.location.column_end < 1 && eofToken.location.column_start ==1) eofToken.location.column_end = 0; // Ensure end <= start for 0-length
+    else if (eofToken.location.column_end < 1) eofToken.location.column_end = 1;
+
+
     m_tokens.push_back(eofToken);
 
     return m_tokens;
@@ -204,40 +210,46 @@ void ScriptTokenizer::add_token_internal(TokenType type, const std::string& lexe
     token.location.line_start = m_lexemeStartLine;
     token.location.column_start = m_lexemeStartColumn;
 
-    if (m_currentIndex > m_startOfLexeme) // If token has length
+    if (m_currentIndex > m_startOfLexeme)
     {
-        size_t lastCharIndex = m_currentIndex - 1;
-        if (m_source[lastCharIndex] == '\n')
-        {
-            // Token ended with a newline. m_currentLine is already the *next* line.
-            token.location.line_end = m_currentLine - 1;
-            // Column of the newline char itself. Find start of the line it was on.
-            size_t startOfThisNewlineLine = m_source.rfind('\n', lastCharIndex - 1);
-            if (startOfThisNewlineLine == std::string::npos) // Newline was on the first line of file
-            {
-                startOfThisNewlineLine = 0;
+        size_t lastCharIndexInLexeme = m_currentIndex - 1;
+        int endLine = m_lexemeStartLine;
+        size_t endLineStartOffset = m_currentLineStartOffset; // Default to current line's start offset
+
+        // Iterate through the lexeme to find internal newlines and update endLine
+        for(size_t i = m_startOfLexeme; i < lastCharIndexInLexeme; ++i) {
+            if (m_source[i] == '\n') {
+                endLine++;
             }
-            else
-            {
-                startOfThisNewlineLine += 1; // Move past the previous newline
-            }
-            token.location.column_end = static_cast<int>(lastCharIndex - startOfThisNewlineLine) + 1;
         }
-        else
-        {
-            // Token did not end with a newline. Last char is on m_currentLine.
-            // m_currentLineStartOffset is the start of m_currentLine.
-            token.location.line_end = m_currentLine;
-            token.location.column_end = static_cast<int>(lastCharIndex - m_currentLineStartOffset) + 1;
+        token.location.line_end = endLine;
+
+        // Find the start of the line where the lexeme ends
+        size_t lastNewlineBeforeLexemeEnd = std::string::npos;
+        if (endLine > m_lexemeStartLine) { // If lexeme spanned newlines
+            lastNewlineBeforeLexemeEnd = m_source.rfind('\n', lastCharIndexInLexeme -1); // search before the last char
+        } else { // Lexeme is on a single line
+             lastNewlineBeforeLexemeEnd = m_source.rfind('\n', m_startOfLexeme > 0 ? m_startOfLexeme -1 : 0);
         }
+
+        if (lastNewlineBeforeLexemeEnd == std::string::npos && m_startOfLexeme != 0) { // No newline before on the same line, implies first line part
+             endLineStartOffset = 0;
+        } else if (lastNewlineBeforeLexemeEnd != std::string::npos) {
+            endLineStartOffset = lastNewlineBeforeLexemeEnd + 1;
+        } else { // First line of file
+            endLineStartOffset = 0;
+        }
+         token.location.column_end = static_cast<int>(lastCharIndexInLexeme - endLineStartOffset) + 1;
+
     }
-    else // Zero-length token (e.g., an error placeholder, or EOF if source is empty)
+    else // Zero-length token (should be rare, e.g. for EOF on empty source)
     {
         token.location.line_end = m_lexemeStartLine;
-        token.location.column_end = m_lexemeStartColumn > 1 ? m_lexemeStartColumn -1 : 1; // Ends "before" it starts
+        token.location.column_end = m_lexemeStartColumn > 1 ? m_lexemeStartColumn -1 : 0;
     }
     m_tokens.push_back(token);
 }
+
 
 void ScriptTokenizer::skip_whitespace_and_comments()
 {
@@ -253,58 +265,58 @@ void ScriptTokenizer::skip_whitespace_and_comments()
                 advance_char();
                 break;
             case '\n':
-                advance_char(); // Handles line counting and offset update
+                advance_char();
                 break;
             case '/':
                 if (peek_next_char() == '/') // Line comment
                 {
-                    advance_char(); // Consume '/'
-                    advance_char(); // Consume '/'
+                    advance_char();
+                    advance_char();
                     while (peek_char() != '\n' && !is_at_end())
                     {
                         advance_char();
                     }
-                    // The newline (or EOF) will be handled by the next iteration or by is_at_end()
                 }
                 else if (peek_next_char() == '*') // Block comment
                 {
-                    advance_char(); // Consume '/'
-                    advance_char(); // Consume '*'
-                    int commentStartLine = m_currentLine; // For error reporting
-                    int commentStartCol = static_cast<int>(m_currentIndex - m_currentLineStartOffset) + 1 - 2; // Approx start
+                    advance_char();
+                    advance_char();
+                    int commentStartLine = m_currentLine;
+                    int commentStartCol = static_cast<int>(m_currentIndex - m_currentLineStartOffset) -1 ; // Approx start before '*'
 
+                    bool foundEnd = false;
                     while (!is_at_end())
                     {
                         if (peek_char() == '*' && peek_next_char() == '/')
                         {
-                            advance_char(); // Consume '*'
-                            advance_char(); // Consume '/'
-                            goto next_iteration_skip_whitespace; // Break out of inner while and continue outer while
+                            advance_char();
+                            advance_char();
+                            foundEnd = true;
+                            break;
                         }
                         else
                         {
-                            advance_char(); // Consumes char inside comment, advance_char handles newlines
+                            advance_char();
                         }
                     }
-                    // If loop finishes, it's an unterminated block comment
-                    throw std::runtime_error("Unterminated block comment starting near line " +
-                                            std::to_string(commentStartLine) + ", col " + std::to_string(commentStartCol));
+                    if (!foundEnd) {
+                        throw TokenizerError("Unterminated block comment.", commentStartLine, commentStartCol);
+                    }
                 }
-                else // Not a comment, just a slash (division operator)
+                else // Not a comment, just a slash
                 {
-                    return; // Done skipping
+                    return;
                 }
                 break;
             default:
-                return; // Not whitespace or comment start, done skipping
+                return;
         }
-        next_iteration_skip_whitespace:;
     }
 }
 
 void ScriptTokenizer::scan_single_token()
 {
-    char c = advance_char(); // Consume the character to decide what token it is
+    char c = advance_char();
 
     switch (c)
     {
@@ -319,6 +331,7 @@ void ScriptTokenizer::scan_single_token()
         case ':': add_token(TokenType::Colon); break;
         case '?': add_token(TokenType::QuestionMark); break;
         case '.': add_token(TokenType::Dot); break;
+        case '@': add_token(TokenType::At); break;
 
         case '+':
             if (peek_char() == '=') { advance_char(); add_token(TokenType::PlusAssign); }
@@ -334,7 +347,7 @@ void ScriptTokenizer::scan_single_token()
             if (peek_char() == '=') { advance_char(); add_token(TokenType::AsteriskAssign); }
             else { add_token(TokenType::Asterisk); }
             break;
-        case '/': // Comments handled by skip_whitespace_and_comments
+        case '/':
             if (peek_char() == '=') { advance_char(); add_token(TokenType::SlashAssign); }
             else { add_token(TokenType::Slash); }
             break;
@@ -360,11 +373,11 @@ void ScriptTokenizer::scan_single_token()
             break;
         case '&':
             if (peek_char() == '&') { advance_char(); add_token(TokenType::LogicalAnd); }
-            else { add_token(TokenType::Unknown); /* Or bitwise & if supported */ }
+            else { throw create_tokenizer_error("Unexpected character '&'. Expected '&&' for logical AND."); }
             break;
         case '|':
             if (peek_char() == '|') { advance_char(); add_token(TokenType::LogicalOr); }
-            else { add_token(TokenType::Unknown); /* Or bitwise | if supported */ }
+            else { throw create_tokenizer_error("Unexpected character '|'. Expected '||' for logical OR."); }
             break;
 
         case '"': scan_string_literal(); break;
@@ -373,23 +386,17 @@ void ScriptTokenizer::scan_single_token()
         default:
             if (is_digit(c))
             {
-                m_currentIndex--; // Put 'c' back to be read by scan_number
-                if (c == '\n') { /* This case should not happen if is_digit(c) is true */ }
+                m_currentIndex--; // Put 'c' back
                 scan_number();
             }
-            else if (is_alpha(c) || c == '_') // Identifiers (or keywords)
+            else if (is_alpha(c) || c == '_')
             {
                 m_currentIndex--; // Put 'c' back
-                if (c == '\n') { /* Should not happen if is_alpha(c) is true */ }
                 scan_identifier_or_keyword();
             }
             else
             {
-                add_token(TokenType::Unknown); // Unknown character
-                // Optionally throw:
-                // throw std::runtime_error("Unexpected character '" + std::string(1, c) +
-                //                          "' at line " + std::to_string(m_lexemeStartLine) +
-                //                          ", col " + std::to_string(m_lexemeStartColumn));
+                throw create_tokenizer_error("Unexpected character '" + std::string(1, c) + "'.");
             }
             break;
     }
@@ -397,9 +404,7 @@ void ScriptTokenizer::scan_single_token()
 
 void ScriptTokenizer::scan_identifier_or_keyword()
 {
-    // m_startOfLexeme, m_lexemeStartLine, m_lexemeStartColumn are already set.
-    // The first char of identifier is at m_currentIndex (it was put back).
-    while (is_alpha_numeric(peek_char()) || peek_char() == '_')
+    while (is_alpha_numeric(peek_char())) // is_alpha_numeric includes '_'
     {
         advance_char();
     }
@@ -418,8 +423,6 @@ void ScriptTokenizer::scan_identifier_or_keyword()
 
 void ScriptTokenizer::scan_number()
 {
-    // m_startOfLexeme, m_lexemeStartLine, m_lexemeStartColumn are set.
-    // The first digit is at m_currentIndex (it was put back).
     bool isDouble = false;
     while (is_digit(peek_char()))
     {
@@ -435,22 +438,19 @@ void ScriptTokenizer::scan_number()
             advance_char();
         }
     }
-    
-    if (std::tolower(peek_char()) == 'e')
+
+    if (std::tolower(static_cast<unsigned char>(peek_char())) == 'e')
     {
-        // Check if previous char was a digit or '.', to avoid 'e' in identifiers being numbers
         if (m_currentIndex > m_startOfLexeme && (is_digit(m_source[m_currentIndex-1]) || m_source[m_currentIndex-1] == '.')) {
             isDouble = true;
-            advance_char(); // Consume 'e' or 'E'
+            advance_char();
             if (peek_char() == '+' || peek_char() == '-')
             {
-                advance_char(); // Consume sign
+                advance_char();
             }
             if (!is_digit(peek_char()))
             {
-                 // Error: exponent lacks digits. Tokenize what we have, parser might complain.
-                 // Or, if we want to be strict, this is a malformed number.
-                 // For now, we let it pass; the lexeme will include 'e[sign]'
+                 throw create_tokenizer_error("Exponent lacks digits after 'e'.");
             }
             while (is_digit(peek_char()))
             {
@@ -460,18 +460,19 @@ void ScriptTokenizer::scan_number()
     }
 
     char suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(peek_char())));
-    if (suffix == 'L') // Long integer
+    if (suffix == 'L')
     {
-        if (isDouble) { /* Error: 'L' suffix on a double. For now, ignore. Parser can validate. */ }
-        else { advance_char(); } // Consume 'L'
+        if (isDouble) { throw create_tokenizer_error("Suffix 'L' cannot be applied to a double literal."); }
+        advance_char();
+        add_token(TokenType::IntegerLiteral); // Or LongLiteral if distinct
     }
-    else if (suffix == 'D' || suffix == 'F' || suffix == 'M') // Double, Float, Decimal
+    else if (suffix == 'D' || suffix == 'F' || suffix == 'M')
     {
         isDouble = true;
-        advance_char(); // Consume suffix
+        advance_char();
+        add_token(TokenType::DoubleLiteral);
     }
-
-    if (isDouble)
+    else if (isDouble)
     {
         add_token(TokenType::DoubleLiteral);
     }
@@ -483,87 +484,61 @@ void ScriptTokenizer::scan_number()
 
 void ScriptTokenizer::scan_string_literal()
 {
-    // Opening quote was consumed by scan_single_token, m_startOfLexeme points to it.
-    // m_currentIndex is after the opening quote.
     while (peek_char() != '"' && !is_at_end())
     {
-        if (peek_char() == '\\') // Escape sequence
+        if (peek_char() == '\\')
         {
-            advance_char(); // Consume '\'
-            if (!is_at_end())
-            {
-                advance_char(); // Consume the escaped character (e.g., 'n', 't', '"', '\')
-            }
-            else // Unterminated escape at EOF
-            {
-                // Error: unterminated string due to escape at EOF
-                // Let the outer is_at_end() check handle unterminated string.
-                break;
-            }
+            advance_char();
+            if (!is_at_end()) advance_char(); // Consume escaped char
+            else { throw create_tokenizer_error("Unterminated string literal due to escape at EOF."); }
         }
         else
         {
-            advance_char(); // Consumes char inside string
+            advance_char();
         }
     }
 
-    if (is_at_end()) // Unterminated string
+    if (is_at_end())
     {
-        // Add an error token or throw
-        add_token(TokenType::Unknown); // Lexeme will be from opening quote to EOF
-        // throw std::runtime_error("Unterminated string literal starting at line " +
-        //                          std::to_string(m_lexemeStartLine) + ", col " + std::to_string(m_lexemeStartColumn));
-        return;
+        throw create_tokenizer_error("Unterminated string literal.");
     }
 
     advance_char(); // Consume the closing quote '"'
-    add_token(TokenType::StringLiteral); // Lexeme includes quotes
+    add_token(TokenType::StringLiteral);
 }
 
 void ScriptTokenizer::scan_char_literal()
 {
-    // Opening quote was consumed by scan_single_token, m_startOfLexeme points to it.
-    // m_currentIndex is after the opening quote.
-    bool isValidChar = false;
-    if (peek_char() == '\\') // Escape sequence
+    bool isValidCharContent = false;
+    if (peek_char() == '\\')
     {
         advance_char(); // Consume '\'
         if (!is_at_end())
         {
             advance_char(); // Consume escaped char
-            isValidChar = true;
+            isValidCharContent = true;
         }
-        // else: unterminated escape, will be caught by peek_char() != '\'' check
+        else { throw create_tokenizer_error("Unterminated character literal with escape at EOF."); }
     }
-    else if (peek_char() != '\'' && !is_at_end()) // Regular character
+    else if (peek_char() != '\'' && !is_at_end())
     {
         advance_char(); // Consume the char
-        isValidChar = true;
+        isValidCharContent = true;
     }
-    // else: empty char '' or unterminated like ' at EOF. isValidChar remains false.
 
-    if (isValidChar && peek_char() == '\'')
+    if (isValidCharContent && peek_char() == '\'')
     {
         advance_char(); // Consume closing '\''
         add_token(TokenType::CharLiteral);
     }
     else
     {
-        // Malformed char literal (e.g. 'ab', '', 'a at EOF, unterminated escape)
-        // Try to consume until the next quote or sensible delimiter to allow parsing to continue.
-        while (!is_at_end() && peek_char() != '\'' && peek_char() != '\n')
-        {
-            advance_char();
-        }
-        if (peek_char() == '\'') advance_char(); // Consume if found
-
-        add_token(TokenType::Unknown); // The lexeme will contain the malformed attempt
-        // throw std::runtime_error("Malformed character literal starting at line " +
-        //                          std::to_string(m_lexemeStartLine) + ", col " + std::to_string(m_lexemeStartColumn));
+        if (is_at_end()) { throw create_tokenizer_error("Unterminated character literal."); }
+        if (peek_char() == '\'') { throw create_tokenizer_error("Empty character literal ''."); }
+        throw create_tokenizer_error("Malformed character literal. Expected single character or valid escape sequence followed by '.'.");
     }
 }
 
-// Character check helpers (using cctype for locale-awareness if needed, but basic checks are fine)
 bool ScriptTokenizer::is_digit(char c) const
 {
     return c >= '0' && c <= '9';
@@ -577,8 +552,7 @@ bool ScriptTokenizer::is_alpha(char c) const
 
 bool ScriptTokenizer::is_alpha_numeric(char c) const
 {
-    return is_alpha(c) || is_digit(c) || c == '_'; // Allowing underscore in alphanumeric for identifiers
+    return is_alpha(c) || is_digit(c) || c == '_';
 }
 
-
-}
+} // namespace Mycelium::Scripting::Lang

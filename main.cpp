@@ -15,7 +15,7 @@
 #include "script_ast.hpp"
 #include "script_parser.hpp"
 #include "hot_reload.hpp"
-#include "platform.h"
+#include "platform.hpp"
 
 #include "libtcc.h"
 
