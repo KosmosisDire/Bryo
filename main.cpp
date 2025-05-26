@@ -15,12 +15,14 @@
 #include "hot_reload.hpp"
 #include "platform.hpp"
 
+#include "llvm/Support/DynamicLibrary.h" // <--- ADD THIS INCLUDE
 
 // using namespace Mycelium::UI::Lang;
 using namespace Mycelium::Scripting::Lang;
 
 void Compile(std::string input)
 {
+    // ... (rest of your Compile function remains the same)
     std::cout << "--- Input ---" << std::endl;
     std::cout << input << std::endl;
     std::cout << "-------------" << std::endl;
@@ -36,13 +38,22 @@ void Compile(std::string input)
         {
             std::cerr << "Parse Error: " << error.message << " at " << error.location.to_string() << std::endl;
         }
+        if (!result.second.empty() && !AST) { // If there were errors and AST is null
+            std::cerr << "Parsing failed to produce an AST due to errors." << std::endl;
+            return;
+        }
+        if (!AST) {
+             std::cerr << "Parsing produced a null AST without explicit errors. Aborting compilation." << std::endl;
+            return;
+        }
         std::cout << "Parsing Successful!" << std::endl;
         std::cout << "---------------" << std::endl;
 
+
         // compile
         std::cout << "\n--- Compiling ---" << std::endl;
-        ScriptCompiler compiler;
-        compiler.compile_ast(AST, "MyceliumModule");
+        ScriptCompiler compiler; // Compiler is created
+        compiler.compile_ast(AST, "MyceliumModule"); // AST is compiled
 
         std::ofstream outFile("tests/build/test.ll");
         if (outFile)
@@ -58,6 +69,7 @@ void Compile(std::string input)
 
         // JIT execution
         std::cout << "\n--- JIT Execution ---" << std::endl;
+        // The compiler instance used for compile_ast is the same one used for jit_execute_function
         auto value = compiler.jit_execute_function("main", {});
         std::cout << "Output: " << value.DoubleVal << std::endl;
         std::cout << "JIT Execution Successful!" << std::endl;
@@ -66,25 +78,33 @@ void Compile(std::string input)
     }
     catch (const std::runtime_error &e)
     {
-        std::cerr << "\n*** PARSING FAILED ***" << std::endl;
-        std::cerr << "Error during parsing phase: " << e.what() << std::endl;
+        // More specific error context could be helpful here
+        std::cerr << "\n*** RUNTIME ERROR DURING COMPILATION/JIT ***" << std::endl;
+        std::cerr << "Error: " << e.what() << std::endl;
+        // Consider printing the stack trace if possible, or more context from your compiler/parser.
     }
     catch (const std::exception &e)
     {
-        std::cerr << "\n*** UNEXPECTED ERROR ***" << std::endl;
+        std::cerr << "\n*** UNEXPECTED STANDARD EXCEPTION ***" << std::endl;
         std::cerr << "Caught exception: " << e.what() << std::endl;
     }
+    // It's good practice to catch more specific LLVM exceptions if you can identify them,
+    // or at least be aware that LLVM operations can throw.
 }
 
 int main()
 {
+    // --- ADD THIS LINE AT THE VERY BEGINNING OF main() ---
+    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+    // ------------------------------------------------------
+
     HotReload fileReloader({"tests/test.sp"}, [](const std::string &filePath, const std::string &newContent)
     {
         std::cout << "\n--- " << filePath << " Reloaded ---" << std::endl;
         Compile(newContent);
     });
 
-    fileReloader.poll_changes();
+    fileReloader.poll_changes(); // Initial compile
 
     while (true)
     {
@@ -92,5 +112,5 @@ int main()
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    return 0; // Indicate success
+    return 0;
 }

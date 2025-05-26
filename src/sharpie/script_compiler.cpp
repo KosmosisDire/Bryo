@@ -5,8 +5,8 @@
 
 // For JIT and AOT
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JITSymbol.h" // For JIT (though ExecutionEngine uses GenericValue directly)
-#include "llvm/ExecutionEngine/MCJIT.h"     // For MCJIT if used explicitly (EngineBuilder handles it)
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -15,15 +15,16 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h" // Example pass
-#include "llvm/Transforms/Scalar.h"                  // Example pass (like Reassociate)
-#include "llvm/Transforms/Scalar/GVN.h"              // Example pass
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/CodeGen.h"
+#include "runtime_binding.h"
 
 #include <iostream>
 #include <sstream>
-#include <fstream> // For saving object file in AOT (though raw_fd_ostream is used)
+#include <fstream>
 
 namespace Mycelium::Scripting::Lang
 {
@@ -33,20 +34,7 @@ namespace Mycelium::Scripting::Lang
     ScriptCompiler::ScriptCompiler()
     {
         llvmContext = std::make_unique<llvm::LLVMContext>();
-
-        // Initialize once per context effectively
-        if (!myceliumStringType)
-        {
-            // Define the MyceliumString struct: { i8*, i64, i64 } (char*, size_t, size_t)
-            // Assuming size_t is 64-bit for this target. Adjust if necessary.
-            // myceliumStringType = llvm::StructType::create(*llvmContext,
-            //                                               {llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext)), // data (char*)
-            //                                                llvm::Type::getInt64Ty(*llvmContext),                              // length (size_t)
-            //                                                llvm::Type::getInt64Ty(*llvmContext)},                             // capacity (size_t)
-            //                                               "struct.MyceliumString");                                           // Name for IR
-        
-            myceliumStringType = llvm::Type::getInt64Ty(*llvmContext);
-        }
+        // Don't initialize myceliumStringType here - it will be done in compile_ast
     }
 
     ScriptCompiler::~ScriptCompiler() = default;
@@ -54,37 +42,29 @@ namespace Mycelium::Scripting::Lang
     void ScriptCompiler::compile_ast(std::shared_ptr<CompilationUnitNode> ast_root, const std::string &module_name)
     {
         if (!llvmContext)
-        { // Should always be true due to constructor, but good to be defensive
+        {
             llvmContext = std::make_unique<llvm::LLVMContext>();
         }
         llvmModule = std::make_unique<llvm::Module>(module_name, *llvmContext);
         llvmBuilder = std::make_unique<llvm::IRBuilder<>>(*llvmContext);
 
-        // Initialize the MyceliumString LLVM type if it hasn't been already for this context
+        // Initialize the MyceliumString LLVM type properly as a struct
         if (!myceliumStringType)
         {
-            // llvm::errs() << "[DEBUG] Initializing myceliumStringType in compile_ast...\n";
             myceliumStringType = llvm::StructType::create(*llvmContext,
                                                           {llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext)), // data (char*)
                                                            llvm::Type::getInt64Ty(*llvmContext),                              // length (size_t)
                                                            llvm::Type::getInt64Ty(*llvmContext)},                             // capacity (size_t)
-                                                          "struct.MyceliumString");                                           // Name for IR in the LLVM module
+                                                          "struct.MyceliumString");
 
             if (!myceliumStringType)
             {
-                // llvm::errs() << "  [CRITICAL DEBUG] Failed to create myceliumStringType!\n";
-                log_error("Failed to initialize MyceliumString LLVM type struct."); // This will throw
-            }
-            else
-            {
-                // llvm::errs() << "  [DEBUG] myceliumStringType created: "; myceliumStringType->print(llvm::errs()); llvm::errs() << "\n";
+                log_error("Failed to initialize MyceliumString LLVM type struct.");
             }
         }
 
-        // Declare runtime functions (like string helpers) to the LLVM module
-        // This must happen AFTER llvmModule is created and types (like myceliumStringType) are initialized,
-        // and BEFORE visit(ast_root) which might try to use these function declarations.
-        declare_string_runtime_functions();
+        // Declare runtime functions
+        declare_all_runtime_functions();
 
         // Clear state for the new compilation unit
         namedValues.clear();
@@ -93,23 +73,17 @@ namespace Mycelium::Scripting::Lang
         if (!ast_root)
         {
             log_error("AST root is null. Cannot compile.");
-            // log_error throws, so no need to return here explicitly
         }
 
         // Start visiting the AST to generate IR
-        // llvm::errs() << "[DEBUG] Starting AST visitation...\n";
         visit(ast_root);
-        // llvm::errs() << "[DEBUG] AST visitation completed.\n";
 
-        // Verify the generated module for correctness
-        // llvm::errs() << "[DEBUG] Verifying LLVM module...\n";
+        // Verify the generated module
         if (llvm::verifyModule(*llvmModule, &llvm::errs()))
         {
             log_error("LLVM Module verification failed. Dumping potentially corrupt IR.");
-            // llvmModule->print(llvm::errs(), nullptr); // Consider uncommenting if verification fails often
             throw std::runtime_error("LLVM module verification failed.");
         }
-        // llvm::errs() << "[DEBUG] LLVM module verification successful.\n";
     }
 
     std::string ScriptCompiler::get_ir_string() const
@@ -173,7 +147,7 @@ namespace Mycelium::Scripting::Lang
         {
             llvm::InitializeNativeTarget();
             llvm::InitializeNativeTargetAsmPrinter();
-            llvm::InitializeNativeTargetAsmParser(); // Though not strictly needed for basic JIT runFunction
+            llvm::InitializeNativeTargetAsmParser();
             jit_initialized = true;
         }
     }
@@ -182,77 +156,149 @@ namespace Mycelium::Scripting::Lang
         const std::string &function_name,
         const std::vector<llvm::GenericValue> &args)
     {
-        initialize_jit_engine_dependencies();
+        initialize_jit_engine_dependencies(); // Ensures LLVM native targets are set up
 
         if (!llvmModule)
-        {
-            log_error("No LLVM module available for JIT. Compile AST first.");
+        { // This module is about to be taken by EngineBuilder.
+          // A check here implies it might have been taken by a previous call
+          // if ScriptCompiler instance is reused without recompiling.
+            log_error("No LLVM module available for JIT. Compile AST first or ensure ScriptCompiler is not reused across JIT runs without recompiling.");
         }
 
-        llvm::errs() << "Verifying module just before giving to EngineBuilder:\n";
-        if (llvm::verifyModule(*this->llvmModule, &llvm::errs())) { // Use this->llvmModule before take_module
-            log_error("LLVM Module verification failed BEFORE JIT. Dumping potentially corrupt IR.");
-            // this->llvmModule->print(llvm::errs(), nullptr);
-            // throw std::runtime_error("LLVM module verification failed before JIT."); // Or however you want to handle
-        } else {
-            llvm::errs() << "Module verification successful before JIT.\n";
-        }
+        // Optional: Verify module just before JIT compilation if not done elsewhere
+        // llvm::errs() << "Verifying module immediately before EngineBuilder:\n";
+        // if (llvm::verifyModule(*this->llvmModule, &llvm::errs())) {
+        //     dump_ir();
+        //     log_error("LLVM Module verification failed BEFORE JIT. Dumping potentially corrupt IR.");
+        // } else {
+        //     llvm::errs() << "Module verification successful before JIT.\n";
+        // }
 
         std::string errStr;
-        // EngineBuilder takes ownership of the module
-        llvm::ExecutionEngine *ee = llvm::EngineBuilder(take_module())
-                                        .setErrorStr(&errStr)
-                                        .setEngineKind(llvm::EngineKind::JIT) // Or ::MCJIT for more features
-                                        .create();
+        // Create the ExecutionEngine instance.
+        // take_module() transfers ownership of llvmModule to the EngineBuilder.
+        // After this call, this->llvmModule in the ScriptCompiler instance will be null.
+        llvm::EngineBuilder engineBuilder(take_module());
+        engineBuilder.setErrorStr(&errStr);
+        engineBuilder.setEngineKind(llvm::EngineKind::JIT); // Use MCJIT by default
+        // engineBuilder.setVerifyModules(true); // Optional: ask EngineBuilder to verify modules it JITs
+        // engineBuilder.setOptLevel(llvm::CodeGenOptLevel::Default); // Set optimization level if desired
+
+        llvm::ExecutionEngine *ee = engineBuilder.create();
 
         if (!ee)
         {
             log_error("Failed to construct ExecutionEngine: " + errStr);
         }
 
-        // Find the function. Note: name might be mangled or adjusted (e.g., to "main")
+        // --- Iterate over the runtime binding registry to add global mappings ---
+        llvm::errs() << "--- Explicitly mapping C runtime functions for JIT from registry ---\n";
+        const auto &bindings = get_runtime_bindings();
+        if (bindings.empty())
+        {
+            llvm::errs() << "Warning: Runtime binding registry is empty. No explicit mappings to add.\n";
+        }
+        for (const auto &binding : bindings)
+        {
+            if (binding.c_function_pointer == nullptr)
+            {
+                llvm::errs() << "JIT WARNING: C function pointer for '" << binding.ir_function_name
+                             << "' is null in the registry! Skipping mapping.\n";
+                continue;
+            }
+            ee->addGlobalMapping(binding.ir_function_name,
+                                 reinterpret_cast<uint64_t>(binding.c_function_pointer));
+            llvm::errs() << "Mapped " << binding.ir_function_name << " to address: "
+                         << binding.c_function_pointer << "\n";
+        }
+        llvm::errs() << "-------------------------------------------------------------------\n";
+
+        // Finalize the object to prepare for execution. This is when the JIT compiles
+        // the module and resolves symbols (using our mappings).
+        ee->finalizeObject();
+
+        // --- DEBUG: Re-Check if external C functions can be resolved by the EE's getFunctionAddress ---
+        // This checks what the EE *reports* as the address. The crucial part is that the JITted code
+        // should use the addresses from addGlobalMapping if direct resolution failed.
+        llvm::errs() << "--- Checking JIT Function Addresses for Externs (POST-MAPPING & FINALIZE) ---\n";
+        bool all_externs_resolved_by_getaddress = true;
+        for (const auto &binding : bindings)
+        { // Iterate over the same bindings
+            uint64_t addr = ee->getFunctionAddress(binding.ir_function_name);
+            if (addr == 0)
+            {
+                llvm::errs() << "JIT WARNING: Address of extern function '" << binding.ir_function_name
+                             << "' is STILL 0 according to getFunctionAddress after explicit mapping!\n";
+                all_externs_resolved_by_getaddress = false;
+            }
+            else
+            {
+                llvm::errs() << "JIT INFO: Address of extern function '" << binding.ir_function_name
+                             << "' via getFunctionAddress is 0x" << llvm::Twine::utohexstr(addr) << "\n";
+            }
+        }
+        if (!all_externs_resolved_by_getaddress && !bindings.empty())
+        {
+            llvm::errs() << "Warning: getFunctionAddress still reports 0 for some externs. "
+                         << "Execution will rely on addGlobalMapping having taken effect internally for the JIT.\n";
+        }
+        llvm::errs() << "------------------------------------------------------------------------\n";
+
+        // Attempt to find the function to run (e.g., "main") within the JITted module
         llvm::Function *funcToRun = ee->FindFunctionNamed(function_name);
         if (!funcToRun)
         {
-            delete ee; // Important to clean up
-            log_error("JIT: Function '" + function_name + "' not found in module.");
+            llvm::errs() << "JIT: Function to run '" << function_name << "' not found by ee->FindFunctionNamed.\n";
+            // This could happen if the function wasn't defined in the AST/IR,
+            // or if there was an issue JITting it.
+            delete ee; // Clean up engine
+            log_error("JIT: Function '" + function_name + "' not found in the JITted module by FindFunctionNamed.");
         }
 
-        llvm::errs() << "JIT: Found function: " << funcToRun->getName() << "\n";
-        if (funcToRun->isDeclaration()) {
-            llvm::errs() << "JIT WARNING: funcToRun is only a declaration!\n";
+        // Optional: More detailed logging about the function to be run
+        llvm::errs() << "JIT: Found function to run: '" << funcToRun->getName().str() << "'\n";
+        if (funcToRun->isDeclaration())
+        { // Should not be a declaration if it's the entry point defined in your script
+            llvm::errs() << "JIT WARNING: funcToRun ('" << funcToRun->getName().str() << "') is only a declaration in the JITted module! Execution will likely fail.\n";
         }
-        llvm::FunctionType* fType = funcToRun->getFunctionType();
-        if (!fType) {
-            llvm::errs() << "JIT CRITICAL: funcToRun has a NULL FunctionType!\n";
+        llvm::FunctionType *fType = funcToRun->getFunctionType();
+        if (!fType)
+        { // Should not happen for a valid function
             delete ee;
-            log_error("JIT: Function '" + function_name + "' has a null function type.");
+            log_error("JIT: Function '" + funcToRun->getName().str() + "' has a null function type.");
         }
-        llvm::Type* retType = fType->getReturnType();
-        if (!retType) {
-            llvm::errs() << "JIT CRITICAL: funcToRun has a NULL ReturnType!\n";
+        llvm::Type *retType = fType->getReturnType();
+        if (!retType)
+        { // Should not happen
             delete ee;
-            log_error("JIT: Function '" + function_name + "' has a null return type.");
+            log_error("JIT: Function '" + funcToRun->getName().str() + "' has a null return type.");
         }
-        llvm::errs() << "JIT: funcToRun return type: "; retType->print(llvm::errs()); llvm::errs() << "\n";
+        llvm::errs() << "JIT: funcToRun ('" << funcToRun->getName().str() << "') expected return type: ";
+        retType->print(llvm::errs());
+        llvm::errs() << "\n";
 
-        llvm::GenericValue result;
+        llvm::GenericValue result; // Default constructs (often to an integer 0 or similar)
         try
         {
+            // Execute the JITted function
             result = ee->runFunction(funcToRun, args);
         }
         catch (const std::exception &e)
         {
+            // Catch standard exceptions that might occur during execution or JIT internals
             delete ee;
-            log_error("JIT: Exception during runFunction for '" + function_name + "': " + e.what());
+            log_error("JIT: Exception during runFunction for '" + funcToRun->getName().str() + "': " + std::string(e.what()));
         }
         catch (...)
         {
+            // Catch any other unknown exceptions
             delete ee;
-            log_error("JIT: Unknown exception during runFunction for '" + function_name + "'.");
+            log_error("JIT: Unknown exception during runFunction for '" + funcToRun->getName().str() + "'.");
         }
 
-        delete ee; // Clean up the execution engine
+        // Clean up the execution engine. This also deallocates the JITted code and the module it owned.
+        delete ee;
+
         return result;
     }
 
@@ -262,7 +308,7 @@ namespace Mycelium::Scripting::Lang
     {
         if (!aot_initialized)
         {
-            llvm::InitializeAllTargets(); // More comprehensive for AOT to various targets
+            llvm::InitializeAllTargets();
             llvm::InitializeAllTargetMCs();
             llvm::InitializeAllAsmPrinters();
             llvm::InitializeAllAsmParsers();
@@ -279,9 +325,6 @@ namespace Mycelium::Scripting::Lang
             log_error("No LLVM module available for AOT compilation. Compile AST first.");
         }
 
-        // It's generally safer to work on a copy or re-generate if the module is modified by passes.
-        // However, for direct emission after `compile_ast`, llvmModule should be fine.
-
         auto target_triple_str = llvm::sys::getDefaultTargetTriple();
         llvmModule->setTargetTriple(target_triple_str);
 
@@ -292,11 +335,10 @@ namespace Mycelium::Scripting::Lang
             log_error("Error looking up target '" + target_triple_str + "': " + error);
         }
 
-        auto cpu = "generic"; // Or llvm::sys::getHostCPUName() for current CPU
-        auto features = "";   // Specific CPU features string
+        auto cpu = "generic";
+        auto features = "";
 
         llvm::TargetOptions opt;
-        // llvm::Reloc::Model rm = llvm::Reloc::PIC_; // Position Independent Code, common for shared libs
         auto rm = std::optional<llvm::Reloc::Model>();
         llvm::TargetMachine *target_machine = target->createTargetMachine(target_triple_str, cpu, features, opt, rm);
 
@@ -308,7 +350,7 @@ namespace Mycelium::Scripting::Lang
         llvmModule->setDataLayout(target_machine->createDataLayout());
 
         std::error_code ec;
-        llvm::raw_fd_ostream dest(output_filename, ec, llvm::sys::fs::OF_None); // OF_None should handle binary output correctly
+        llvm::raw_fd_ostream dest(output_filename, ec, llvm::sys::fs::OF_None);
 
         if (ec)
         {
@@ -318,25 +360,13 @@ namespace Mycelium::Scripting::Lang
         llvm::legacy::PassManager pass_manager;
         llvm::CodeGenFileType file_type = llvm::CodeGenFileType::ObjectFile;
 
-        // Example: Add some optimization passes (optional, but good for generated code)
-        // pass_manager.add(llvm::createInstructionCombiningPass());
-        // pass_manager.add(llvm::createReassociatePass());
-        // pass_manager.add(llvm::createGVNPass());
-        // pass_manager.add(llvm::createCFGSimplificationPass()); // In "llvm/Transforms/Scalar.h"
-
         if (target_machine->addPassesToEmitFile(pass_manager, dest, nullptr, file_type))
         {
             log_error("TargetMachine can't emit a file of type 'ObjectFile'.");
         }
 
-        pass_manager.run(*llvmModule); // Run passes, including emission
-        dest.flush();                  // Ensure all data is written
-        // dest.close(); // raw_fd_ostream closes on destruction
-
-        // llvm::outs() << "Object file '" << output_filename << "' emitted successfully.\n";
-        // The module is effectively "consumed" by this process in terms of its state
-        // if passes modified it. If you need to JIT *after* this, you might need to re-compile AST
-        // or clone the module before AOT.
+        pass_manager.run(*llvmModule);
+        dest.flush();
     }
 
     // --- Visitor Dispatchers ---
@@ -467,39 +497,26 @@ namespace Mycelium::Scripting::Lang
         llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_types, false);
         std::string func_name = node->name->name;
 
-        // Create the function declaration. It will not have a body.
         llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
 
-        // Set names for LLVM function arguments for better IR readability.
-        // No allocas or stores are needed for declarations.
         unsigned param_idx = 0;
         for (auto &llvm_arg : function->args())
         {
-            // Ensure we have a corresponding AST parameter node.
             if (param_idx >= node->parameters.size())
             {
-                // This would indicate an internal inconsistency, but good to be safe.
                 log_error("Internal Compiler Error: Mismatch between LLVM arguments and AST parameters for external function " + function->getName().str() + ". Too few AST parameters.", node->location);
                 break;
             }
             const auto &ast_parameter_node = node->parameters[param_idx];
             std::string ast_param_name = ast_parameter_node->name->name;
-            llvm_arg.setName(ast_param_name); // Set name of the LLVM Argument
+            llvm_arg.setName(ast_param_name);
             param_idx++;
         }
 
-        // Verify that all AST parameters were processed if needed, similar to defined functions.
         if (param_idx != node->parameters.size())
         {
             log_error("Internal Compiler Error: Mismatch between LLVM arguments and AST parameters for external function " + function->getName().str() + ". Too many AST parameters or loop terminated early.", node->location);
         }
-
-        // DO NOT:
-        // - Set currentFunction = function; (This function is not being *defined* here)
-        // - Create any BasicBlocks for this function.
-        // - Set llvmBuilder->SetInsertPoint().
-        // - Create allocas for parameters or add them to namedValues.
-        //   namedValues is for the symbol table of the function currently being defined.
     }
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<ClassDeclarationNode> node)
@@ -519,8 +536,7 @@ namespace Mycelium::Scripting::Lang
                     }
                 }
                 if (!is_static && methodDecl->name->name != class_name)
-                { // Allow constructors which aren't static
-                    // log_error("Skipping non-static method (not supported in this example): " + class_name + "." + methodDecl->name, methodDecl->location);
+                {
                     continue;
                 }
                 visit_method_declaration(methodDecl, class_name);
@@ -533,7 +549,7 @@ namespace Mycelium::Scripting::Lang
 
     llvm::Function *ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string &class_name)
     {
-        namedValues.clear(); // Clear symbol table for new function scope
+        namedValues.clear();
 
         if (!node->type.has_value())
         {
@@ -561,7 +577,7 @@ namespace Mycelium::Scripting::Lang
 
         std::string func_name = class_name + "." + node->name->name;
         if (func_name == "Program.Main")
-        { // Special case for "main"
+        {
             func_name = "main";
         }
 
@@ -570,12 +586,9 @@ namespace Mycelium::Scripting::Lang
         llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
         llvmBuilder->SetInsertPoint(entry_block);
 
-        // Set names for LLVM function arguments and create allocas for them.
-        // Store the AllocaInst* in namedValues.
         unsigned param_idx = 0;
         for (auto &llvm_arg : function->args())
         {
-            // Ensure we have a corresponding AST parameter node. This should hold if FunctionType was built correctly.
             if (param_idx >= node->parameters.size())
             {
                 log_error("Internal Compiler Error: Mismatch between LLVM arguments and AST parameters for function " + function->getName().str() + ". Too few AST parameters.", node->location);
@@ -584,19 +597,14 @@ namespace Mycelium::Scripting::Lang
             const auto &ast_parameter_node = node->parameters[param_idx];
             std::string ast_param_name = ast_parameter_node->name->name;
 
-            llvm_arg.setName(ast_param_name); // Set name of the LLVM Argument
+            llvm_arg.setName(ast_param_name);
 
-            // Create an alloca for this parameter in the entry block.
-            // This allows the parameter to be mutable, like a local variable.
             llvm::AllocaInst *alloca = create_entry_block_alloca(function, ast_param_name, llvm_arg.getType());
 
-            // Store the initial value of the argument (from llvm_arg) into the alloca.
             llvmBuilder->CreateStore(&llvm_arg, alloca);
 
-            // Add the alloca to the symbol table for the current function scope.
             if (namedValues.count(ast_param_name))
             {
-                // This should ideally be caught by the parser if duplicate param names are disallowed.
                 log_error("Duplicate parameter name '" + ast_param_name + "' in function " + function->getName().str(), ast_parameter_node->location);
             }
             namedValues[ast_param_name] = alloca;
@@ -604,8 +612,6 @@ namespace Mycelium::Scripting::Lang
             param_idx++;
         }
 
-        // Verify that all AST parameters were processed.
-        // This check ensures that the number of arguments in FunctionType matches node->parameters.
         if (param_idx != node->parameters.size())
         {
             log_error("Internal Compiler Error: Mismatch between LLVM arguments and AST parameters for function " + function->getName().str() + ". Too many AST parameters or loop terminated early.", node->location);
@@ -614,7 +620,6 @@ namespace Mycelium::Scripting::Lang
         if (node->body)
         {
             visit(node->body.value());
-            // Ensure the function's basic blocks are properly terminated.
             if (llvmBuilder->GetInsertBlock()->getTerminator() == nullptr)
             {
                 if (return_type->isVoidTy())
@@ -623,38 +628,23 @@ namespace Mycelium::Scripting::Lang
                 }
                 else
                 {
-                    // For non-void functions, if no return is found, it's an error.
-                    // LLVM's verifyFunction will catch this if the last block is not terminated.
-                    // However, we can be more explicit.
-                    // It's often better to let verifyFunction catch this, as some paths might return correctly.
-                    // If we reach here, it means the current block (likely the end of the function) is not terminated.
-                    log_error("Non-void function '" + function->getName().str() + "' does not have a return statement on all control paths.", node->body.value()->location); // Or node->location
+                    log_error("Non-void function '" + function->getName().str() + "' does not have a return statement on all control paths.", node->body.value()->location);
                 }
             }
         }
         else
         {
             log_error("Method '" + function->getName().str() + "' has no body.", node->location);
-            // If a function has no body (e.g. an extern declaration), it shouldn't reach here
-            // or it should be handled differently (no entry block, no body visit).
-            // For this compiler, methods are expected to have bodies.
-            // We might still want to create a RetVoid if it's a void function for safety,
-            // but an error is more appropriate if a body is mandatory.
             if (return_type->isVoidTy() && !entry_block->getTerminator())
             {
-                llvmBuilder->CreateRetVoid(); // Gracefully terminate if possible, though error is primary
+                llvmBuilder->CreateRetVoid();
             }
         }
 
         if (llvm::verifyFunction(*function, &llvm::errs()))
         {
             std::string f_name_for_err = function->getName().str();
-            // Dump module on verification error for more llvmContext
-            // llvm::errs() << "Dumping module due to function verification error:\n";
-            // llvmModule->print(llvm::errs(), nullptr);
             log_error("LLVM Function verification failed for: " + f_name_for_err + ". Check IR output above.", node->location);
-            // Note: log_error throws, so the runtime_error below is redundant if log_error is used.
-            // throw std::runtime_error("LLVM function '" + f_name_for_err + "' verification failed.");
         }
 
         currentFunction = nullptr;
@@ -768,7 +758,7 @@ namespace Mycelium::Scripting::Lang
         if (llvm::pred_begin(merge_bb) != llvm::pred_end(merge_bb))
         {
             llvmBuilder->SetInsertPoint(merge_bb);
-        } // Else, merge_bb is dead, LLVM DCE will handle.
+        }
         return nullptr;
     }
 
@@ -858,21 +848,26 @@ namespace Mycelium::Scripting::Lang
             log_error("Invalid boolean literal: " + node->valueText, node->location);
         }
         case LiteralKind::String:
-    {
-        llvm::errs() << "[DEBUG TEMPORARY] Visiting string literal, expecting i64 from new_from_literal.\n";
-        llvm::Function *new_string_func = llvmModule->getFunction("Mycelium_String_new_from_literal");
-        if (!new_string_func) { /* ... log_error ... */ }
+        {
+            // Get the runtime function for creating strings
+            llvm::Function *new_string_func = llvmModule->getFunction("Mycelium_String_new_from_literal");
+            if (!new_string_func)
+            {
+                log_error("Runtime function Mycelium_String_new_from_literal not found in module.", node->location);
+            }
 
-        llvm::Constant *str_literal_ptr = llvmBuilder->CreateGlobalStringPtr(node->valueText, "str_lit");
-        std::vector<llvm::Value *> args_values;
-        args_values.push_back(str_literal_ptr);
-        args_values.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), node->valueText.length()));
+            // Create a global string constant
+            llvm::Constant *str_literal_ptr = llvmBuilder->CreateGlobalStringPtr(node->valueText, "str_lit");
 
-        // The call now returns an i64 according to our temporary IR declaration
-        llvm::Value* result_handle = llvmBuilder->CreateCall(new_string_func, args_values, "new_my_str_handle");
-        // Ensure the type matches what the 'store' expects if `str` alloca changes
-        return result_handle;
-    }
+            // Call the runtime function to create a MyceliumString
+            std::vector<llvm::Value *> args_values;
+            args_values.push_back(str_literal_ptr);
+            args_values.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), node->valueText.length()));
+
+            // This returns a pointer to MyceliumString
+            llvm::Value *string_ptr = llvmBuilder->CreateCall(new_string_func, args_values, "new_my_str");
+            return string_ptr;
+        }
         default:
         {
             log_error("Unsupported literal kind: " + Mycelium::Scripting::Lang::to_string(node->kind), node->location);
@@ -899,19 +894,17 @@ namespace Mycelium::Scripting::Lang
 
         if (!L || !R)
         {
-            // This typically means an error occurred in visiting an operand.
-            // The error should have been logged there, but we can't proceed.
             log_error("One or both operands for binary expression '" + node->operatorToken->text +
                           "' failed to generate LLVM Value. See previous errors.",
                       node->location);
-            return nullptr; // Should be unreachable if log_error throws
+            return nullptr;
         }
 
         llvm::Type *LType = L->getType();
         llvm::Type *RType = R->getType();
-        llvm::Type *myceliumStringPtrTy = getMyceliumStringPtrTy(); // Get our string pointer type
+        llvm::PointerType *myceliumStringPtrTy = getMyceliumStringPtrTy();
 
-        // --- String Concatenation Check (Highest Precedence for '+' with strings) ---
+        // --- String Concatenation Check ---
         if (node->opKind == BinaryOperatorKind::Add)
         {
             bool LIsString = (LType == myceliumStringPtrTy);
@@ -928,23 +921,32 @@ namespace Mycelium::Scripting::Lang
             }
             else if (LIsString || RIsString)
             {
-                // TODO: Handle implicit conversion from other types to string for concatenation
-                // e.g., string + int or int + string.
-                // This would involve:
-                // 1. Identifying the non-string operand.
-                // 2. Calling a runtime function (e.g., "Mycelium_Int_to_String") to convert it.
-                // 3. Calling Mycelium_String_concat with the two (now string) operands.
-                // For now, we'll error if one is string and the other is not, unless it's explicitly handled.
                 log_error("Implicit conversion for string concatenation with non-string type ('" +
                               (LIsString ? llvm_type_to_string(RType) : llvm_type_to_string(LType)) +
                               "') is not yet supported. Both operands must be strings or have explicit conversions.",
                           node->location);
-                return nullptr; // Error logged and thrown
+                return nullptr;
             }
-            // If neither is a string, fall through to numeric addition logic.
         }
 
-        // --- Type Coercion and Promotion Logic for Numeric and Other Types ---
+        // --- String Equality Check ---
+        if (node->opKind == BinaryOperatorKind::Equals || node->opKind == BinaryOperatorKind::NotEquals)
+        {
+            bool LIsString = (LType == myceliumStringPtrTy);
+            bool RIsString = (RType == myceliumStringPtrTy);
+
+            if (LIsString && RIsString)
+            {
+                // For now, do pointer comparison
+                // TODO: Implement proper string equality function
+                if (node->opKind == BinaryOperatorKind::Equals)
+                    return llvmBuilder->CreateICmpEQ(L, R, "streq_ptr");
+                else
+                    return llvmBuilder->CreateICmpNE(L, R, "strne_ptr");
+            }
+        }
+
+        // --- Numeric Type Coercion ---
         llvm::Type *commonType = nullptr;
 
         if (LType == RType)
@@ -957,87 +959,70 @@ namespace Mycelium::Scripting::Lang
             unsigned RBits = RType->getIntegerBitWidth();
             if (LBits < RBits)
             {
-                L = llvmBuilder->CreateSExt(L, RType, "lhs.sext"); // Sign-extend L to R's type
+                L = llvmBuilder->CreateSExt(L, RType, "lhs.sext");
                 commonType = RType;
             }
             else
-            {                                                      // RBits < LBits (or LBits == RBits, though covered by the first if)
-                R = llvmBuilder->CreateSExt(R, LType, "rhs.sext"); // Sign-extend R to L's type
+            {
+                R = llvmBuilder->CreateSExt(R, LType, "rhs.sext");
                 commonType = LType;
             }
         }
         else if (LType->isFloatingPointTy() && RType->isFloatingPointTy())
         {
-            // Promote float to double if they are mixed
             if (LType->isFloatTy() && RType->isDoubleTy())
             {
-                L = llvmBuilder->CreateFPExt(L, RType, "lhs.fpext"); // Extend L (float) to R (double)
+                L = llvmBuilder->CreateFPExt(L, RType, "lhs.fpext");
                 commonType = RType;
             }
             else if (LType->isDoubleTy() && RType->isFloatTy())
             {
-                R = llvmBuilder->CreateFPExt(R, LType, "rhs.fpext"); // Extend R (float) to L (double)
+                R = llvmBuilder->CreateFPExt(R, LType, "rhs.fpext");
                 commonType = LType;
             }
             else
             {
-                // Both are float, or both are double (already handled by LType == RType)
                 commonType = LType;
             }
         }
         else if (LType->isIntegerTy() && RType->isFloatingPointTy())
         {
-            // Convert Integer operand L to the FloatingPoint type of R
-            L = llvmBuilder->CreateSIToFP(L, RType, "lhs.sitofp"); // Signed Integer to Floating Point
+            L = llvmBuilder->CreateSIToFP(L, RType, "lhs.sitofp");
             commonType = RType;
         }
         else if (LType->isFloatingPointTy() && RType->isIntegerTy())
         {
-            // Convert Integer operand R to the FloatingPoint type of L
-            R = llvmBuilder->CreateSIToFP(R, LType, "rhs.sitofp"); // Signed Integer to Floating Point
+            R = llvmBuilder->CreateSIToFP(R, LType, "rhs.sitofp");
             commonType = LType;
         }
         else
         {
-            // Incompatible types (e.g., one is void, or other non-numeric/non-coercible types)
-            // This also catches cases like string + non-string if not handled by specific string logic above.
             log_error("Incompatible types for binary operator '" + node->operatorToken->text +
                           "': LHS is " + llvm_type_to_string(LType) +
                           ", RHS is " + llvm_type_to_string(RType),
                       node->location);
-            return nullptr; // Should be unreachable
+            return nullptr;
         }
 
-        // Ensure commonType is valid for numeric/comparison operations
-        // (This check might be too restrictive if commonType could be a string pointer after some future type system change,
-        //  but for now, it's for numeric/boolean operations after string logic is handled above)
         if (!commonType || (!commonType->isIntegerTy() && !commonType->isFloatingPointTy()))
         {
-            // This should ideally be caught by the specific log_error above,
-            // but serves as a safeguard.
             log_error("Binary operator '" + node->operatorToken->text +
                           "' operands coerced to an unsupported common type: " + llvm_type_to_string(commonType),
                       node->location);
-            return nullptr; // Should be unreachable
+            return nullptr;
         }
 
         bool isFP = commonType->isFloatingPointTy();
-        bool isInt = commonType->isIntegerTy(); // True for i1 (bool) as well.
+        bool isInt = commonType->isIntegerTy();
 
         // --- Generate LLVM Instruction based on Operator Kind ---
         switch (node->opKind)
         {
-        // Arithmetic Operators
-        case BinaryOperatorKind::Add: // Handled by string logic above if types are string. Numeric only here.
+        case BinaryOperatorKind::Add:
             if (isInt)
                 return llvmBuilder->CreateAdd(L, R, "addtmp");
             if (isFP)
                 return llvmBuilder->CreateFAdd(L, R, "faddtmp");
-            // If we reach here for Add, it means types were not string, and not numeric int/fp after coercion.
-            // This should have been caught by the commonType check or the incompatible types error.
-            log_error("Operator '+' not supported for resolved common type " + llvm_type_to_string(commonType) +
-                          " (operands were not strings, and not compatible numeric types).",
-                      node->location);
             break;
         case BinaryOperatorKind::Subtract:
             if (isInt)
@@ -1061,56 +1046,20 @@ namespace Mycelium::Scripting::Lang
             break;
         case BinaryOperatorKind::Modulo:
             if (isInt)
-                return llvmBuilder->CreateSRem(L, R, "remtmp"); // Signed remainder
+                return llvmBuilder->CreateSRem(L, R, "remtmp");
             log_error("Modulo operator ('" + node->operatorToken->text +
                           "') is only supported for integer types. Got common type: " + llvm_type_to_string(commonType),
                       node->location);
             break;
-
-        // Comparison Operators (result is always i1 - boolean)
-        case BinaryOperatorKind::Equals: // ==
-            // TODO: String equality should call a runtime function like Mycelium_String_equals(s1, s2)
-            // For now, this will do pointer comparison for strings if they are passed through, which is incorrect semantics.
-            if (LType == myceliumStringPtrTy && RType == myceliumStringPtrTy)
-            {
-                // Placeholder: This is pointer comparison. For value comparison, call a runtime helper.
-                llvm::Function *equals_func = llvmModule->getFunction("Mycelium_String_equals"); // Needs to be declared and implemented
-                if (equals_func)
-                {
-                    // Assuming Mycelium_String_equals returns i1 (0 for false, 1 for true)
-                    // return llvmBuilder->CreateCall(equals_func, {L, R}, "streqtmp");
-                }
-                else
-                {
-                    log_error("Runtime function Mycelium_String_equals not found. String equality '==' not fully supported yet.", node->location);
-                }
-                // Fallback to pointer comparison with a warning, or error out completely.
-                // For now, let it fall through to standard ICmpEQ which will be pointer comparison for strings.
-            }
-            if (isInt) // This includes i1 for bool == bool
+        case BinaryOperatorKind::Equals:
+            if (isInt)
                 return llvmBuilder->CreateICmpEQ(L, R, "eqtmp");
             if (isFP)
                 return llvmBuilder->CreateFCmpOEQ(L, R, "feqtmp");
-            // If commonType is pointer (like string pointers) and not explicitly handled above, ICmpEQ will compare pointers.
             if (commonType->isPointerTy())
                 return llvmBuilder->CreateICmpEQ(L, R, "ptreqtmp");
             break;
-        case BinaryOperatorKind::NotEquals: // !=
-            // TODO: String inequality is !(Mycelium_String_equals(s1, s2))
-            if (LType == myceliumStringPtrTy && RType == myceliumStringPtrTy)
-            {
-                // Placeholder, similar to Equals
-                llvm::Function *equals_func = llvmModule->getFunction("Mycelium_String_equals");
-                if (equals_func)
-                {
-                    // llvm::Value* eq_result = llvmBuilder->CreateCall(equals_func, {L, R}, "streq_for_ne_tmp");
-                    // return llvmBuilder->CreateICmpNE(eq_result, llvm::ConstantInt::get(llvm::Type::getInt1Ty(*llvmContext), 1), "strnetmp");
-                }
-                else
-                {
-                    log_error("Runtime function Mycelium_String_equals not found. String inequality '!=' not fully supported yet.", node->location);
-                }
-            }
+        case BinaryOperatorKind::NotEquals:
             if (isInt)
                 return llvmBuilder->CreateICmpNE(L, R, "netmp");
             if (isFP)
@@ -1118,50 +1067,40 @@ namespace Mycelium::Scripting::Lang
             if (commonType->isPointerTy())
                 return llvmBuilder->CreateICmpNE(L, R, "ptrnetmp");
             break;
-
-        // Relational operators are generally not defined for strings directly, unless lexicographical
-        // comparison is implemented via runtime calls. For now, they apply to numeric types.
-        case BinaryOperatorKind::LessThan: // <
+        case BinaryOperatorKind::LessThan:
             if (isInt)
                 return llvmBuilder->CreateICmpSLT(L, R, "lttmp");
             if (isFP)
                 return llvmBuilder->CreateFCmpOLT(L, R, "flttmp");
             log_error("Operator '<' not supported for common type " + llvm_type_to_string(commonType), node->location);
             break;
-        case BinaryOperatorKind::GreaterThan: // >
+        case BinaryOperatorKind::GreaterThan:
             if (isInt)
                 return llvmBuilder->CreateICmpSGT(L, R, "gttmp");
             if (isFP)
                 return llvmBuilder->CreateFCmpOGT(L, R, "fgttmp");
             log_error("Operator '>' not supported for common type " + llvm_type_to_string(commonType), node->location);
             break;
-        case BinaryOperatorKind::LessThanOrEqual: // <=
+        case BinaryOperatorKind::LessThanOrEqual:
             if (isInt)
                 return llvmBuilder->CreateICmpSLE(L, R, "letmp");
             if (isFP)
                 return llvmBuilder->CreateFCmpOLE(L, R, "fletmp");
             log_error("Operator '<=' not supported for common type " + llvm_type_to_string(commonType), node->location);
             break;
-        case BinaryOperatorKind::GreaterThanOrEqual: // >=
+        case BinaryOperatorKind::GreaterThanOrEqual:
             if (isInt)
                 return llvmBuilder->CreateICmpSGE(L, R, "getmp");
             if (isFP)
                 return llvmBuilder->CreateFCmpOGE(L, R, "fgetmp");
             log_error("Operator '>=' not supported for common type " + llvm_type_to_string(commonType), node->location);
             break;
-        // Logical Operators (assume operands are boolean or coercible to boolean by now)
-        // For this language, logical ops typically expect boolean (i1). If not, type system or earlier checks should handle.
-        case BinaryOperatorKind::LogicalAnd: // &&
-            // LLVM's 'and' instruction is bitwise. For logical &&, short-circuiting is usually implemented with branches.
-            // This simple implementation here generates bitwise 'and' if both are i1, or if commonType became i1.
-            // Proper short-circuiting needs control flow (if L then R else false).
-            // For now, assuming operands are already i1 or will be handled by type checks.
+        case BinaryOperatorKind::LogicalAnd:
             if (LType == llvm::Type::getInt1Ty(*llvmContext) && RType == llvm::Type::getInt1Ty(*llvmContext))
                 return llvmBuilder->CreateAnd(L, R, "logandtmp");
             log_error("Operator '&&' requires boolean operands.", node->location);
             break;
-        case BinaryOperatorKind::LogicalOr: // ||
-            // Similar to LogicalAnd, this is bitwise 'or'. Short-circuiting needs branches.
+        case BinaryOperatorKind::LogicalOr:
             if (LType == llvm::Type::getInt1Ty(*llvmContext) && RType == llvm::Type::getInt1Ty(*llvmContext))
                 return llvmBuilder->CreateOr(L, R, "logortmp");
             log_error("Operator '||' requires boolean operands.", node->location);
@@ -1170,19 +1109,15 @@ namespace Mycelium::Scripting::Lang
         default:
             log_error("Unsupported binary operator kind encountered in compiler: '" + node->operatorToken->text + "'",
                       node->location);
-            break; // Error is thrown
+            break;
         }
 
-        // If we reach here, it means the operator was a recognized kind,
-        // but the commonType was not handled by the specific if (isInt) or if (isFP)
-        // This indicates an internal logic error in the switch cases above if commonType was valid numeric.
-        // Or, it's an unsupported operation for the given (coerced) types.
         log_error("Operator '" + node->operatorToken->text +
                       "' not implemented for the resolved common type '" + llvm_type_to_string(commonType) + "' (LHS: " + llvm_type_to_string(LType) + ", RHS: " + llvm_type_to_string(RType) + ")",
                   node->location);
 
         llvm_unreachable("BinaryExpressionNode visitor should have returned a value or thrown an error for all valid paths.");
-        return nullptr; // Should not be reached
+        return nullptr;
     }
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<AssignmentExpressionNode> node)
@@ -1233,12 +1168,11 @@ namespace Mycelium::Scripting::Lang
             return llvmBuilder->CreateICmpEQ(operand, llvm::ConstantInt::getFalse(*llvmContext), "nottmp");
         case UnaryOperatorKind::UnaryMinus:
             if (!operand->getType()->isIntegerTy() && !operand->getType()->isFloatingPointTy())
-            { // Add FP if supported
+            {
                 log_error("UnaryMinus (-) expects numeric. Got: " + llvm_type_to_string(operand->getType()), node->operand->location);
             }
             if (operand->getType()->isIntegerTy())
                 return llvmBuilder->CreateNeg(operand, "negtmp");
-            // if (operand->getType()->isFloatingPointTy()) return llvmBuilder->CreateFNeg(operand, "fnegtmp");
             break;
         default:
             log_error("Unsupported unary op: " + node->operatorToken->text, node->location);
@@ -1249,51 +1183,139 @@ namespace Mycelium::Scripting::Lang
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<MethodCallExpressionNode> node)
     {
-        std::string func_name_str; // Determine from node->target
-        // This part needs robust implementation based on how methods are identified (static, instance)
+        std::string func_name_str;
+
+        // --- Determine function name (func_name_str) ---
         if (auto idTarget = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target))
         {
-            func_name_str = idTarget->identifier->name; // Global/static assumed
+            func_name_str = idTarget->identifier->name;
         }
         else if (auto memberAccess = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target))
         {
             if (auto classId = std::dynamic_pointer_cast<IdentifierExpressionNode>(memberAccess->target))
             {
+                // This handles ClassName.MethodName for static-like calls or qualified externs.
                 func_name_str = classId->identifier->name + "." + memberAccess->memberName->name;
             }
             else
             {
-                log_error("Instance method calls not yet supported for member access target.", memberAccess->target->location);
+                // TODO: If you support instance method calls (e.g. object.Method()),
+                // you'll need to get the LLVM Value for 'object', determine its type,
+                // and then resolve the method within that type (mangling names if necessary).
+                // For now, this path is an error or for static-like member access.
+                log_error("Instance method calls or complex member access targets for method calls not yet fully supported.", memberAccess->target->location);
+                return nullptr;
             }
         }
         else
         {
-            log_error("Unsupported target for method call.", node->target->location);
+            log_error("Unsupported target type for method call.", node->target->location);
+            return nullptr;
         }
 
-        // Handle "Program.Main" -> "main" if called internally (unlikely for this example)
+        // Mapping for "Program.Main" to "main" (if this is still your convention)
         if (func_name_str == "Program.Main")
+        { // As per your original code
             func_name_str = "main";
+        }
+        // --- End Determine function name ---
 
         llvm::Function *callee = llvmModule->getFunction(func_name_str);
         if (!callee)
         {
             log_error("Call to undefined function: " + func_name_str, node->target->location);
+            // For debugging, print available functions:
+            // llvm::errs() << "Available functions in module for '" << func_name_str << "':\n";
+            // for (const auto &F : *llvmModule) {
+            //     llvm::errs() << "  " << F.getName() << "\n";
+            // }
+            return nullptr;
         }
+
         std::vector<llvm::Value *> args_values;
         if (node->argumentList)
         {
+            unsigned arg_idx = 0;
             for (const auto &arg_node : node->argumentList->arguments)
             {
-                args_values.push_back(visit(arg_node->expression));
+                llvm::Value *arg_llvm_val = visit(arg_node->expression);
+                if (!arg_llvm_val)
+                {
+                    log_error("Argument expression " + std::to_string(arg_idx) + " for call to " + func_name_str + " resulted in null LLVM value.", arg_node->location);
+                    return nullptr;
+                }
+
+                // Argument type compatibility check (basic)
+                if (arg_idx < callee->arg_size())
+                {
+                    llvm::Type *expected_llvm_arg_type = callee->getFunctionType()->getParamType(arg_idx);
+                    if (arg_llvm_val->getType() != expected_llvm_arg_type)
+                    {
+                        // Implement type coercion or log error more specifically
+                        // Example: integer sign extension/truncation
+                        if (expected_llvm_arg_type->isIntegerTy() && arg_llvm_val->getType()->isIntegerTy())
+                        {
+                            if (expected_llvm_arg_type->getIntegerBitWidth() > arg_llvm_val->getType()->getIntegerBitWidth())
+                                arg_llvm_val = llvmBuilder->CreateSExt(arg_llvm_val, expected_llvm_arg_type, "arg.sext");
+                            else if (expected_llvm_arg_type->getIntegerBitWidth() < arg_llvm_val->getType()->getIntegerBitWidth())
+                                arg_llvm_val = llvmBuilder->CreateTrunc(arg_llvm_val, expected_llvm_arg_type, "arg.trunc");
+                            // If still not matching (e.g. different int types of same width but different role), error.
+                            else if (arg_llvm_val->getType() != expected_llvm_arg_type)
+                            {
+                                log_error("Type mismatch for argument " + std::to_string(arg_idx) + " in call to " + func_name_str +
+                                              ". Expected " + llvm_type_to_string(expected_llvm_arg_type) +
+                                              ", got " + llvm_type_to_string(arg_llvm_val->getType()),
+                                          arg_node->location);
+                                return nullptr;
+                            }
+                        }
+                        else if (expected_llvm_arg_type->isPointerTy() && arg_llvm_val->getType()->isPointerTy())
+                        {
+                            // For pointers (like MyceliumString*), types must usually match exactly
+                            // or be explicitly castable (which you'd handle with a CastExpressionNode)
+                            if (expected_llvm_arg_type != arg_llvm_val->getType())
+                            {
+                                log_error("Pointer type mismatch for argument " + std::to_string(arg_idx) + " in call to " + func_name_str +
+                                              ". Expected " + llvm_type_to_string(expected_llvm_arg_type) +
+                                              ", got " + llvm_type_to_string(arg_llvm_val->getType()),
+                                          arg_node->location);
+                                return nullptr;
+                            }
+                        }
+                        else
+                        { // Other type mismatches
+                            log_error("Type mismatch for argument " + std::to_string(arg_idx) + " in call to " + func_name_str +
+                                          ". Expected " + llvm_type_to_string(expected_llvm_arg_type) +
+                                          ", got " + llvm_type_to_string(arg_llvm_val->getType()),
+                                      arg_node->location);
+                            return nullptr;
+                        }
+                    }
+                }
+                args_values.push_back(arg_llvm_val);
+                arg_idx++;
             }
         }
+
         if (callee->arg_size() != args_values.size())
         {
-            log_error("Incorrect argument count for call to " + func_name_str, node->location);
+            log_error("Incorrect argument count for call to " + func_name_str + ". Expected " +
+                          std::to_string(callee->arg_size()) + ", got " + std::to_string(args_values.size()),
+                      node->location);
+            return nullptr;
         }
-        // Arg type checking would be here.
-        return llvmBuilder->CreateCall(callee, args_values, "calltmp");
+
+        // THE FIX:
+        // If the function returns void, pass an empty string as the name for the call instruction.
+        // Otherwise, you can provide a name for the result value (e.g., "calltmp").
+        if (callee->getReturnType()->isVoidTy())
+        {
+            return llvmBuilder->CreateCall(callee, args_values, ""); // Pass empty name for void calls
+        }
+        else
+        {
+            return llvmBuilder->CreateCall(callee, args_values, "calltmp");
+        }
     }
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<ObjectCreationExpressionNode> node)
@@ -1350,7 +1372,7 @@ namespace Mycelium::Scripting::Lang
         if (type_name == "short" || type_name == "i16")
             return llvm::Type::getInt16Ty(*llvmContext);
         if (type_name == "string")
-            return llvm::Type::getInt64Ty(*llvmContext);
+            return getMyceliumStringPtrTy(); // Return pointer to MyceliumString struct
 
         log_error("Unknown or unsupported type name for LLVM: " + type_name);
         return nullptr;
@@ -1365,40 +1387,40 @@ namespace Mycelium::Scripting::Lang
         return llvm::PointerType::getUnqual(myceliumStringType);
     }
 
-    void ScriptCompiler::declare_string_runtime_functions()
-    {
+    void ScriptCompiler::declare_all_runtime_functions()
+    { // Was declare_string_runtime_functions
         if (!llvmModule)
+        {
+            log_error("LLVM module not available for declaring runtime functions.");
             return;
+        }
+        if (!myceliumStringType && !get_runtime_bindings().empty())
+        { // Check if the type is needed
+            // Initialize myceliumStringType if it's not already (e.g., in compile_ast)
+            // This is a good place to ensure it's ready if any function needs it.
+            // Ensure this is the same myceliumStringType instance used elsewhere.
+            // For simplicity, assume it's initialized in compile_ast before this is called.
+            if (!myceliumStringType)
+            {
+                log_error("MyceliumString LLVM type not initialized before declaring runtime functions that might need it.");
+                return;
+            }
+        }
 
-        llvm::Type* stringHandleTy = llvm::Type::getInt64Ty(*llvmContext); // Our temporary "string" type
-    llvm::Type* charPtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext));
-    llvm::Type* sizeTTy = llvm::Type::getInt64Ty(*llvmContext); // Assuming size_t is i64
-    llvm::Type* voidTy = llvm::Type::getVoidTy(*llvmContext);
-
-    // MyceliumString* (now i64) Mycelium_String_new_from_literal(const char* c_str, size_t len)
-    llvm::FunctionType *func_type_new = llvm::FunctionType::get(stringHandleTy, {charPtrTy, sizeTTy}, false);
-    if (!llvm::Function::Create(func_type_new, llvm::Function::ExternalLinkage, "Mycelium_String_new_from_literal", llvmModule.get())) {
-        log_error("Failed to create (simplified) LLVM func decl for Mycelium_String_new_from_literal.");
+        llvm::errs() << "--- Declaring runtime functions in LLVM IR from registry ---\n";
+        for (const auto &binding : get_runtime_bindings())
+        {
+            llvm::FunctionType *func_type = binding.get_llvm_type(*llvmContext, getMyceliumStringPtrTy()); // Pass necessary types
+            if (!func_type)
+            {
+                log_error("Failed to get LLVM FunctionType for: " + binding.ir_function_name);
+                continue;
+            }
+            llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, binding.ir_function_name, llvmModule.get());
+            llvm::errs() << "Declared: " << binding.ir_function_name << "\n";
+        }
+        llvm::errs() << "-----------------------------------------------------------\n";
     }
-
-    // MyceliumString* (now i64) Mycelium_String_concat(MyceliumString* s1 (i64), MyceliumString* s2 (i64))
-    llvm::FunctionType *func_type_concat = llvm::FunctionType::get(stringHandleTy, {stringHandleTy, stringHandleTy}, false);
-    if (!llvm::Function::Create(func_type_concat, llvm::Function::ExternalLinkage, "Mycelium_String_concat", llvmModule.get())) {
-         log_error("Failed to create (simplified) LLVM func decl for Mycelium_String_concat.");
-    }
-
-    // void Mycelium_String_print(MyceliumString* str (i64))
-    llvm::FunctionType* func_type_print = llvm::FunctionType::get(voidTy, {stringHandleTy}, false);
-    if (!llvm::Function::Create(func_type_print, llvm::Function::ExternalLinkage, "Mycelium_String_print", llvmModule.get())) {
-        log_error("Failed to create (simplified) LLVM func decl for Mycelium_String_print.");
-    }
-
-    // void Mycelium_String_delete(MyceliumString* str (i64))
-    llvm::FunctionType* func_type_delete = llvm::FunctionType::get(voidTy, {stringHandleTy}, false);
-    if (!llvm::Function::Create(func_type_delete, llvm::Function::ExternalLinkage, "Mycelium_String_delete", llvmModule.get())) {
-        log_error("Failed to create (simplified) LLVM func decl for Mycelium_String_delete.");
-    }
-}
 
     llvm::AllocaInst *ScriptCompiler::create_entry_block_alloca(llvm::Function *function,
                                                                 const std::string &var_name,

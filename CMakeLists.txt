@@ -58,8 +58,11 @@ set(LLVM_LINK_COMPONENTS
 
 llvm_map_components_to_libnames(MY_LLVM_LIBS ${LLVM_LINK_COMPONENTS})
 
-file(GLOB_RECURSE MY_SOURCE_FILES src/*.cpp src/*.h src/*.hpp lib/*.cpp)
-add_executable(MyceliumUI ${MY_SOURCE_FILES} main.cpp)
+file(GLOB_RECURSE MY_SOURCE_FILES src/*.cpp src/*.h src/*.hpp)
+file(GLOB_RECURSE MY_RUNTIME_FILES lib/*.cpp lib/*.h)
+
+add_executable(MyceliumUI ${MY_SOURCE_FILES} ${MY_RUNTIME_FILES} main.cpp)
+
 target_link_libraries(MyceliumUI PRIVATE ${MY_LLVM_LIBS})
 
-target_include_directories(MyceliumUI PRIVATE "include/sharpie" "include/ui")
+target_include_directories(MyceliumUI PRIVATE "include/sharpie" "include/ui" "lib")

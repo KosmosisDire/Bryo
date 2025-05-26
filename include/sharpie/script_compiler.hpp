@@ -83,10 +83,10 @@ private:
     llvm::Function* currentFunction = nullptr;
     static std::map<std::string, llvm::Function*> functionProtos;
 
-    // types
-    llvm::Type *myceliumStringType = nullptr;
+    // types - This is the proper struct type for MyceliumString
+    llvm::StructType *myceliumStringType = nullptr;
     llvm::PointerType* getMyceliumStringPtrTy();
-    void declare_string_runtime_functions();
+    void declare_all_runtime_functions();
 
     // Helper to transfer module ownership, e.g., to ExecutionEngine
     std::unique_ptr<llvm::Module> take_module();
