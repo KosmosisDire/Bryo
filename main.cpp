@@ -8,7 +8,7 @@
 #include <optional>
 #include <fstream>
 
-#include "script_tokenizer.hpp"
+// #include "script_tokenizer.hpp"
 #include "script_ast.hpp"
 #include "script_parser.hpp"
 #include "script_compiler.hpp"
@@ -25,34 +25,24 @@ void Compile(std::string input)
     std::cout << input << std::endl;
     std::cout << "-------------" << std::endl;
 
-    std::vector<Token> tokens;
-    std::shared_ptr<CompilationUnitNode> astRoot;
-
     try
     {
-        // Tokenize
-        std::cout << "\n--- Tokenizing ---" << std::endl;
-        ScriptTokenizer tokenizer(input);
-        tokens = tokenizer.tokenize_source();
-        for (const auto &token : tokens)
-        {
-            std::cout << "Token - \"" << token.lexeme << "\"" << std::endl;
-        }
-        std::cout << "--------------" << std::endl;
-
         // Parsing
         std::cout << "\n--- Parsing ---" << std::endl;
-        ScriptParser parser(tokens);
-        astRoot = parser.parse_compilation_unit();
+        ScriptParser parser(input, "test.sp");
+        auto result = parser.parse();
+        auto AST = result.first;
+       for (const auto &error : result.second)
+        {
+            std::cerr << "Parse Error: " << error.message << " at " << error.location.to_string() << std::endl;
+        }
         std::cout << "Parsing Successful!" << std::endl;
         std::cout << "---------------" << std::endl;
-
-        astRoot->print(std::cout); // Print the AST with indentation
 
         // compile
         std::cout << "\n--- Compiling ---" << std::endl;
         ScriptCompiler compiler;
-        compiler.compile_ast(astRoot, "MyceliumModule");
+        compiler.compile_ast(AST, "MyceliumModule");
 
         std::ofstream outFile("tests/build/test.ll");
         if (outFile)
@@ -69,7 +59,7 @@ void Compile(std::string input)
         // JIT execution
         std::cout << "\n--- JIT Execution ---" << std::endl;
         auto value = compiler.jit_execute_function("main", {});
-        std::cout << "Output: " << *value.IntVal.getRawData() << std::endl;
+        std::cout << "Output: " << value.DoubleVal << std::endl;
         std::cout << "JIT Execution Successful!" << std::endl;
         std::cout << "---------------------" << std::endl;
 

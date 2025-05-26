@@ -28,6 +28,8 @@ namespace llvm {
     class Value;
     class Type;
     class BasicBlock;
+    class StructType;
+    class PointerType;
 }
 
 namespace Mycelium::Scripting::Lang
@@ -73,12 +75,18 @@ public:
 
 
 private:
-    std::unique_ptr<llvm::LLVMContext> m_context;
-    std::unique_ptr<llvm::Module> m_module; // Module is owned here
-    std::unique_ptr<llvm::IRBuilder<>> m_builder;
+    std::unique_ptr<llvm::LLVMContext> llvmContext;
+    std::unique_ptr<llvm::Module> llvmModule; // Module is owned here
+    std::unique_ptr<llvm::IRBuilder<>> llvmBuilder;
 
-    std::map<std::string, llvm::AllocaInst*> m_named_values;
-    llvm::Function* m_current_function = nullptr;
+    std::map<std::string, llvm::AllocaInst*> namedValues;
+    llvm::Function* currentFunction = nullptr;
+    static std::map<std::string, llvm::Function*> functionProtos;
+
+    // types
+    llvm::Type *myceliumStringType = nullptr;
+    llvm::PointerType* getMyceliumStringPtrTy();
+    void declare_string_runtime_functions();
 
     // Helper to transfer module ownership, e.g., to ExecutionEngine
     std::unique_ptr<llvm::Module> take_module();
@@ -89,6 +97,8 @@ private:
 
     llvm::Value* visit(std::shared_ptr<CompilationUnitNode> node);
     llvm::Value* visit(std::shared_ptr<ClassDeclarationNode> node);
+    llvm::Value* visit(std::shared_ptr<NamespaceDeclarationNode> node);
+    void visit(std::shared_ptr<ExternalMethodDeclarationNode> node);
 
     llvm::Function* visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
 
@@ -112,6 +122,7 @@ private:
     // --- Helper Methods (snake_case) ---
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
     llvm::Type* get_llvm_type_from_string(const std::string& type_name);
+    llvm::StructType* get_string_struct_type();
     std::string llvm_type_to_string(llvm::Type* type) const;
 
     llvm::AllocaInst* create_entry_block_alloca(llvm::Function* function, const std::string& var_name, llvm::Type* type);

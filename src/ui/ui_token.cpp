@@ -3,7 +3,7 @@
 namespace Mycelium::UI::Lang
 {
 
-    std::string tokenTypeToString(TokenType type)
+    std::string token_type_to_string(TokenType type)
     {
         switch (type)
         {

@@ -58,7 +58,7 @@ set(LLVM_LINK_COMPONENTS
 
 llvm_map_components_to_libnames(MY_LLVM_LIBS ${LLVM_LINK_COMPONENTS})
 
-file(GLOB_RECURSE MY_SOURCE_FILES src/*.cpp src/*.h)
+file(GLOB_RECURSE MY_SOURCE_FILES src/*.cpp src/*.h src/*.hpp lib/*.cpp)
 add_executable(MyceliumUI ${MY_SOURCE_FILES} main.cpp)
 target_link_libraries(MyceliumUI PRIVATE ${MY_LLVM_LIBS})
 

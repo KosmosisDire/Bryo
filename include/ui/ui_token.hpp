@@ -23,7 +23,7 @@ namespace Mycelium::UI::Lang
         UNKNOWN
     };
 
-    std::string tokenTypeToString(TokenType type);
+    std::string token_type_to_string(TokenType type);
 
     struct Token
     {

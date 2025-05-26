@@ -1,139 +1,127 @@
 #pragma once
 
-#include "script_ast.hpp" // Assumed to be simplified accordingly
-#include "script_token.hpp"
+#include "script_ast.hpp"       // Your new AST structure (even if mostly empty for now)
+#include "script_token_types.hpp" // For TokenType enum
+#include "script_error.hpp"
+#include <string_view>
 #include <vector>
-#include <memory>
 #include <optional>
-#include <stdexcept>
-#include <string>
-#include <functional> // For std::function
+#include <variant>
+#include <memory> // For std::shared_ptr
+#include <map>
 
 namespace Mycelium::Scripting::Lang
 {
 
-// Simplified: No 'isVar' as 'var' keyword is removed.
-struct ParsedDeclarationParts
-{
-    std::shared_ptr<TypeNameNode> type;
-    std::vector<std::shared_ptr<VariableDeclaratorNode>> declarators;
-    SourceLocation startLocation;
+// Forward declaration for CompilationUnitNode if not fully defined in script_ast.hpp yet
+// struct CompilationUnitNode;
+
+struct CurrentTokenInfo {
+    TokenType type = TokenType::Error;
+    std::string_view lexeme;
+    SourceLocation location;
+    std::variant<std::monostate, int64_t, double, std::string, char, bool> literalValue;
 };
 
-class ParseError : public std::runtime_error
-{
+class ScriptParser {
 public:
-    ParseError(const std::string& message, const SourceLocation& location)
-        : std::runtime_error(format_message(message, location)), m_location(location)
-    {
-    }
+    ScriptParser(std::string_view source_code, std::string_view fileName);
 
-    const SourceLocation& get_location() const
-    {
-        return m_location;
-    }
+    std::pair<std::shared_ptr<CompilationUnitNode>, std::vector<ParseError>> parse();
 
 private:
-    SourceLocation m_location;
+    std::string_view sourceCode;
+    std::string_view fileName;
+    size_t currentCharOffset;
+    int currentLine;
+    int currentColumn;
+    size_t currentLineStartOffset;
 
-    static std::string format_message(const std::string& baseMessage, const SourceLocation& loc)
-    {
-        return "Parse Error (Line " + std::to_string(loc.line_start) +
-               ", Col " + std::to_string(loc.column_start) + "): " + baseMessage;
-    }
-};
+    CurrentTokenInfo currentTokenInfo;
+    CurrentTokenInfo previousTokenInfo;
 
+    std::vector<ParseError> errors;
 
-class ScriptParser
-{
-public:
-    ScriptParser(const std::vector<Token>& tokens);
+    // Parsing methods
+    std::shared_ptr<UsingDirectiveNode> parse_using_directive();
+    std::shared_ptr<NamespaceDeclarationNode> parse_namespace_declaration();
+    std::shared_ptr<NamespaceMemberDeclarationNode> parse_namespace_member_declaration(); 
+    std::shared_ptr<TypeDeclarationNode> parse_type_declaration(const SourceLocation& decl_start_loc, std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers);
+    std::shared_ptr<ClassDeclarationNode> parse_class_declaration(const SourceLocation& decl_start_loc, std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers);
+    std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> parse_modifiers();
+    std::shared_ptr<ParameterDeclarationNode> parse_parameter_declaration();
+    std::optional<std::vector<std::shared_ptr<ParameterDeclarationNode>>> parse_parameter_list_content(std::vector<std::shared_ptr<TokenNode>>& commas_list);
+    std::shared_ptr<BaseMethodDeclarationNode> parse_base_method_declaration(
+        const SourceLocation& decl_start_loc,
+        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
+        std::shared_ptr<TypeNameNode> return_type,
+        const CurrentTokenInfo& method_name_token_info);
+    std::shared_ptr<MethodDeclarationNode> parse_method_declaration(
+        const SourceLocation& decl_start_loc,
+        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
+        std::shared_ptr<TypeNameNode> return_type,
+        const CurrentTokenInfo& method_name_token_info);
+    std::shared_ptr<ExternalMethodDeclarationNode> parse_external_method_declaration();
+    std::shared_ptr<MemberDeclarationNode> parse_member_declaration(); // For members inside classes/structs
+    std::shared_ptr<FieldDeclarationNode> parse_field_declaration(const SourceLocation& decl_start_loc, std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers, std::shared_ptr<TypeNameNode> type);
+    std::shared_ptr<IfStatementNode> parse_if_statement();
+    std::shared_ptr<WhileStatementNode> parse_while_statement();
+    std::shared_ptr<ForStatementNode> parse_for_statement();
+    std::shared_ptr<ExpressionNode> parse_assignment_expression();
+    std::shared_ptr<ExpressionNode> parse_conditional_expression(); // For ternary operator ?:
+    std::shared_ptr<ExpressionNode> parse_logical_or_expression();  // ||
+    std::shared_ptr<ExpressionNode> parse_logical_and_expression(); // &&
+    std::shared_ptr<ExpressionNode> parse_equality_expression();    // == !=
+    std::shared_ptr<ExpressionNode> parse_relational_expression();  // < > <= >= (is, as later)
+    std::shared_ptr<ExpressionNode> parse_additive_expression();    // + -
+    std::shared_ptr<ExpressionNode> parse_multiplicative_expression(); // * / %
     std::shared_ptr<CompilationUnitNode> parse_compilation_unit();
+    std::shared_ptr<ExpressionNode> parse_primary_expression();
+    std::shared_ptr<ObjectCreationExpressionNode> parse_object_creation_expression();
+    std::shared_ptr<ExpressionNode> parse_unary_expression();
+    std::shared_ptr<ExpressionNode> parse_postfix_expression();
+    std::shared_ptr<Mycelium::Scripting::Lang::ExpressionStatementNode> parse_expression_statement();
+    std::shared_ptr<ExpressionNode> parse_expression();
+    std::shared_ptr<TypeNameNode> parse_type_name();
+    std::optional<std::shared_ptr<ArgumentListNode>> parse_argument_list();
+    std::shared_ptr<BlockStatementNode> parse_block_statement();
+    std::shared_ptr<Mycelium::Scripting::Lang::LocalVariableDeclarationStatementNode> parse_local_variable_declaration_statement();
+    std::shared_ptr<Mycelium::Scripting::Lang::ReturnStatementNode> parse_return_statement();
+    std::shared_ptr<Mycelium::Scripting::Lang::StatementNode> parse_statement();
 
-private:
-    const std::vector<Token>& m_tokens;
-    size_t m_currentIndex;
-    std::weak_ptr<AstNode> m_currentParentNode;
-
-    // Core token handling
-    bool is_at_end() const;
-    const Token& peek_token(int offset = 0) const;
-    const Token& current_token() const;
-    const Token& previous_token() const;
-    const Token& consume_token(TokenType expectedType, const std::string& errorMessage);
-    const Token& advance_token();
-    bool match_token(TokenType type);
-    bool match_token(const std::vector<TokenType>& types);
+    // Token consumption and checking
     bool check_token(TokenType type) const;
     bool check_token(const std::vector<TokenType>& types) const;
+    bool match_token(TokenType type);
+    const CurrentTokenInfo& consume_token(TokenType type, const std::string& error_message);
+    bool is_at_end_of_token_stream() const;
+    bool can_parse_as_generic_arguments_followed_by_call();
 
-    // Error and AST node creation
-    ParseError create_error(const Token& token, const std::string& message);
-    ParseError create_error(const std::string& message);
+    // AST Node creation helpers
+    template<typename T>
+    std::shared_ptr<T> make_ast_node(const SourceLocation& start_loc);
+    void finalize_node_location(std::shared_ptr<AstNode> node);
+    std::shared_ptr<TokenNode> create_token_node(TokenType type, const CurrentTokenInfo& token_info);
+    std::shared_ptr<IdentifierNode> create_identifier_node(const CurrentTokenInfo& token_info);
 
-    template <typename T, typename... Args>
-    std::shared_ptr<T> make_ast_node(Args&&... args)
-    {
-        auto node = std::make_shared<T>(std::forward<Args>(args)...);
-        node->parent = m_currentParentNode;
-        if (m_currentIndex < m_tokens.size())
-        {
-            // Set initial location, will be finalized
-            node->location = current_token().location;
-        }
-        return node;
-    }
+    // Lexing
+    CurrentTokenInfo lex_number_literal();
+    CurrentTokenInfo lex_string_literal();
+    CurrentTokenInfo lex_char_literal();
+    CurrentTokenInfo lex_identifier_or_keyword();
+    CurrentTokenInfo lex_operator_or_punctuation();
+    void skip_whitespace_and_comments();
+    void advance_and_lex();
 
-    void finalize_node_location(std::shared_ptr<AstNode> node, const SourceLocation& startLocation);
-    void finalize_node_location(std::shared_ptr<AstNode> node, const Token& startToken);
-    void with_parent_context(const std::shared_ptr<AstNode>& newParentNode, const std::function<void()>& parserFunc);
+    // Character consumption helpers
+    char peek_char(size_t offset = 0) const;
+    char consume_char();
+    bool is_at_end_of_source() const;
 
-    // Parsing rules (simplified)
-    std::shared_ptr<TypeDeclarationNode> parse_file_level_declaration(const Token& declarationStartToken); // Simplified from NamespaceMemberDeclarationNode
-
-    std::vector<ModifierKind> parse_modifiers(); // To support public, private, static
-    std::string parse_identifier_name(const std::string& contextMessage = "Expected identifier");
-    std::string parse_qualified_identifier(const std::string& contextMessageStart, const std::string& contextMessagePart); // For Type.Member potentially
-
-    ParsedDeclarationParts parse_variable_declaration_parts(); // No 'var'
-    std::shared_ptr<ClassDeclarationNode> parse_class_declaration(std::vector<ModifierKind> modifiers, const Token& classKeywordToken, const std::string& className, const Token& actualStartToken); // No generics, no base list
-
-    std::shared_ptr<TypeNameNode> parse_type_name(); // No generics, no arrays
-    std::shared_ptr<MemberDeclarationNode> parse_member_declaration(const Token& memberStartToken, const std::optional<std::string>& currentClassName);
-    std::shared_ptr<FieldDeclarationNode> parse_field_declaration(std::vector<ModifierKind> modifiers, std::shared_ptr<TypeNameNode> type, const Token& fieldDeclStartToken);
-    std::shared_ptr<MethodDeclarationNode> parse_method_declaration(std::vector<ModifierKind> modifiers, std::shared_ptr<TypeNameNode> returnType, const std::string& methodName, const Token& methodDeclStartToken); // No generics
-    std::shared_ptr<ConstructorDeclarationNode> parse_constructor_declaration(std::vector<ModifierKind> modifiers, const std::string& constructorName, const Token& constructorNameToken, const Token& actualStartToken);
-
-    std::vector<std::shared_ptr<ParameterDeclarationNode>> parse_parameter_list();
-    std::shared_ptr<ParameterDeclarationNode> parse_parameter_declaration(); // No default values
-
-    std::vector<std::shared_ptr<VariableDeclaratorNode>> parse_variable_declarator_list();
-    std::shared_ptr<VariableDeclaratorNode> parse_variable_declarator();
-
-    // Statements
-    std::shared_ptr<StatementNode> parse_statement();
-    std::shared_ptr<BlockStatementNode> parse_block_statement();
-    std::shared_ptr<LocalVariableDeclarationStatementNode> parse_local_variable_declaration_statement(); // No 'var'
-    std::shared_ptr<ExpressionStatementNode> parse_expression_statement();
-    std::shared_ptr<IfStatementNode> parse_if_statement();
-    std::shared_ptr<ReturnStatementNode> parse_return_statement();
-
-    // Expressions
-    std::shared_ptr<ExpressionNode> parse_expression();
-    std::shared_ptr<ExpressionNode> parse_assignment_expression(); // Only basic '='
-    // Removed logical_or, logical_and to simplify if conditions for now.
-    // If condition will be parse_equality_expression directly or parse_expression.
-    std::shared_ptr<ExpressionNode> parse_equality_expression();
-    std::shared_ptr<ExpressionNode> parse_relational_expression();
-    std::shared_ptr<ExpressionNode> parse_additive_expression();
-    std::shared_ptr<ExpressionNode> parse_multiplicative_expression();
-    std::shared_ptr<ExpressionNode> parse_unary_expression(); // Keep '!', unary '-'
-    std::shared_ptr<ExpressionNode> parse_postfix_expression(); // No generics
-    std::shared_ptr<ExpressionNode> parse_primary_expression(); // Simplified literals
-
-    std::shared_ptr<ObjectCreationExpressionNode> parse_object_creation_expression(); // Simplified
-    std::shared_ptr<ArgumentListNode> parse_argument_list();
-    std::shared_ptr<ArgumentNode> parse_argument(); // No named args
+    // Error recording
+    void record_error(const std::string& message, const SourceLocation& loc);
+    void record_error_at_current(const std::string& message);
+    void record_error_at_previous(const std::string& message);
 };
 
 } // namespace Mycelium::Scripting::Lang

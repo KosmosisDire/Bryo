@@ -18,14 +18,6 @@
                 "CMAKE_TOOLCHAIN_FILE": {
                     "type": "FILEPATH",
                     "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
-                },
-                "CMAKE_C_COMPILER": {
-                    "type": "FILEPATH",
-                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
-                },
-                "CMAKE_CXX_COMPILER": {
-                    "type": "FILEPATH",
-                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
                 }
             },
             "environment": {
@@ -44,14 +36,6 @@
                 "CMAKE_TOOLCHAIN_FILE": {
                     "type": "FILEPATH",
                     "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
-                },
-                "CMAKE_C_COMPILER": {
-                    "type": "FILEPATH",
-                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
-                },
-                "CMAKE_CXX_COMPILER": {
-                    "type": "FILEPATH",
-                    "value": "C:/Program Files/LLVM/bin/clang-cl.exe"
                 }
             },
             "environment": {

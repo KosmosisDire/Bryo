@@ -34,7 +34,7 @@ namespace Mycelium::UI::Lang
         }
         else
         {
-            throw std::runtime_error("Expected a definition (e.g., 'BlockName {') but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
+            throw std::runtime_error("Expected a definition (e.g., 'BlockName {') but found " + token_type_to_string(currentToken().type) + " ('" + currentToken().text + "')");
         }
     }
 
@@ -93,7 +93,7 @@ namespace Mycelium::UI::Lang
             }
         }
 
-        throw std::runtime_error("Expected a statement (e.g., nested block, property) inside block, but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
+        throw std::runtime_error("Expected a statement (e.g., nested block, property) inside block, but found " + token_type_to_string(currentToken().type) + " ('" + currentToken().text + "')");
     }
 
     std::shared_ptr<PropertyAssignmentNode> Parser::parseProperty(std::shared_ptr<BlockNode> parent)
@@ -124,7 +124,7 @@ namespace Mycelium::UI::Lang
             return std::make_shared<StringLiteralValueNode>(strToken.text);
         }
 
-        throw std::runtime_error("Expected a value (number, string, etc.) but found " + tokenTypeToString(currentToken().type) + " ('" + currentToken().text + "')");
+        throw std::runtime_error("Expected a value (number, string, etc.) but found " + token_type_to_string(currentToken().type) + " ('" + currentToken().text + "')");
     }
 
     // --- Parser Helper Methods ---
@@ -183,7 +183,7 @@ namespace Mycelium::UI::Lang
         else
         {
             std::string error = errorMessage;
-            error += " Found " + tokenTypeToString(token.type);
+            error += " Found " + token_type_to_string(token.type);
             error += " ('" + token.text + "') instead.";
 
             throw std::runtime_error(error);
@@ -214,7 +214,7 @@ namespace Mycelium::UI::Lang
         }
 
         std::string error = errorMessage;
-        error += " Found " + tokenTypeToString(token.type);
+        error += " Found " + token_type_to_string(token.type);
         error += " ('" + token.text + "') instead.";
 
         throw std::runtime_error(error);

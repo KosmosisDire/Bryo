@@ -1,21 +1,13 @@
 
-class Program
+namespace Test.test
 {
-    static int Blah()
+    class Program
     {
-        return 1239087;
-    }
-
-    static int Main()
-    {
-        int a = 1;
-        int b = a + 17;
-
-        if (b == 18)
+        static double Main()
         {
-            return Program.Blah();
-        }
+            string str = "Hello World!"; // str is i64, call returns i64
 
-        return 0;
+            return 0.0; // Should not be reached
+        }
     }
 }
