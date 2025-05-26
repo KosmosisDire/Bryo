@@ -1,5 +1,6 @@
 #pragma once
 #include <unordered_map>
+#include <string> // Required for std::to_string and std::string
 
 namespace Mycelium::Scripting::Lang
 {
@@ -12,8 +13,8 @@ namespace Mycelium::Scripting::Lang
         BooleanLiteral,
         IntegerLiteral,
         LongLiteral,     
-        FloatLiteral,
-        DoubleLiteral,
+        FloatLiteral, // For numeric literals like 3.14f
+        DoubleLiteral, // For numeric literals like 3.14 or 3.14d
         CharLiteral,
         StringLiteral,
         NullLiteral,
@@ -31,7 +32,10 @@ namespace Mycelium::Scripting::Lang
         Var, If, Else, While, For, ForEach, Return, New, This,
         Class, Struct, Namespace, Using, Extern,
         Public, Private, Static, Readonly,
-        Bool, Int, String, Long, Double, Char, Void,
+        
+        // Primitive Type Name Keywords
+        Bool, Int, String, Long, Double, Char, Void, Float, // Added Float here
+
         Break, Continue,
 
         // Operators
@@ -90,7 +94,8 @@ namespace Mycelium::Scripting::Lang
         {"long", TokenType::Long},
         {"double", TokenType::Double},
         {"char", TokenType::Char},
-        {"void", TokenType::Void}
+        {"void", TokenType::Void},
+        {"float", TokenType::Float} // Added float keyword mapping
     };
 
     // Helper to convert TokenType to string (for error messages)
@@ -156,6 +161,7 @@ namespace Mycelium::Scripting::Lang
             case TokenType::Double: return "Double";
             case TokenType::Char: return "Char";   
             case TokenType::Void: return "Void";
+            case TokenType::Float: return "Float"; // Added Float case
 
             // Operators
             case TokenType::Assign: return "Assign";

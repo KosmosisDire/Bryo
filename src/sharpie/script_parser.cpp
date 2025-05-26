@@ -1570,7 +1570,7 @@ namespace Mycelium::Scripting::Lang
 
             // Check if the next token could start a type name
             if (check_token(TokenType::Identifier) ||
-                check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void}))
+                check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void, TokenType::Float})) // Added Float
             {
                 // Temporarily parse TypeName without consuming tokens if it fails in a way that means it's not a type.
                 // This is where a more robust "try_parse_type_name" would be good.
@@ -1924,7 +1924,7 @@ namespace Mycelium::Scripting::Lang
         auto node = make_ast_node<TypeNameNode>(type_name_start_loc);
 
         if (check_token(TokenType::Identifier) ||
-            check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void}))
+            check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void, TokenType::Float})) // Added Float
         {
 
             auto ident_for_segment = create_identifier_node(currentTokenInfo);
@@ -2427,7 +2427,8 @@ namespace Mycelium::Scripting::Lang
                  check_token(TokenType::String) ||
                  check_token(TokenType::Long) ||
                  check_token(TokenType::Double) ||
-                 check_token(TokenType::Char))
+                 check_token(TokenType::Char) ||
+                 check_token(TokenType::Float)) // Added Float
         {
             return parse_local_variable_declaration_statement();
         }
@@ -2484,7 +2485,8 @@ namespace Mycelium::Scripting::Lang
             if (check_token(TokenType::Var) ||
                 check_token(TokenType::Bool) || check_token(TokenType::Int) ||
                 check_token(TokenType::String) || check_token(TokenType::Long) ||
-                check_token(TokenType::Double) || check_token(TokenType::Char)
+                check_token(TokenType::Double) || check_token(TokenType::Char) ||
+                check_token(TokenType::Float) // Added Float
                 // || could_be_custom_type_followed_by_identifier() // More complex lookahead
             )
             {
@@ -2841,7 +2843,7 @@ namespace Mycelium::Scripting::Lang
                 // Simplified "can_parse_type_name_light" for lookahead:
                 // Checks for an identifier or primitive type keyword, and skips simple qualifications/arrays.
                 if (check_token(TokenType::Identifier) ||
-                    check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void}))
+                    check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Void, TokenType::Float})) // Added Float
                 {
 
                     advance_and_lex(); // Tentatively consume the start of the type name (identifier or keyword)

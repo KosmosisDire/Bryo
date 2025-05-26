@@ -145,11 +145,13 @@ namespace Mycelium::Scripting::Lang
         switch (kind)
         {
         case LiteralKind::Integer: return "integer";
+        case LiteralKind::Long: return "long";
+        case LiteralKind::Float: return "float";
+        case LiteralKind::Double: return "double";
         case LiteralKind::String: return "string";
+        case LiteralKind::Char: return "char";
         case LiteralKind::Boolean: return "boolean";
         case LiteralKind::Null: return "null";
-        case LiteralKind::Char: return "char";
-        case LiteralKind::Float: return "float";
         default: return "unknown";
         }
     }

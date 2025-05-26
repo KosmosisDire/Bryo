@@ -118,6 +118,7 @@ private:
     llvm::Value* visit(std::shared_ptr<MethodCallExpressionNode> node);
     llvm::Value* visit(std::shared_ptr<ObjectCreationExpressionNode> node);
     llvm::Value* visit(std::shared_ptr<ThisExpressionNode> node);
+    llvm::Value* visit(std::shared_ptr<CastExpressionNode> node); // Added for type casting
 
     // --- Helper Methods (snake_case) ---
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
