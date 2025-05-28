@@ -1,6 +1,6 @@
 #pragma once
 
-#include "script_ast.hpp"
+#include "../script_ast.hpp" // Updated path
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
@@ -32,6 +32,8 @@ namespace llvm {
     // PointerType forward declaration might not be needed if we always use llvm::Type* for opaque ptr
 }
 
+// All AST nodes (CompilationUnitNode, TypeNameNode, AstNode, etc.) are included via ../script_ast.hpp
+// SourceLocation is also included via ../script_ast.hpp -> ast_base.hpp -> ast_location.hpp
 namespace Mycelium::Scripting::Lang
 {
 
@@ -105,10 +107,8 @@ private:
     std::unique_ptr<llvm::Module> take_module();
 
     // --- Visitor Methods (snake_case) ---
-    // AstNode visitor returns llvm::Value* for compatibility with statement visitors
     llvm::Value* visit(std::shared_ptr<AstNode> node); 
 
-    // Top-level and statement visitors (mostly return llvm::Value* or void)
     llvm::Value* visit(std::shared_ptr<CompilationUnitNode> node);
     llvm::Value* visit(std::shared_ptr<ClassDeclarationNode> node);
     llvm::Value* visit(std::shared_ptr<NamespaceDeclarationNode> node);
@@ -121,9 +121,8 @@ private:
     llvm::Value* visit(std::shared_ptr<IfStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ReturnStatementNode> node);
     llvm::Function* visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
-    llvm::Function* visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name); // Added
+    llvm::Function* visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
 
-    // Expression visitors (return ExpressionVisitResult)
     ExpressionVisitResult visit(std::shared_ptr<ExpressionNode> node);
     ExpressionVisitResult visit(std::shared_ptr<LiteralExpressionNode> node);
     ExpressionVisitResult visit(std::shared_ptr<IdentifierExpressionNode> node);
@@ -135,14 +134,13 @@ private:
     ExpressionVisitResult visit(std::shared_ptr<ThisExpressionNode> node);
     ExpressionVisitResult visit(std::shared_ptr<CastExpressionNode> node);
     ExpressionVisitResult visit(std::shared_ptr<MemberAccessExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<ParenthesizedExpressionNode> node); // Added forward declaration
+    ExpressionVisitResult visit(std::shared_ptr<ParenthesizedExpressionNode> node);
 
     // --- Helper Methods (snake_case) ---
     llvm::Value* getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMType);
-    llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType); // Added
+    llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType);
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
     llvm::Type* get_llvm_type_from_string(const std::string& type_name, std::optional<SourceLocation> loc = std::nullopt);
-    // llvm::StructType* get_string_struct_type(); // Redundant if myceliumStringType is used directly
     std::string llvm_type_to_string(llvm::Type* type) const;
 
     llvm::AllocaInst* create_entry_block_alloca(llvm::Function* function, const std::string& var_name, llvm::Type* type);

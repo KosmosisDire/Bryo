@@ -9,9 +9,9 @@
 #include <fstream>
 
 // #include "script_tokenizer.hpp"
-#include "script_ast.hpp"
-#include "script_parser.hpp"
-#include "script_compiler.hpp"
+#include "sharpie/script_ast.hpp" // Updated path
+#include "sharpie/parser/script_parser.hpp" // Updated path
+#include "sharpie/compiler/script_compiler.hpp" // Updated path
 #include "hot_reload.hpp"
 #include "platform.hpp"
 
