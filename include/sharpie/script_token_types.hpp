@@ -26,6 +26,7 @@ namespace Mycelium::Scripting::Lang
         Semicolon,                     // ;
         Comma,                         // ,
         Dot,                           // .
+        Tilde,                         // ~
         // Colon, QuestionMark, etc.
 
         // Keywords (as before)
@@ -128,6 +129,7 @@ namespace Mycelium::Scripting::Lang
             case TokenType::Semicolon: return "Semicolon";
             case TokenType::Comma: return "Comma";
             case TokenType::Dot: return "Dot";
+            case TokenType::Tilde: return "Tilde";
 
             // Keywords (General Purpose & Control Flow)
             case TokenType::Var: return "Var";

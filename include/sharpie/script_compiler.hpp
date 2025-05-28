@@ -78,6 +78,7 @@ private:
         std::vector<std::string> field_names_in_order;
         std::map<std::string, unsigned> field_indices;
         std::vector<std::shared_ptr<TypeNameNode>> field_ast_types; // Store AST TypeNameNode for each field
+        llvm::Function* destructor_func = nullptr; // Pointer to the LLVM function for the destructor
     };
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
@@ -120,6 +121,7 @@ private:
     llvm::Value* visit(std::shared_ptr<IfStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ReturnStatementNode> node);
     llvm::Function* visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    llvm::Function* visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name); // Added
 
     // Expression visitors (return ExpressionVisitResult)
     ExpressionVisitResult visit(std::shared_ptr<ExpressionNode> node);

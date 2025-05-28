@@ -729,8 +729,55 @@ namespace Mycelium::Scripting::Lang
             member_start_loc = currentTokenInfo.location;
         }
 
-        // --- Lookahead for constructor or method/field ---
-        CurrentTokenInfo potential_type_or_name_token = currentTokenInfo;
+        // --- Lookahead for destructor, constructor, or method/field ---
+        CurrentTokenInfo first_token_of_member = currentTokenInfo; // Could be Tilde, Identifier, or TypeKeyword
+
+        // Check for Destructor: ~ClassName()
+        if (check_token(TokenType::Tilde)) {
+            // Save state for lookahead after Tilde
+            size_t tilde_original_char_offset = currentCharOffset;
+            int tilde_original_line = currentLine;
+            int tilde_original_column = currentColumn;
+            size_t tilde_original_line_start_offset = currentLineStartOffset;
+            CurrentTokenInfo tilde_original_current_token_info = currentTokenInfo; // This is the Tilde token
+            CurrentTokenInfo tilde_original_previous_token_info = previousTokenInfo;
+
+            advance_and_lex(); // Consume '~'
+
+            bool is_potential_destructor = m_current_class_name.has_value() &&
+                                         check_token(TokenType::Identifier) &&
+                                         currentTokenInfo.lexeme == m_current_class_name.value();
+            
+            if (is_potential_destructor) {
+                advance_and_lex(); // Consume ClassName
+                bool is_followed_by_paren_for_dtor = check_token(TokenType::OpenParen);
+                
+                // Restore state to be *at* the Tilde token for parse_destructor_declaration
+                currentCharOffset = tilde_original_char_offset;
+                currentLine = tilde_original_line;
+                currentColumn = tilde_original_column;
+                currentLineStartOffset = tilde_original_line_start_offset;
+                currentTokenInfo = tilde_original_current_token_info;
+                previousTokenInfo = tilde_original_previous_token_info;
+
+                if (is_followed_by_paren_for_dtor) {
+                    return parse_destructor_declaration(member_start_loc, std::move(modifiers), currentTokenInfo);
+                }
+            } else {
+                 // Restore state if it wasn't a valid destructor sequence after tilde
+                currentCharOffset = tilde_original_char_offset;
+                currentLine = tilde_original_line;
+                currentColumn = tilde_original_column;
+                currentLineStartOffset = tilde_original_line_start_offset;
+                currentTokenInfo = tilde_original_current_token_info;
+                previousTokenInfo = tilde_original_previous_token_info;
+                // Fall through to other checks if ~ is not followed by ClassName()
+            }
+        }
+
+
+        // --- Lookahead for constructor or method/field (original logic) ---
+        CurrentTokenInfo potential_type_or_name_token = currentTokenInfo; // Now, this is after the Tilde check
 
         bool is_potential_constructor_name = m_current_class_name.has_value() &&
                                            check_token(TokenType::Identifier) &&
@@ -2778,6 +2825,78 @@ namespace Mycelium::Scripting::Lang
         return if_node;
     }
 
+    std::shared_ptr<DestructorDeclarationNode> ScriptParser::parse_destructor_declaration(
+        const SourceLocation& decl_start_loc,
+        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
+        const CurrentTokenInfo& tilde_token_info)
+    {
+        auto dtor_node = make_ast_node<DestructorDeclarationNode>(decl_start_loc);
+        // Destructors typically don't have modifiers in C#, but we'll store them if parsed.
+        // Semantic analysis can validate if modifiers are allowed.
+        dtor_node->modifiers = std::move(modifiers); 
+        dtor_node->tildeToken = create_token_node(TokenType::Tilde, tilde_token_info);
+        
+        consume_token(TokenType::Tilde, "Expected '~' for destructor."); // Consume '~'
+
+        if (!m_current_class_name.has_value()) {
+            record_error_at_current("Destructor declared outside of a class context.");
+            // Create a dummy name or handle error
+            auto dummy_name = make_ast_node<IdentifierNode>(currentTokenInfo.location);
+            dummy_name->name = "_ERROR_DTOR_NOCLASS_";
+            finalize_node_location(dummy_name);
+            dtor_node->name = dummy_name;
+        } else {
+            if (check_token(TokenType::Identifier) && currentTokenInfo.lexeme == m_current_class_name.value()) {
+                dtor_node->name = create_identifier_node(currentTokenInfo);
+                advance_and_lex(); // Consume ClassName
+            } else {
+                record_error_at_current("Expected destructor name to match class name '" + m_current_class_name.value_or("") + "'.");
+                auto dummy_name = make_ast_node<IdentifierNode>(currentTokenInfo.location);
+                dummy_name->name = "_ERROR_DTOR_NAME_";
+                finalize_node_location(dummy_name);
+                dtor_node->name = dummy_name;
+            }
+        }
+
+        // Destructors have an empty parameter list: ()
+        if (check_token(TokenType::OpenParen)) {
+            dtor_node->openParenToken = create_token_node(TokenType::OpenParen, currentTokenInfo);
+            advance_and_lex(); // Consume '('
+        } else {
+            record_error_at_current("Expected '(' for destructor parameter list.");
+        }
+
+        if (check_token(TokenType::CloseParen)) {
+            dtor_node->closeParenToken = create_token_node(TokenType::CloseParen, currentTokenInfo);
+            advance_and_lex(); // Consume ')'
+        } else {
+            record_error_at_current("Expected ')' to close destructor parameter list.");
+        }
+        
+        // Destructors have no type parameters, no explicit return type (implicitly void).
+        // Parameters list is empty for the BaseMethodDeclarationNode.
+        // Clear any parameters that might have been spuriously added by parse_base_method_declaration_parts if it were called.
+        // For destructors, we directly manage the (empty) parameter list expectation.
+        dtor_node->parameters.clear();
+        dtor_node->parameterCommas.clear();
+
+
+        // Parse Destructor Body
+        if (check_token(TokenType::OpenBrace)) {
+            dtor_node->body = parse_block_statement();
+        } else if (check_token(TokenType::Semicolon)) {
+            // This might be for an extern destructor or an error if not supported.
+            // For now, just note it. Semantic analysis would validate.
+            dtor_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo);
+            advance_and_lex(); // Consume ';'
+        } else {
+            record_error_at_current("Expected '{' for destructor body or ';' for declaration.");
+        }
+
+        finalize_node_location(dtor_node);
+        return dtor_node;
+    }
+
     std::shared_ptr<WhileStatementNode> ScriptParser::parse_while_statement()
     {
         SourceLocation statement_start_loc = currentTokenInfo.location; // Location of 'while'
@@ -3713,6 +3832,9 @@ namespace Mycelium::Scripting::Lang
             break;
         case '.':
             token_info.type = TokenType::Dot;
+            break;
+        case '~': // Added Tilde
+            token_info.type = TokenType::Tilde;
             break;
         // Add case for ':', '?', etc. if they are part of your language
         // case ':': token_info.type = TokenType::Colon; break;

@@ -69,6 +69,12 @@ private:
         std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
         std::shared_ptr<TypeNameNode> return_type, // Explicit return type for methods
         const CurrentTokenInfo& method_name_token_info);
+    
+    std::shared_ptr<DestructorDeclarationNode> parse_destructor_declaration( // Added
+        const SourceLocation& decl_start_loc,
+        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
+        const CurrentTokenInfo& tilde_token_info);
+
 
     std::shared_ptr<ExternalMethodDeclarationNode> parse_external_method_declaration();
     std::shared_ptr<MemberDeclarationNode> parse_member_declaration(); // For members inside classes/structs

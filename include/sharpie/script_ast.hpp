@@ -35,6 +35,7 @@ namespace Mycelium::Scripting::Lang
     struct FieldDeclarationNode;
     struct MethodDeclarationNode;
     struct ConstructorDeclarationNode;
+    struct DestructorDeclarationNode; // Added Forward Declaration
     struct ExternalMethodDeclarationNode;
     struct LocalVariableDeclarationStatementNode;
     struct ExpressionStatementNode;
@@ -58,6 +59,7 @@ namespace Mycelium::Scripting::Lang
     struct ArgumentNode;
     struct CastExpressionNode;
     struct IndexerExpressionNode;
+
 
     enum class ModifierKind
     {
@@ -381,6 +383,14 @@ namespace Mycelium::Scripting::Lang
 
     struct ConstructorDeclarationNode : BaseMethodDeclarationNode
     {
+    };
+
+    // --- New Node for Destructors ---
+    struct DestructorDeclarationNode : BaseMethodDeclarationNode
+    {
+        std::shared_ptr<TokenNode> tildeToken; // Token for '~'
+        // Name is implicitly ClassName, no explicit return type, no parameters.
+        // Modifiers are typically not applicable or are implicit.
     };
 
     struct ExternalMethodDeclarationNode : BaseMethodDeclarationNode

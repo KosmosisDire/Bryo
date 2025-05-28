@@ -394,8 +394,21 @@ namespace Mycelium::Scripting::Lang
         classTypeRegistry[class_name] = cti; 
 
         for (const auto &member : node->members) {
-            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member)) visit_method_declaration(methodDecl, class_name); 
-            else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member)) visit(ctorDecl, class_name); 
+            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member)) {
+                visit_method_declaration(methodDecl, class_name);
+            } else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member)) {
+                visit(ctorDecl, class_name);
+            } else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member)) {
+                // Visit and store the destructor function
+                llvm::Function* dtor_func = visit(dtorDecl, class_name);
+                if (dtor_func) {
+                    // Store the destructor in ClassTypeInfo.
+                    // Need to make classTypeRegistry modifiable here or retrieve a non-const reference.
+                    auto& modifiable_cti = classTypeRegistry[class_name]; // Assuming class_name is always in registry
+                    modifiable_cti.destructor_func = dtor_func;
+                }
+            }
+            // else if (auto fieldDecl = ... ) // Already handled for fieldsType creation
         }
         return nullptr;
     }
@@ -455,13 +468,42 @@ namespace Mycelium::Scripting::Lang
         if (node->body) {
             visit(node->body.value()); // This is a BlockStatementNode
             if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
-                for (auto const& [_, header_val] : current_function_arc_locals) if (header_val) llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val});
+                // ARC cleanup for local variables at scope exit
+                for (auto const& [alloca_inst, header_val_or_obj_ptr] : current_function_arc_locals) {
+                    if (header_val_or_obj_ptr) { // Ensure it's not a nullptr Value
+                        // Determine if it's a class type and has a destructor
+                        auto var_info_it = std::find_if(namedValues.begin(), namedValues.end(), 
+                                                        [&](const auto& pair){ return pair.second.alloca == alloca_inst; });
+                        if (var_info_it != namedValues.end() && var_info_it->second.classInfo && var_info_it->second.classInfo->destructor_func) {
+                            llvm::Value* obj_fields_ptr = llvmBuilder->CreateLoad(alloca_inst->getAllocatedType(), alloca_inst);
+                             // Ensure obj_fields_ptr is not null before calling destructor
+                            llvm::Value* is_null_cond = llvmBuilder->CreateICmpNE(obj_fields_ptr, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(obj_fields_ptr->getType())));
+                            llvm::BasicBlock* dtor_call_bb = llvm::BasicBlock::Create(*llvmContext, "dtor.call", currentFunction);
+                            llvm::BasicBlock* after_dtor_bb = llvm::BasicBlock::Create(*llvmContext, "after.dtor", currentFunction);
+                            llvmBuilder->CreateCondBr(is_null_cond, dtor_call_bb, after_dtor_bb);
+                            llvmBuilder->SetInsertPoint(dtor_call_bb);
+                            llvmBuilder->CreateCall(var_info_it->second.classInfo->destructor_func, {obj_fields_ptr});
+                            llvmBuilder->CreateBr(after_dtor_bb);
+                            llvmBuilder->SetInsertPoint(after_dtor_bb);
+                        }
+                        // Always call release
+                        llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val_or_obj_ptr});
+                    }
+                }
                 if (return_type->isVoidTy()) llvmBuilder->CreateRetVoid();
                 else log_error("Non-void function '" + func_name + "' missing return.", node->body.value()->location);
             }
         } else { 
             log_error("Method '" + func_name + "' has no body.", node->location);
-            if (return_type->isVoidTy() && !entry_block->getTerminator()) llvmBuilder->CreateRetVoid();
+            if (return_type->isVoidTy() && !entry_block->getTerminator()) {
+                 // ARC cleanup for parameters if body is empty (though less common for non-extern)
+                for (auto const& [alloca_inst, header_val_or_obj_ptr] : current_function_arc_locals) {
+                     if (header_val_or_obj_ptr) { // Similar dtor + release logic as above could be added if params can have dtors invoked here
+                        llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val_or_obj_ptr});
+                     }
+                }
+                llvmBuilder->CreateRetVoid();
+            }
         }
         return function; 
     }
@@ -531,13 +573,64 @@ namespace Mycelium::Scripting::Lang
         // ... (rest of the logic using cond_res.value) ...
         return nullptr; 
     }
-    llvm::Value *ScriptCompiler::visit(std::shared_ptr<ReturnStatementNode> node) { 
+    llvm::Value *ScriptCompiler::visit(std::shared_ptr<ReturnStatementNode> node) {
+        // ARC cleanup for local variables before return
+        for (auto const& [alloca_inst, header_val_or_obj_ptr] : current_function_arc_locals) {
+            if (header_val_or_obj_ptr) {
+                 auto var_info_it = std::find_if(namedValues.begin(), namedValues.end(), 
+                                                [&](const auto& pair){ return pair.second.alloca == alloca_inst; });
+                // Skip releasing the value being returned if it's one of the locals
+                bool is_returned_value = false;
+                if (node->expression) {
+                    // This check is a bit simplistic. A more robust check would involve comparing the
+                    // actual LLVM Value of the return expression with the value loaded from alloca_inst.
+                    // For now, if the return expression is a simple identifier matching the local var name, we assume it's being returned.
+                    if (auto id_expr = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->expression.value())) {
+                        if (var_info_it != namedValues.end() && id_expr->identifier->name == var_info_it->first) {
+                            is_returned_value = true;
+                        }
+                    }
+                }
+
+                if (!is_returned_value) {
+                    if (var_info_it != namedValues.end() && var_info_it->second.classInfo && var_info_it->second.classInfo->destructor_func) {
+                        llvm::Value* obj_fields_ptr = llvmBuilder->CreateLoad(alloca_inst->getAllocatedType(), alloca_inst);
+                        llvm::Value* is_null_cond = llvmBuilder->CreateICmpNE(obj_fields_ptr, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(obj_fields_ptr->getType())));
+                        llvm::BasicBlock* dtor_call_bb = llvm::BasicBlock::Create(*llvmContext, "dtor.call.ret", currentFunction);
+                        llvm::BasicBlock* after_dtor_bb = llvm::BasicBlock::Create(*llvmContext, "after.dtor.ret", currentFunction);
+                        llvmBuilder->CreateCondBr(is_null_cond, dtor_call_bb, after_dtor_bb);
+                        llvmBuilder->SetInsertPoint(dtor_call_bb);
+                        llvmBuilder->CreateCall(var_info_it->second.classInfo->destructor_func, {obj_fields_ptr});
+                        llvmBuilder->CreateBr(after_dtor_bb);
+                        llvmBuilder->SetInsertPoint(after_dtor_bb);
+                    }
+                    llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val_or_obj_ptr});
+                }
+            }
+        }
+
         if (node->expression) {
             ExpressionVisitResult ret_res = visit(node->expression.value());
-            // ... (type checking ret_res.value, ARC cleanup) ...
+            if (!ret_res.value) {
+                log_error("Return expression compiled to null.", node->expression.value()->location);
+                // Potentially return a default value for the function's return type or handle error
+                if(currentFunction->getReturnType()->isVoidTy()) llvmBuilder->CreateRetVoid();
+                else if(currentFunction->getReturnType()->isIntegerTy()) llvmBuilder->CreateRet(llvm::ConstantInt::get(currentFunction->getReturnType(), 0));
+                // Add more cases or a generic error path
+                else llvmBuilder->CreateUnreachable(); // Fallback
+                return nullptr;
+            }
+            // Type check ret_res.value against currentFunction->getReturnType()
+            if (ret_res.value->getType() != currentFunction->getReturnType()) {
+                log_error("Return type mismatch. Expected " + llvm_type_to_string(currentFunction->getReturnType()) + 
+                          ", got " + llvm_type_to_string(ret_res.value->getType()), node->expression.value()->location);
+                // Handle error or attempt cast
+            }
             llvmBuilder->CreateRet(ret_res.value);
         } else {
-            // ... (ARC cleanup) ...
+            if (!currentFunction->getReturnType()->isVoidTy()) {
+                 log_error("Non-void function missing return value.", node->location);
+            }
             llvmBuilder->CreateRetVoid();
         }
         return nullptr; 
@@ -786,17 +879,57 @@ namespace Mycelium::Scripting::Lang
             if (target_static_ci && new_val_static_ci && target_static_ci != new_val_static_ci) { /* ... error for incompatible classes ... */ }
             
             // ARC
-            if (new_val_static_ci && new_val_static_ci->fieldsType) { /* Retain new_llvm_val */ 
+            // ARC:
+            // 1. Retain the new value first (if it's an object).
+            if (new_val_static_ci && new_val_static_ci->fieldsType) {
                 llvm::Value* new_hdr = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType);
                 if(new_hdr) llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {new_hdr});
             }
-            if (target_static_ci && target_static_ci->fieldsType) { /* Release old value in target_var_info.alloca */ 
-                llvm::Value* old_val = llvmBuilder->CreateLoad(target_llvm_type, target_var_info.alloca);
-                llvm::Value* old_hdr = getHeaderPtrFromFieldsPtr(old_val, target_static_ci->fieldsType);
-                if(old_hdr) llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {old_hdr});
+
+            // 2. Load the old value from the target variable/field.
+            llvm::Value* old_llvm_val = llvmBuilder->CreateLoad(target_llvm_type, target_var_info.alloca, "old.val.assign");
+            
+            // 3. If the old value was an object and had a destructor, call it.
+            if (target_static_ci && target_static_ci->destructor_func) {
+                // Ensure old_llvm_val (which is fields_ptr) is not null before calling destructor
+                llvm::Value* is_null_cond = llvmBuilder->CreateICmpNE(old_llvm_val, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(old_llvm_val->getType())));
+                llvm::BasicBlock* dtor_call_bb = llvm::BasicBlock::Create(*llvmContext, "dtor.call.assign", currentFunction);
+                llvm::BasicBlock* after_dtor_bb = llvm::BasicBlock::Create(*llvmContext, "after.dtor.assign", currentFunction);
+                llvm::BasicBlock* current_insert_bb = llvmBuilder->GetInsertBlock(); // Save current block
+
+                llvmBuilder->CreateCondBr(is_null_cond, dtor_call_bb, after_dtor_bb);
+                
+                llvmBuilder->SetInsertPoint(dtor_call_bb);
+                llvmBuilder->CreateCall(target_static_ci->destructor_func, {old_llvm_val});
+                llvmBuilder->CreateBr(after_dtor_bb);
+
+                llvmBuilder->SetInsertPoint(after_dtor_bb);
             }
+
+            // 4. Release the old value (if it was an object).
+            if (target_static_ci && target_static_ci->fieldsType) {
+                llvm::Value* old_hdr = getHeaderPtrFromFieldsPtr(old_llvm_val, target_static_ci->fieldsType);
+                if(old_hdr) { // Check if old_hdr itself is non-null (getHeaderPtr can return null)
+                    // Further check if old_hdr points to non-null before calling release
+                     llvm::Value* is_old_hdr_null_cond = llvmBuilder->CreateICmpNE(old_hdr, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(old_hdr->getType())));
+                     llvm::BasicBlock* release_call_bb = llvm::BasicBlock::Create(*llvmContext, "release.call.assign", currentFunction);
+                     llvm::BasicBlock* after_release_bb = llvm::BasicBlock::Create(*llvmContext, "after.release.assign", currentFunction);
+                     llvm::BasicBlock* current_insert_bb_for_release = llvmBuilder->GetInsertBlock();
+
+                     llvmBuilder->CreateCondBr(is_old_hdr_null_cond, release_call_bb, after_release_bb);
+
+                     llvmBuilder->SetInsertPoint(release_call_bb);
+                     llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {old_hdr});
+                     llvmBuilder->CreateBr(after_release_bb);
+                     
+                     llvmBuilder->SetInsertPoint(after_release_bb);
+                }
+            }
+            
+            // 5. Store the new value.
             llvmBuilder->CreateStore(new_llvm_val, target_var_info.alloca);
-            // Update ARC tracking for the local variable's alloca
+
+            // 6. Update ARC tracking for the local variable's alloca.
             if (new_val_static_ci && new_val_static_ci->fieldsType) {
                  current_function_arc_locals[target_var_info.alloca] = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType);
             } else {
@@ -1155,6 +1288,117 @@ namespace Mycelium::Scripting::Lang
                 llvmBuilder->CreateRetVoid();
             }
         }
+        return function;
+    }
+
+    llvm::Function* ScriptCompiler::visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name) {
+        namedValues.clear();
+        current_function_arc_locals.clear();
+
+        std::string func_name = class_name + ".%dtor"; // Destructor mangled name
+
+        // Destructors are void and take 'this' (opaque ptr to fields struct)
+        llvm::Type *return_type = llvm::Type::getVoidTy(*llvmContext);
+        std::vector<llvm::Type *> param_llvm_types = {llvm::PointerType::getUnqual(*llvmContext)};
+
+        llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
+        llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
+        currentFunction = function;
+
+        auto cti_it = classTypeRegistry.find(class_name);
+        if (cti_it == classTypeRegistry.end()) {
+            log_error("Class not found for destructor: " + class_name, node->location);
+            // function->eraseFromParent(); // Clean up partially created function
+            return nullptr;
+        }
+        const ClassTypeInfo* this_class_info = &cti_it->second;
+
+
+        llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
+        llvmBuilder->SetInsertPoint(entry_block);
+
+        // Setup 'this' pointer
+        auto llvm_arg_it = function->arg_begin();
+        VariableInfo thisVarInfo;
+        thisVarInfo.alloca = create_entry_block_alloca(function, "this.dtor.arg", llvm_arg_it->getType());
+        thisVarInfo.classInfo = this_class_info;
+        llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
+        namedValues["this"] = thisVarInfo;
+
+        // Compile user-defined destructor body
+        if (node->body) {
+            visit(node->body.value());
+        }
+
+        // Implicitly release all ARC-managed fields at the end of the user's destructor code
+        // This happens *before* the final RetVoid of the destructor.
+        if (!llvmBuilder->GetInsertBlock()->getTerminator()) { // Only if not already terminated by user code
+            llvm::Value* loaded_this_fields_ptr = llvmBuilder->CreateLoad(llvm_arg_it->getType(), thisVarInfo.alloca, "this.for.field_release");
+
+            for (unsigned i = 0; i < this_class_info->field_ast_types.size(); ++i) {
+                std::shared_ptr<TypeNameNode> field_ast_type = this_class_info->field_ast_types[i];
+                llvm::Type* field_llvm_type = this_class_info->fieldsType->getElementType(i);
+
+                if (field_llvm_type->isPointerTy()) { // Potentially an ARC-managed type
+                    const ClassTypeInfo* field_class_info = nullptr;
+                    if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&field_ast_type->name_segment)) {
+                        auto field_cti_it = classTypeRegistry.find((*identNode)->name);
+                        if (field_cti_it != classTypeRegistry.end()) {
+                            field_class_info = &field_cti_it->second;
+                        }
+                    }
+                    // TODO: Handle qualified names for field_class_info lookup
+
+                    if (field_class_info && field_class_info->fieldsType) { // It's a user-defined class instance
+                        llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, loaded_this_fields_ptr, i, this_class_info->field_names_in_order[i] + ".ptr.dtor");
+                        llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, this_class_info->field_names_in_order[i] + ".val.dtor");
+                        llvm::Value* field_header_ptr = getHeaderPtrFromFieldsPtr(field_val, field_class_info->fieldsType);
+                        if (field_header_ptr) {
+                             llvm::Function* release_func = llvmModule->getFunction("Mycelium_Object_release");
+                             if(release_func) llvmBuilder->CreateCall(release_func, {field_header_ptr});
+                             else log_error("Mycelium_Object_release not found during destructor field cleanup.", node->location);
+                        }
+                    } else if (llvm_type_to_string(field_llvm_type) == llvm_type_to_string(getMyceliumStringPtrTy())) { // It's a MyceliumString
+                        llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, loaded_this_fields_ptr, i, this_class_info->field_names_in_order[i] + ".ptr.dtor");
+                        llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, this_class_info->field_names_in_order[i] + ".val.dtor");
+                        // MyceliumString* is an opaque pointer, but it's also a MyceliumObjectHeader* effectively for ARC
+                        // if MyceliumString itself is ARC managed.
+                        // For now, assuming Mycelium_String_delete is the correct way if it's not using the generic ARC.
+                        // If MyceliumString is to be ARC managed like other objects, this needs to use Mycelium_Object_release.
+                        // Let's assume for now MyceliumString has its own delete or is handled by Mycelium_Object_release if it's a MyceliumObject.
+                        // If MyceliumString is a MyceliumObject, then the field_class_info logic above would handle it.
+                        // If it's special, we might need a Mycelium_String_release or similar.
+                        // For simplicity, if it's a raw string ptr not covered by ClassTypeInfo, we might call Mycelium_String_delete.
+                        // This part needs clarification on MyceliumString's memory management strategy.
+                        // Assuming Mycelium_Object_release is generic enough if MyceliumString is also a MyceliumObject.
+                        // If MyceliumString is special, we'd call Mycelium_String_delete.
+                        // For now, let's assume Mycelium_Object_release is the general path.
+                        llvm::Function* release_func = llvmModule->getFunction("Mycelium_Object_release"); // Or Mycelium_String_delete if separate
+                        if(release_func) llvmBuilder->CreateCall(release_func, {field_val}); // field_val is already the MyceliumString* (opaque ptr)
+                        else log_error("Release function not found for string field in destructor.", node->location);
+                    }
+                }
+            }
+        }
+
+
+        // ARC cleanup for destructor's own local variables (if any were created and ARC-managed)
+        if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
+            for (auto const& [_, header_val] : current_function_arc_locals) {
+                if (header_val) {
+                    llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val});
+                }
+            }
+            llvmBuilder->CreateRetVoid(); // Destructors implicitly return void
+        }
+        
+        // Verify the generated function
+        if (llvm::verifyFunction(*function, &llvm::errs())) {
+            log_error("Destructor function '" + func_name + "' verification failed. Dumping IR.", node->location);
+            function->print(llvm::errs());
+            // Consider erasing the function if it's invalid: function->eraseFromParent(); return nullptr;
+        }
+
         return function;
     }
 
