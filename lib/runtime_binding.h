@@ -19,7 +19,8 @@ struct RuntimeFunctionBinding {
     // This makes the registry self-contained for IR declaration.
     using LLVMTypeGetter = llvm::FunctionType* (*)(
         llvm::LLVMContext& context,
-        llvm::Type* myceliumStringTypePtr // Pass other common types if needed
+        llvm::Type* myceliumStringTypePtr, // Existing
+        llvm::Type* myceliumObjectHeaderTypePtr // New for ARC objects
     );
     LLVMTypeGetter get_llvm_type;
 };

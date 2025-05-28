@@ -39,6 +39,7 @@ private:
 
     CurrentTokenInfo currentTokenInfo;
     CurrentTokenInfo previousTokenInfo;
+    std::optional<std::string> m_current_class_name; // Added to store current class context for constructor parsing
 
     std::vector<ParseError> errors;
 
@@ -51,16 +52,24 @@ private:
     std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> parse_modifiers();
     std::shared_ptr<ParameterDeclarationNode> parse_parameter_declaration();
     std::optional<std::vector<std::shared_ptr<ParameterDeclarationNode>>> parse_parameter_list_content(std::vector<std::shared_ptr<TokenNode>>& commas_list);
-    std::shared_ptr<BaseMethodDeclarationNode> parse_base_method_declaration(
+    
+    // Helper for common parts of method-like declarations (name, generics, parameters)
+    // This function will populate the relevant fields in the passed BaseMethodDeclarationNode
+    void parse_base_method_declaration_parts(
+        std::shared_ptr<BaseMethodDeclarationNode> method_node, // Node to populate (MethodDeclarationNode or ConstructorDeclarationNode)
+        const CurrentTokenInfo& method_name_token_info);      // Token info for the method/constructor name
+
+    std::shared_ptr<ConstructorDeclarationNode> parse_constructor_declaration(
         const SourceLocation& decl_start_loc,
         std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
-        std::shared_ptr<TypeNameNode> return_type,
-        const CurrentTokenInfo& method_name_token_info);
+        const CurrentTokenInfo& constructor_name_token_info); // Name token (should match class name)
+
     std::shared_ptr<MethodDeclarationNode> parse_method_declaration(
         const SourceLocation& decl_start_loc,
         std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
-        std::shared_ptr<TypeNameNode> return_type,
+        std::shared_ptr<TypeNameNode> return_type, // Explicit return type for methods
         const CurrentTokenInfo& method_name_token_info);
+
     std::shared_ptr<ExternalMethodDeclarationNode> parse_external_method_declaration();
     std::shared_ptr<MemberDeclarationNode> parse_member_declaration(); // For members inside classes/structs
     std::shared_ptr<FieldDeclarationNode> parse_field_declaration(const SourceLocation& decl_start_loc, std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers, std::shared_ptr<TypeNameNode> type);

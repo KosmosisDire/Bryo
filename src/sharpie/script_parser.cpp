@@ -480,6 +480,9 @@ namespace Mycelium::Scripting::Lang
         auto class_node = make_ast_node<ClassDeclarationNode>(decl_start_loc);
         class_node->modifiers = std::move(modifiers); // Use passed-in modifiers
 
+        // Store class name for constructor parsing context
+        std::optional<std::string> previous_class_name_context = m_current_class_name;
+
         // 'class' keyword is expected next
         if (check_token(TokenType::Class))
         {
@@ -496,6 +499,7 @@ namespace Mycelium::Scripting::Lang
         if (check_token(TokenType::Identifier))
         {
             class_node->name = create_identifier_node(currentTokenInfo);
+            m_current_class_name = class_node->name->name; // Set current class name
             advance_and_lex();
         }
         else
@@ -544,6 +548,7 @@ namespace Mycelium::Scripting::Lang
         }
 
         finalize_node_location(class_node);
+        m_current_class_name = previous_class_name_context; // Restore previous class name context
         return class_node;
     }
 
@@ -724,102 +729,132 @@ namespace Mycelium::Scripting::Lang
             member_start_loc = currentTokenInfo.location;
         }
 
-        std::shared_ptr<TypeNameNode> type;
-        // Check for constructor: A constructor doesn't have a return type explicitly listed.
-        // It's identified by an Identifier (class name) followed by '('.
-        // This check is a bit early, as we haven't identified the class name yet.
-        // For now, let's assume if it's not 'void' or a type keyword, it might be a constructor name.
-        // A more robust way: if current token is Identifier and next is '(', it's likely a constructor if we are in a class.
-        // This part will need refinement when parse_constructor_declaration is added.
+        // --- Lookahead for constructor or method/field ---
+        CurrentTokenInfo potential_type_or_name_token = currentTokenInfo;
 
-        // Assume a type or 'void' is present for fields/methods for now.
-        // Constructors will be handled by a different path or check.
-        if (check_token(TokenType::Void) || // Void is a valid return type for methods
-            check_token(TokenType::Identifier) ||
-            check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char}))
+        bool is_potential_constructor_name = m_current_class_name.has_value() &&
+                                           check_token(TokenType::Identifier) &&
+                                           potential_type_or_name_token.lexeme == m_current_class_name.value();
+
+        // Look ahead one token after the potential_type_or_name_token
+        size_t original_char_offset_lookahead = currentCharOffset;
+        int original_line_lookahead = currentLine;
+        int original_column_lookahead = currentColumn;
+        size_t original_line_start_offset_lookahead = currentLineStartOffset;
+        CurrentTokenInfo original_current_token_info_lookahead = currentTokenInfo;
+        CurrentTokenInfo original_previous_token_info_lookahead = previousTokenInfo;
+        
+        // Tentatively consume potential_type_or_name_token to peek next
+        // This advance_and_lex() is part of the lookahead.
+        if (check_token(TokenType::Identifier) || check_token(TokenType::Void) || 
+            check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Float})) {
+            // Only advance if it's a token that could start a type or be a constructor name
+             advance_and_lex(); 
+        }
+       
+        bool is_followed_by_open_paren = check_token(TokenType::OpenParen);
+        bool is_followed_by_less_than = check_token(TokenType::LessThan); // For generic methods/constructors
+
+        // Restore state so currentTokenInfo is potential_type_or_name_token again
+        currentCharOffset = original_char_offset_lookahead;
+        currentLine = original_line_lookahead;
+        currentColumn = original_column_lookahead;
+        currentLineStartOffset = original_line_start_offset_lookahead;
+        currentTokenInfo = original_current_token_info_lookahead;
+        previousTokenInfo = original_previous_token_info_lookahead;
+        // --- End Lookahead ---
+
+        if (is_potential_constructor_name && (is_followed_by_open_paren || is_followed_by_less_than))
         {
-            type = parse_type_name(); // This consumes the type tokens
+            // It's a constructor. potential_type_or_name_token is the constructor name.
+            // currentTokenInfo is still at the constructor name token.
+            return parse_constructor_declaration(member_start_loc, std::move(modifiers), currentTokenInfo);
         }
         else
         {
-            record_error_at_current("Expected type name, 'void', or member keyword at start of member declaration.");
-            return nullptr;
-        }
-
-        if (!type)
-        {
-            record_error_at_current("Failed to parse type name for member declaration.");
-            return nullptr;
-        }
-
-        // Current token should be the identifier (member name OR constructor name if type was actually class name)
-        if (check_token(TokenType::Identifier))
-        {
-            CurrentTokenInfo name_token_info = currentTokenInfo; // This is the potential member name.
-
-            // --- Lookahead to distinguish method/constructor from field ---
-            size_t original_char_offset_lookahead = currentCharOffset;
-            int original_line_lookahead = currentLine;
-            int original_column_lookahead = currentColumn;
-            size_t original_line_start_offset_lookahead = currentLineStartOffset;
-            CurrentTokenInfo original_current_token_info_lookahead = currentTokenInfo;
-            CurrentTokenInfo original_previous_token_info_lookahead = previousTokenInfo;
-            // Errors are not saved/restored for this simple lookahead as it should not generate them if working correctly.
-
-            advance_and_lex();                                                                                     // Tentatively consume the identifier (name_token_info.lexeme)
-            bool is_method_like_signature = check_token(TokenType::OpenParen) || check_token(TokenType::LessThan); // LessThan for generic method
-
-            // Restore state so currentTokenInfo is the name_token_info again
-            currentCharOffset = original_char_offset_lookahead;
-            currentLine = original_line_lookahead;
-            currentColumn = original_column_lookahead;
-            currentLineStartOffset = original_line_start_offset_lookahead;
-            currentTokenInfo = original_current_token_info_lookahead;
-            previousTokenInfo = original_previous_token_info_lookahead;
-            // --- End Lookahead ---
-
-            if (is_method_like_signature)
+            // It's a method or a field. Parse the type first.
+            std::shared_ptr<TypeNameNode> type;
+            if (check_token(TokenType::Void) ||
+                check_token(TokenType::Identifier) || // Could be a custom type name
+                check_token({TokenType::Bool, TokenType::Int, TokenType::String, TokenType::Long, TokenType::Double, TokenType::Char, TokenType::Float}))
             {
-                // TODO: Add distinction for constructors. A constructor would have its name_token_info.lexeme
-                // match the class name, and 'type' would have been that class name too (or conceptually 'void').
-                // For now, all method-like signatures go to parse_method_declaration.
-                return parse_method_declaration(member_start_loc, std::move(modifiers), type, name_token_info);
+                type = parse_type_name(); // This consumes the type tokens
             }
             else
             {
-                // It's a field. currentTokenInfo is still the identifier (name_token_info).
-                // parse_field_declaration will consume this identifier.
-                return parse_field_declaration(member_start_loc, std::move(modifiers), type);
+                record_error_at_current("Expected type name, 'void', or constructor name at start of member declaration.");
+                return nullptr;
             }
-        }
-        else
-        {
-            record_error_at_current("Expected identifier for member name after type '" + token_type_to_string(type->location.has_value() ? TokenType::Identifier : TokenType::Error) + "'.");
-            // The above error message for type is not ideal, needs better stringification of TypeNameNode
-            return nullptr;
+
+            if (!type)
+            {
+                // Error already recorded by parse_type_name or the check above
+                return nullptr;
+            }
+
+            // Now, the current token should be the member name (identifier).
+            if (check_token(TokenType::Identifier))
+            {
+                CurrentTokenInfo name_token_info = currentTokenInfo; // This is the member name.
+
+                // --- Lookahead again, this time just for '(' or '<' after the name ---
+                original_char_offset_lookahead = currentCharOffset;
+                original_line_lookahead = currentLine;
+                original_column_lookahead = currentColumn;
+                original_line_start_offset_lookahead = currentLineStartOffset;
+                original_current_token_info_lookahead = currentTokenInfo;
+                original_previous_token_info_lookahead = previousTokenInfo;
+
+                advance_and_lex(); // Tentatively consume the name_token_info
+                bool is_method_like_signature_after_name = check_token(TokenType::OpenParen) || check_token(TokenType::LessThan);
+
+                currentCharOffset = original_char_offset_lookahead;
+                currentLine = original_line_lookahead;
+                currentColumn = original_column_lookahead;
+                currentLineStartOffset = original_line_start_offset_lookahead;
+                currentTokenInfo = original_current_token_info_lookahead;
+                previousTokenInfo = original_previous_token_info_lookahead;
+                // --- End Lookahead ---
+
+                if (is_method_like_signature_after_name)
+                {
+                    return parse_method_declaration(member_start_loc, std::move(modifiers), type, name_token_info);
+                }
+                else
+                {
+                    // It's a field. currentTokenInfo is still the identifier (name_token_info).
+                    // parse_field_declaration will consume this identifier.
+                    return parse_field_declaration(member_start_loc, std::move(modifiers), type);
+                }
+            }
+            else
+            {
+                record_error_at_current("Expected identifier for member name after type.");
+                return nullptr;
+            }
         }
     }
 
-    std::shared_ptr<BaseMethodDeclarationNode> ScriptParser::parse_base_method_declaration(
-        const SourceLocation &decl_start_loc,
-        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
-        std::shared_ptr<TypeNameNode> return_type,
-        const CurrentTokenInfo &method_name_token_info) // method_name_token_info is the Identifier token
+    void ScriptParser::parse_base_method_declaration_parts(
+        std::shared_ptr<BaseMethodDeclarationNode> method_node,
+        const CurrentTokenInfo &method_name_token_info)
     {
-        auto method_node = make_ast_node<MethodDeclarationNode>(decl_start_loc);
-        method_node->modifiers = std::move(modifiers);
-        method_node->type = return_type; // This is 'return_type' from MemberDeclarationNode base
-
-        // Method name was identified by the caller (parse_member_declaration's lookahead)
+        // Method name was identified by the caller.
         // The current token at entry here is the method name identifier.
         method_node->name = create_identifier_node(method_name_token_info);
-        advance_and_lex(); // Consume method name identifier
+        advance_and_lex(); // Consume method/constructor name identifier
 
         // TODO: Parse Generic Method Parameters <T, U> (e.g., void MyMethod<T>(T value))
         // if (check_token(TokenType::LessThan)) {
-        //     method_node->genericOpenAngleBracketToken = ...
-        //     parse_type_parameter_list_for_method(); // similar to class generic params
-        //     method_node->genericCloseAngleBracketToken = ...
+        //     method_node->genericOpenAngleBracketToken = create_token_node(TokenType::LessThan, currentTokenInfo);
+        //     advance_and_lex(); // Consume '<'
+        //     // ... parse type parameters ...
+        //     if (check_token(TokenType::GreaterThan)) {
+        //         method_node->genericCloseAngleBracketToken = create_token_node(TokenType::GreaterThan, currentTokenInfo);
+        //         advance_and_lex(); // Consume '>'
+        //     } else {
+        //         record_error_at_current("Expected '>' to close generic parameter list for " + std::string(method_name_token_info.lexeme) + ".");
+        //     }
         // }
 
         // Parse Parameter List
@@ -828,7 +863,6 @@ namespace Mycelium::Scripting::Lang
             method_node->openParenToken = create_token_node(TokenType::OpenParen, currentTokenInfo);
             advance_and_lex(); // Consume '('
 
-            // Use the helper to parse content
             std::vector<std::shared_ptr<TokenNode>> param_commas;
             std::optional<std::vector<std::shared_ptr<ParameterDeclarationNode>>> params_opt = parse_parameter_list_content(param_commas);
 
@@ -837,11 +871,7 @@ namespace Mycelium::Scripting::Lang
                 method_node->parameters = params_opt.value();
                 method_node->parameterCommas = param_commas;
             }
-            else
-            {
-                // Error in parameter list content, error already recorded by helper
-                // method_node->parameters will be empty.
-            }
+            // else: error already recorded by helper
 
             if (check_token(TokenType::CloseParen))
             {
@@ -850,20 +880,46 @@ namespace Mycelium::Scripting::Lang
             }
             else
             {
-                record_error_at_current("Expected ')' to close parameter list for method.");
+                record_error_at_current("Expected ')' to close parameter list for " + std::string(method_name_token_info.lexeme) + ".");
             }
         }
         else
         {
-            record_error_at_current("Expected '(' for method parameter list.");
-            // Create dummy open/close paren tokens if AST requires them for an empty list
-            // For now, if no '(', openParenToken and closeParenToken remain nullopt.
+            record_error_at_current("Expected '(' for parameter list of " + std::string(method_name_token_info.lexeme) + ".");
+        }
+        // TODO: Parse method constraints (where T : IConstraint)
+    }
+    
+    std::shared_ptr<ConstructorDeclarationNode> ScriptParser::parse_constructor_declaration(
+        const SourceLocation &decl_start_loc,
+        std::vector<std::pair<ModifierKind, std::shared_ptr<TokenNode>>> modifiers,
+        const CurrentTokenInfo &constructor_name_token_info)
+    {
+        auto ctor_node = make_ast_node<ConstructorDeclarationNode>(decl_start_loc);
+        ctor_node->modifiers = std::move(modifiers);
+        // Constructors don't have an explicit return type in 'type' field of BaseMethodDeclarationNode.
+        // Their 'name' is the class name.
+
+        parse_base_method_declaration_parts(ctor_node, constructor_name_token_info);
+
+        // Parse Constructor Body
+        if (check_token(TokenType::OpenBrace))
+        {
+            ctor_node->body = parse_block_statement();
+        }
+        else if (check_token(TokenType::Semicolon)) { 
+            ctor_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo);
+            advance_and_lex();
+            // This might be for an extern constructor or an error if not supported.
+            // For now, just note it. Semantic analysis would validate.
+        }
+        else
+        {
+            record_error_at_current("Expected '{' for constructor body or ';' for declaration.");
         }
 
-        // TODO: Parse method constraints (where T : IConstraint)
-
-        finalize_node_location(method_node);
-        return method_node;
+        finalize_node_location(ctor_node);
+        return ctor_node;
     }
 
     std::shared_ptr<MethodDeclarationNode> ScriptParser::parse_method_declaration(
@@ -872,22 +928,26 @@ namespace Mycelium::Scripting::Lang
         std::shared_ptr<TypeNameNode> return_type,
         const CurrentTokenInfo &method_name_token_info)
     {
-        auto method_node = std::static_pointer_cast<MethodDeclarationNode>(parse_base_method_declaration(decl_start_loc, std::move(modifiers), return_type, method_name_token_info));
-        if (!method_node)
-        {
-            record_error_at_current("Failed to parse method declaration.");
-            return nullptr;
-        }
+        auto method_node = make_ast_node<MethodDeclarationNode>(decl_start_loc);
+        method_node->modifiers = std::move(modifiers);
+        method_node->type = return_type; // Set the return type
+
+        parse_base_method_declaration_parts(method_node, method_name_token_info);
         
-        // Parse Method Body
+        // Parse Method Body or Semicolon
         if (check_token(TokenType::OpenBrace))
         {
             method_node->body = parse_block_statement();
         }
+        else if (check_token(TokenType::Semicolon))
+        {
+            method_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo);
+            advance_and_lex(); // Consume ';'
+            // This indicates an abstract method, interface method, or potentially an error if not in such context.
+        }
         else
         {
-            record_error_at_current("Expected body for method");
-            // Node will be malformed.
+            record_error_at_current("Expected '{' for method body or ';' for declaration.");
         }
 
         finalize_node_location(method_node);
@@ -897,49 +957,53 @@ namespace Mycelium::Scripting::Lang
     std::shared_ptr<ExternalMethodDeclarationNode> ScriptParser::parse_external_method_declaration()
     {
         SourceLocation start_loc = currentTokenInfo.location;
+        auto extern_method_node = make_ast_node<ExternalMethodDeclarationNode>(start_loc);
 
-        std::shared_ptr<TokenNode> externNode;
         if (check_token(TokenType::Extern))
         {
-            externNode = create_token_node(TokenType::Extern, currentTokenInfo);
+            extern_method_node->externKeyword = create_token_node(TokenType::Extern, currentTokenInfo);
             advance_and_lex(); // Consume 'extern'
         }
         else
         {
             record_error_at_current("Expected 'extern' keyword for external method declaration.");
-            return nullptr;
+            return nullptr; // Cannot proceed without 'extern'
         }
 
         auto type = parse_type_name();
         if (!type)
         {
             record_error_at_current("Expected type name for external method declaration.");
+            return nullptr; // Type is mandatory
+        }
+        extern_method_node->type = type; // Set return type
+
+        if (!check_token(TokenType::Identifier)) {
+            record_error_at_current("Expected identifier for external method name.");
             return nullptr;
         }
+        CurrentTokenInfo name_token_info = currentTokenInfo; 
 
-        auto method_node = std::static_pointer_cast<ExternalMethodDeclarationNode>(parse_base_method_declaration(start_loc, {}, type, currentTokenInfo));
-        if (!method_node)
-        {
-            record_error_at_current("Failed to parse external method declaration.");
-            return nullptr;
+        parse_base_method_declaration_parts(extern_method_node, name_token_info);
+
+        // Extern methods must end with a semicolon and have no body
+        if (extern_method_node->body) { // Should not have a body
+             record_error("External method declaration cannot have a body.", extern_method_node->body.value()->location.value());
+             extern_method_node->body = std::nullopt; 
         }
 
-        method_node->externKeyword = externNode;
-
-        // Parse semicolon
         if (check_token(TokenType::Semicolon))
         {
-            method_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo);
+            extern_method_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo);
             advance_and_lex(); // Consume ';'
         }
         else
         {
-            record_error_at_current("Expected ';' to end external method declaration");
-            // Node will be malformed.
+            record_error_at_current("Expected ';' to end external method declaration.");
         }
         
-        finalize_node_location(method_node);
-        return method_node;
+        finalize_node_location(extern_method_node);
+        return extern_method_node;
     }
 
     std::shared_ptr<FieldDeclarationNode> ScriptParser::parse_field_declaration(
@@ -2428,9 +2492,46 @@ namespace Mycelium::Scripting::Lang
                  check_token(TokenType::Long) ||
                  check_token(TokenType::Double) ||
                  check_token(TokenType::Char) ||
-                 check_token(TokenType::Float)) // Added Float
+                 check_token(TokenType::Float) ||
+                 check_token(TokenType::Identifier) // Potential custom type
+                 )
         {
-            return parse_local_variable_declaration_statement();
+            // If it's an Identifier, we need to be more certain it's a declaration
+            // (e.g., "TypeName varName") rather than an expression statement ("funcName();").
+            if (check_token(TokenType::Identifier))
+            {
+                // Save parser state for lookahead
+                size_t original_char_offset_peek = currentCharOffset;
+                int original_line_peek = currentLine;
+                int original_column_peek = currentColumn;
+                size_t original_line_start_offset_peek = currentLineStartOffset;
+                CurrentTokenInfo original_current_token_info_peek = currentTokenInfo;
+                CurrentTokenInfo original_previous_token_info_peek = previousTokenInfo;
+                // Note: errors are not saved/restored for this simple peek, as it shouldn't generate errors.
+
+                advance_and_lex(); // Consume the first Identifier (potential TypeName)
+                bool is_followed_by_identifier = check_token(TokenType::Identifier); // Is next token an Identifier (potential varName)?
+                
+                // Restore parser state after peeking
+                currentCharOffset = original_char_offset_peek;
+                currentLine = original_line_peek;
+                currentColumn = original_column_peek;
+                currentLineStartOffset = original_line_start_offset_peek;
+                currentTokenInfo = original_current_token_info_peek;
+                previousTokenInfo = original_previous_token_info_peek;
+
+                if (is_followed_by_identifier) {
+                    // Likely "TypeName VariableName ...", proceed to parse as local variable declaration.
+                    return parse_local_variable_declaration_statement();
+                }
+                // If not "Identifier Identifier", then the first Identifier is likely the start of an expression.
+                // Fall through to expression statement parsing.
+            }
+            else
+            {
+                // It's 'var' or a primitive type keyword, definitely a local var decl.
+                return parse_local_variable_declaration_statement();
+            }
         }
         else if (check_token(TokenType::Semicolon))
         {

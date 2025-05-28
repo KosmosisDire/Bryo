@@ -29,7 +29,7 @@ namespace llvm {
     class Type;
     class BasicBlock;
     class StructType;
-    class PointerType;
+    // PointerType forward declaration might not be needed if we always use llvm::Type* for opaque ptr
 }
 
 namespace Mycelium::Scripting::Lang
@@ -41,89 +41,106 @@ public:
     ScriptCompiler();
     ~ScriptCompiler();
 
-    // Compiles the AST into the internal LLVM Module.
-    // Throws std::runtime_error on critical failure.
-    // Module ownership remains with ScriptCompiler until explicitly taken (e.g., for JIT).
     void compile_ast(std::shared_ptr<CompilationUnitNode> ast_root, const std::string& module_name = "MyceliumModule");
-
-    // Returns the LLVM IR as a string.
     std::string get_ir_string() const;
-
-    // Dumps the LLVM IR to llvm::errs() (typically stderr).
     void dump_ir() const;
 
-    // --- JIT Execution ---
-    // Initializes LLVM for JIT (call once if needed globally, or it will be called internally).
     static void initialize_jit_engine_dependencies();
-
-    // JIT compiles the current module and executes the specified function.
-    // Returns the GenericValue result from the function.
-    // Throws std::runtime_error on failure.
-    // Takes ownership of the internal LLVM Module.
     llvm::GenericValue jit_execute_function(const std::string& function_name,
                                             const std::vector<llvm::GenericValue>& args = {});
     
-    // --- AOT Compilation to Object File ---
-    // Initializes LLVM for AOT (call once if needed globally, or it will be called internally).
     static void initialize_aot_engine_dependencies();
-
-    // Compiles the current module to an object file.
-    // Throws std::runtime_error on failure.
-    // The internal LLVM Module is consumed by this process if successful,
-    // but it's generally better to re-compile AST if you need the module again.
     void compile_to_object_file(const std::string& output_filename);
 
-
 private:
+    // Forward declaration for internal structs
+    struct ClassTypeInfo; 
+    struct ExpressionVisitResult;
+    struct VariableInfo;
+
     std::unique_ptr<llvm::LLVMContext> llvmContext;
-    std::unique_ptr<llvm::Module> llvmModule; // Module is owned here
+    std::unique_ptr<llvm::Module> llvmModule;
     std::unique_ptr<llvm::IRBuilder<>> llvmBuilder;
 
-    std::map<std::string, llvm::AllocaInst*> namedValues;
+    static bool jit_initialized;
+    static bool aot_initialized;
+
+    std::map<std::string, VariableInfo> namedValues;
     llvm::Function* currentFunction = nullptr;
-    static std::map<std::string, llvm::Function*> functionProtos;
 
-    // types - This is the proper struct type for MyceliumString
     llvm::StructType *myceliumStringType = nullptr;
-    llvm::PointerType* getMyceliumStringPtrTy();
-    void declare_all_runtime_functions();
+    llvm::StructType *myceliumObjectHeaderType = nullptr;
+    
+    struct ClassTypeInfo {
+        std::string name;
+        uint32_t type_id;
+        llvm::StructType* fieldsType; 
+        std::vector<std::string> field_names_in_order;
+        std::map<std::string, unsigned> field_indices;
+        std::vector<std::shared_ptr<TypeNameNode>> field_ast_types; // Store AST TypeNameNode for each field
+    };
+    std::map<std::string, ClassTypeInfo> classTypeRegistry;
+    uint32_t next_type_id = 0;
 
-    // Helper to transfer module ownership, e.g., to ExecutionEngine
+    struct ExpressionVisitResult {
+        llvm::Value* value = nullptr;
+        const ClassTypeInfo* classInfo = nullptr; 
+
+        ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr)
+            : value(v), classInfo(ci) {}
+    };
+
+    struct VariableInfo {
+        llvm::AllocaInst* alloca = nullptr;
+        const ClassTypeInfo* classInfo = nullptr; 
+        std::shared_ptr<TypeNameNode> declaredTypeNode = nullptr;
+    };
+
+    std::map<llvm::AllocaInst*, llvm::Value*> current_function_arc_locals;
+
+    llvm::Type* getMyceliumStringPtrTy(); // Returns opaque ptr (llvm::Type*)
+    llvm::Type* getMyceliumObjectHeaderPtrTy(); // Returns opaque ptr (llvm::Type*)
+    void declare_all_runtime_functions();
     std::unique_ptr<llvm::Module> take_module();
 
-
     // --- Visitor Methods (snake_case) ---
-    llvm::Value* visit(std::shared_ptr<AstNode> node);
+    // AstNode visitor returns llvm::Value* for compatibility with statement visitors
+    llvm::Value* visit(std::shared_ptr<AstNode> node); 
 
+    // Top-level and statement visitors (mostly return llvm::Value* or void)
     llvm::Value* visit(std::shared_ptr<CompilationUnitNode> node);
     llvm::Value* visit(std::shared_ptr<ClassDeclarationNode> node);
     llvm::Value* visit(std::shared_ptr<NamespaceDeclarationNode> node);
     void visit(std::shared_ptr<ExternalMethodDeclarationNode> node);
-
     llvm::Function* visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
-
     llvm::Value* visit(std::shared_ptr<StatementNode> node);
     llvm::Value* visit(std::shared_ptr<BlockStatementNode> node);
     llvm::Value* visit(std::shared_ptr<LocalVariableDeclarationStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ExpressionStatementNode> node);
     llvm::Value* visit(std::shared_ptr<IfStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ReturnStatementNode> node);
+    llvm::Function* visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
 
-    llvm::Value* visit(std::shared_ptr<ExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<LiteralExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<IdentifierExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<BinaryExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<AssignmentExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<UnaryExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<MethodCallExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<ObjectCreationExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<ThisExpressionNode> node);
-    llvm::Value* visit(std::shared_ptr<CastExpressionNode> node); // Added for type casting
+    // Expression visitors (return ExpressionVisitResult)
+    ExpressionVisitResult visit(std::shared_ptr<ExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<LiteralExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<IdentifierExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<BinaryExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<AssignmentExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<UnaryExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<MethodCallExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<ObjectCreationExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<ThisExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<CastExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<MemberAccessExpressionNode> node);
+    ExpressionVisitResult visit(std::shared_ptr<ParenthesizedExpressionNode> node); // Added forward declaration
 
     // --- Helper Methods (snake_case) ---
+    llvm::Value* getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMType);
+    llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType); // Added
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
-    llvm::Type* get_llvm_type_from_string(const std::string& type_name);
-    llvm::StructType* get_string_struct_type();
+    llvm::Type* get_llvm_type_from_string(const std::string& type_name, std::optional<SourceLocation> loc = std::nullopt);
+    // llvm::StructType* get_string_struct_type(); // Redundant if myceliumStringType is used directly
     std::string llvm_type_to_string(llvm::Type* type) const;
 
     llvm::AllocaInst* create_entry_block_alloca(llvm::Function* function, const std::string& var_name, llvm::Type* type);
