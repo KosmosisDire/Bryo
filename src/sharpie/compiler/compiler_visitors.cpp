@@ -574,28 +574,137 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Unar
 }
     
 ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<MethodCallExpressionNode> node) {
-    std::string resolved_func_name; llvm::Value* instance_ptr_for_call = nullptr; const ClassTypeInfo* callee_class_info = nullptr; 
+    std::string resolved_func_name; 
+    llvm::Value* instance_ptr_for_call = nullptr; 
+    const ClassTypeInfo* callee_class_info = nullptr; 
+    bool is_primitive_method_call = false;
+    PrimitiveStructInfo* primitive_info = nullptr;
+    
     if (auto memberAccess = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target)) {
-        std::shared_ptr<ExpressionNode> lhs_of_dot = memberAccess->target; std::string member_name_str = memberAccess->memberName->name;
+        std::shared_ptr<ExpressionNode> lhs_of_dot = memberAccess->target; 
+        std::string member_name_str = memberAccess->memberName->name;
+        
         if (auto class_ident_node = std::dynamic_pointer_cast<IdentifierExpressionNode>(lhs_of_dot)) {
-            std::string lhs_name = class_ident_node->identifier->name; auto cti_it = classTypeRegistry.find(lhs_name);
-            if (cti_it != classTypeRegistry.end()) { callee_class_info = &cti_it->second; resolved_func_name = callee_class_info->name + "." + member_name_str; instance_ptr_for_call = nullptr; }
-            else { ExpressionVisitResult target_obj_res = visit(lhs_of_dot); 
-                if (target_obj_res.value && target_obj_res.classInfo) { instance_ptr_for_call = target_obj_res.value; callee_class_info = target_obj_res.classInfo; resolved_func_name = callee_class_info->name + "." + member_name_str; }
-                else { log_error("Cannot call method '" + member_name_str + "' on undefined variable or non-class type '" + lhs_name + "'.", lhs_of_dot->location); return ExpressionVisitResult(nullptr); }
+            std::string lhs_name = class_ident_node->identifier->name; 
+            auto cti_it = classTypeRegistry.find(lhs_name);
+            
+            // Check if it's a static call on a primitive type
+            if (primitive_registry.is_primitive_simple_name(lhs_name)) {
+                primitive_info = primitive_registry.get_by_simple_name(lhs_name);
+                is_primitive_method_call = true;
+                resolved_func_name = primitive_info->name + "." + member_name_str;
+                instance_ptr_for_call = nullptr; // Static call
             }
-        } else { ExpressionVisitResult target_obj_res = visit(lhs_of_dot); 
-            if (target_obj_res.value && target_obj_res.classInfo) { instance_ptr_for_call = target_obj_res.value; callee_class_info = target_obj_res.classInfo; resolved_func_name = callee_class_info->name + "." + member_name_str; }
-            else { log_error("Cannot call method '" + member_name_str + "' on expression that does not resolve to a class instance.", lhs_of_dot->location); return ExpressionVisitResult(nullptr); }
+            else if (cti_it != classTypeRegistry.end()) { 
+                callee_class_info = &cti_it->second; 
+                resolved_func_name = callee_class_info->name + "." + member_name_str; 
+                instance_ptr_for_call = nullptr; 
+            }
+            else { 
+                ExpressionVisitResult target_obj_res = visit(lhs_of_dot); 
+                
+                // Check if the target expression is a primitive type
+                if (target_obj_res.value) {
+                    // First try to get primitive type from LLVM type
+                    llvm::Type* target_type = target_obj_res.value->getType();
+                    std::string primitive_name = get_primitive_name_from_llvm_type(target_type);
+                    
+                    // If that fails and this is an identifier, check its declared type
+                    if (primitive_name.empty()) {
+                        auto ident_expr = std::dynamic_pointer_cast<IdentifierExpressionNode>(lhs_of_dot);
+                        if (ident_expr) {
+                            auto var_it = namedValues.find(ident_expr->identifier->name);
+                            if (var_it != namedValues.end() && var_it->second.declaredTypeNode) {
+                                if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&var_it->second.declaredTypeNode->name_segment)) {
+                                    std::string declared_type_name = (*identNode)->name;
+                                    if (primitive_registry.is_primitive_simple_name(declared_type_name)) {
+                                        primitive_name = declared_type_name;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!primitive_name.empty() && primitive_registry.is_primitive_simple_name(primitive_name)) {
+                        primitive_info = primitive_registry.get_by_simple_name(primitive_name);
+                        is_primitive_method_call = true;
+                        resolved_func_name = primitive_info->name + "." + member_name_str;
+                        instance_ptr_for_call = target_obj_res.value; // Instance call
+                    }
+                    else if (target_obj_res.classInfo) { 
+                        instance_ptr_for_call = target_obj_res.value; 
+                        callee_class_info = target_obj_res.classInfo; 
+                        resolved_func_name = callee_class_info->name + "." + member_name_str; 
+                    }
+                    else { 
+                        log_error("Cannot call method '" + member_name_str + "' on undefined variable or non-class type '" + lhs_name + "'.", lhs_of_dot->location); 
+                        return ExpressionVisitResult(nullptr); 
+                    }
+                }
+            }
+        } else { 
+            ExpressionVisitResult target_obj_res = visit(lhs_of_dot); 
+            
+            if (target_obj_res.value) {
+                llvm::Type* target_type = target_obj_res.value->getType();
+                std::string primitive_name = get_primitive_name_from_llvm_type(target_type);
+                
+                if (!primitive_name.empty() && primitive_registry.is_primitive_simple_name(primitive_name)) {
+                    primitive_info = primitive_registry.get_by_simple_name(primitive_name);
+                    is_primitive_method_call = true;
+                    resolved_func_name = primitive_info->name + "." + member_name_str;
+                    instance_ptr_for_call = target_obj_res.value; // Instance call
+                }
+                else if (target_obj_res.classInfo) { 
+                    instance_ptr_for_call = target_obj_res.value; 
+                    callee_class_info = target_obj_res.classInfo; 
+                    resolved_func_name = callee_class_info->name + "." + member_name_str; 
+                }
+                else { 
+                    log_error("Cannot call method '" + member_name_str + "' on expression that does not resolve to a class instance.", lhs_of_dot->location); 
+                    return ExpressionVisitResult(nullptr); 
+                }
+            }
         }
-    } else if (auto idTarget = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target)) { resolved_func_name = idTarget->identifier->name; }
-    else { log_error("Unsupported method call target type.", node->target->location); return ExpressionVisitResult(nullptr); }
-    if (resolved_func_name.empty()) { log_error("Could not resolve function name for method call.", node->target->location); return ExpressionVisitResult(nullptr); }
+    } else if (auto idTarget = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target)) { 
+        resolved_func_name = idTarget->identifier->name; 
+    }
+    else { 
+        log_error("Unsupported method call target type.", node->target->location); 
+        return ExpressionVisitResult(nullptr); 
+    }
+    
+    if (resolved_func_name.empty()) { 
+        log_error("Could not resolve function name for method call.", node->target->location); 
+        return ExpressionVisitResult(nullptr); 
+    }
+    
     if (resolved_func_name == "Program.Main") resolved_func_name = "main"; 
+    
+    // Handle primitive method calls differently
+    if (is_primitive_method_call && primitive_info) {
+        return handle_primitive_method_call(node, primitive_info, instance_ptr_for_call);
+    }
+    
     llvm::Function *callee = llvmModule->getFunction(resolved_func_name);
-    if (!callee) { log_error("Function not found: " + resolved_func_name, node->target->location); return ExpressionVisitResult(nullptr); }
-    std::vector<llvm::Value *> args_values; if (instance_ptr_for_call) args_values.push_back(instance_ptr_for_call);
-    if (node->argumentList) { for (const auto &arg_node : node->argumentList->arguments) { ExpressionVisitResult arg_res = visit(arg_node->expression); if (!arg_res.value) { log_error("Method call argument failed to compile.", arg_node->location); return ExpressionVisitResult(nullptr); } args_values.push_back(arg_res.value); } }
+    if (!callee) { 
+        log_error("Function not found: " + resolved_func_name, node->target->location); 
+        return ExpressionVisitResult(nullptr); 
+    }
+    
+    std::vector<llvm::Value *> args_values; 
+    if (instance_ptr_for_call) args_values.push_back(instance_ptr_for_call);
+    if (node->argumentList) { 
+        for (const auto &arg_node : node->argumentList->arguments) { 
+            ExpressionVisitResult arg_res = visit(arg_node->expression); 
+            if (!arg_res.value) { 
+                log_error("Method call argument failed to compile.", arg_node->location); 
+                return ExpressionVisitResult(nullptr); 
+            } 
+            args_values.push_back(arg_res.value); 
+        } 
+    }
+    
     llvm::Value* call_result_val = llvmBuilder->CreateCall(callee, args_values, callee->getReturnType()->isVoidTy() ? "" : "calltmp");
     
     const ClassTypeInfo* return_static_ci = nullptr;
@@ -603,7 +712,7 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Meth
     if (return_info_it != functionReturnClassInfoMap.end()) {
         return_static_ci = return_info_it->second;
     }
-    // Note: header_ptr is not set here; it will be derived by the consumer (LocalVariableDeclaration or Assignment) if needed.
+    
     return ExpressionVisitResult(call_result_val, return_static_ci);
 }
 

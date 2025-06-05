@@ -232,3 +232,23 @@ void print_double(double val) {
 void print_bool(bool val) {
     std::cout << (val ? "true" : "false"); // Print "true" or "false"
 }
+
+// --- Additional String Functions for Primitive Struct Support ---
+
+int Mycelium_String_get_length(MyceliumString* str) {
+    if (!str) return 0;
+    return (int)str->length;
+}
+
+MyceliumString* Mycelium_String_substring(MyceliumString* str, int startIndex) {
+    if (!str || !str->data || startIndex < 0 || startIndex >= (int)str->length) {
+        return Mycelium_String_new_from_literal("", 0); // Return empty string for invalid input
+    }
+    
+    size_t remaining_length = str->length - startIndex;
+    return Mycelium_String_new_from_literal(str->data + startIndex, remaining_length);
+}
+
+MyceliumString* Mycelium_String_get_empty(void) {
+    return Mycelium_String_new_from_literal("", 0);
+}

@@ -121,7 +121,10 @@ The development of Sharpie will proceed in iterative "Sweeps." Each sweep is des
     *   **Type Information:**
         *   [x] Basic RTTI mechanism to store type IDs.
     *   **Primitive Structs:**
-        *   [ ] Define `System.Int32`, `System.Boolean` etc. as structs in runtime.
+        *   [x] **COMPLETED:** Primitive struct registry with built-in types (int, bool, string, float, double, char, long).
+        *   [x] **COMPLETED:** Runtime functions for primitive method calls (ToString, Parse, Length, Substring, etc.).
+        *   [x] **COMPLETED:** Compiler support for detecting primitive method calls.
+        *   [x] **COMPLETED:** Primitive method calls working perfectly - `int.ToString()`, `int.Parse()`, `bool.ToString()` all functional with JIT execution successful!
 
 5.  **Standard Library (Primitives):**
     *   [x] Implement `ToString()` methods for primitive types (e.g., `int.ToString()`).

@@ -10,6 +10,7 @@
 #include "ast/ast_expressions.hpp"
 #include "ast/ast_statements.hpp"
 #include "ast/ast_declarations.hpp" // Added
+#include "ast/primitive_structs.hpp" // Added for primitive struct backing
 
 // The Mycelium::Scripting::Lang namespace is opened in each individual ast_*.hpp file.
 // No need to open it here if this file only contains includes.

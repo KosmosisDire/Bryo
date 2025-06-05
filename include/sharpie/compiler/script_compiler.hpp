@@ -85,6 +85,9 @@ private:
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
     std::map<llvm::Function*, const ClassTypeInfo*> functionReturnClassInfoMap; // Map LLVM function to its return ClassTypeInfo if object
+    
+    // Primitive struct registry for supporting methods on primitives
+    PrimitiveStructRegistry primitive_registry;
 
     struct ExpressionVisitResult {
         llvm::Value* value = nullptr; // Primary value, e.g., result of an operation, or fields_ptr for an object
@@ -146,6 +149,10 @@ private:
     std::string llvm_type_to_string(llvm::Type* type) const;
 
     llvm::AllocaInst* create_entry_block_alloca(llvm::Function* function, const std::string& var_name, llvm::Type* type);
+
+    // --- Primitive struct helper methods ---
+    std::string get_primitive_name_from_llvm_type(llvm::Type* type);
+    ExpressionVisitResult handle_primitive_method_call(std::shared_ptr<MethodCallExpressionNode> node, PrimitiveStructInfo* primitive_info, llvm::Value* instance_ptr);
 
     [[noreturn]] void log_error(const std::string& message, std::optional<SourceLocation> loc = std::nullopt);
 };

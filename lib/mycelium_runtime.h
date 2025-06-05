@@ -64,6 +64,17 @@ double Mycelium_String_to_double(MyceliumString* str);
 bool Mycelium_String_to_bool(MyceliumString* str); // e.g., "true" -> true, others -> false
 char Mycelium_String_to_char(MyceliumString* str); // e.g., takes the first character, or 0 if empty/error
 
+// --- Additional String Functions for Primitive Struct Support ---
+
+// Get the length of a MyceliumString (for string.Length property)
+int Mycelium_String_get_length(MyceliumString* str);
+
+// Get substring from a MyceliumString starting at the given index
+MyceliumString* Mycelium_String_substring(MyceliumString* str, int startIndex);
+
+// Get an empty MyceliumString (for string.Empty static property)
+MyceliumString* Mycelium_String_get_empty(void);
+
 // --- Basic Print Utilities ---
 void print_int(int val);
 void print_double(double val);

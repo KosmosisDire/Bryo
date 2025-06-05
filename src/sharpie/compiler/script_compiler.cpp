@@ -44,6 +44,9 @@ namespace Mycelium::Scripting::Lang
     {
         llvmContext = std::make_unique<llvm::LLVMContext>();
         // llvmModule and llvmBuilder are initialized in compile_ast
+        
+        // Initialize primitive struct registry
+        primitive_registry.initialize_builtin_primitives();
     }
 
     ScriptCompiler::~ScriptCompiler() = default;
@@ -420,6 +423,185 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
         
         log_error("Unknown type name: '" + type_name + "' encountered during LLVM type lookup.", loc);
         return nullptr;
+    }
+
+    std::string ScriptCompiler::get_primitive_name_from_llvm_type(llvm::Type* type) {
+        // COMPLETELY DISABLE LLVM type introspection to avoid JIT crashes
+        // We'll rely entirely on declared type information from variables
+        return "";
+    }
+
+    ScriptCompiler::ExpressionVisitResult ScriptCompiler::handle_primitive_method_call(
+        std::shared_ptr<MethodCallExpressionNode> node, 
+        PrimitiveStructInfo* primitive_info, 
+        llvm::Value* instance_ptr) {
+        
+        if (!primitive_info) {
+            log_error("Primitive info is null in handle_primitive_method_call.", node->location);
+            return ExpressionVisitResult(nullptr);
+        }
+
+        // Extract method name from the call
+        std::string method_name;
+        if (auto memberAccess = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target)) {
+            method_name = memberAccess->memberName->name;
+        } else {
+            log_error("Invalid method call structure for primitive method.", node->location);
+            return ExpressionVisitResult(nullptr);
+        }
+
+        // Handle built-in primitive methods directly here rather than trying to call LLVM functions
+        // This provides better performance and simpler implementation
+        
+        if (primitive_info->simple_name == "int") {
+            if (method_name == "ToString") {
+                // Convert int to string
+                llvm::Function* fromIntFunc = llvmModule->getFunction("Mycelium_String_from_int");
+                if (!fromIntFunc) {
+                    log_error("Mycelium_String_from_int not found for int.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromIntFunc, {instance_ptr}, "int_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+            else if (method_name == "Parse" && instance_ptr == nullptr) { // Static method
+                // Parse string to int
+                if (!node->argumentList || node->argumentList->arguments.empty()) {
+                    log_error("int.Parse requires a string argument", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                
+                auto arg_res = visit(node->argumentList->arguments[0]->expression);
+                if (!arg_res.value) {
+                    log_error("Failed to compile argument for int.Parse", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                
+                llvm::Function* toIntFunc = llvmModule->getFunction("Mycelium_String_to_int");
+                if (!toIntFunc) {
+                    log_error("Mycelium_String_to_int not found for int.Parse()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(toIntFunc, {arg_res.value}, "parse_int");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "bool") {
+            if (method_name == "ToString") {
+                // Convert bool to string
+                llvm::Function* fromBoolFunc = llvmModule->getFunction("Mycelium_String_from_bool");
+                if (!fromBoolFunc) {
+                    log_error("Mycelium_String_from_bool not found for bool.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromBoolFunc, {instance_ptr}, "bool_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "string") {
+            if (method_name == "get_Length") {
+                // Get string length
+                // For now, create a simple runtime call that gets the length from MyceliumString
+                // We need to add this to the runtime
+                llvm::Function* lenFunc = llvmModule->getFunction("Mycelium_String_get_length");
+                if (!lenFunc) {
+                    // Create the function declaration if it doesn't exist
+                    llvm::Type* i32Type = llvm::Type::getInt32Ty(*llvmContext);
+                    llvm::Type* stringPtrType = getMyceliumStringPtrTy();
+                    llvm::FunctionType* lenFuncType = llvm::FunctionType::get(i32Type, {stringPtrType}, false);
+                    lenFunc = llvm::Function::Create(lenFuncType, llvm::Function::ExternalLinkage, "Mycelium_String_get_length", llvmModule.get());
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(lenFunc, {instance_ptr}, "string_length");
+                return ExpressionVisitResult(result, nullptr);
+            }
+            else if (method_name == "Substring") {
+                // String substring
+                if (!node->argumentList || node->argumentList->arguments.empty()) {
+                    log_error("string.Substring requires a start index argument", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                
+                auto start_res = visit(node->argumentList->arguments[0]->expression);
+                if (!start_res.value) {
+                    log_error("Failed to compile start index for string.Substring", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                
+                llvm::Function* substrFunc = llvmModule->getFunction("Mycelium_String_substring");
+                if (!substrFunc) {
+                    // Create the function declaration
+                    llvm::Type* stringPtrType = getMyceliumStringPtrTy();
+                    llvm::Type* i32Type = llvm::Type::getInt32Ty(*llvmContext);
+                    llvm::FunctionType* substrFuncType = llvm::FunctionType::get(stringPtrType, {stringPtrType, i32Type}, false);
+                    substrFunc = llvm::Function::Create(substrFuncType, llvm::Function::ExternalLinkage, "Mycelium_String_substring", llvmModule.get());
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(substrFunc, {instance_ptr, start_res.value}, "string_substring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+            else if (method_name == "get_Empty" && instance_ptr == nullptr) { // Static method
+                // Return empty string
+                llvm::Function* emptyFunc = llvmModule->getFunction("Mycelium_String_get_empty");
+                if (!emptyFunc) {
+                    // Create the function declaration
+                    llvm::Type* stringPtrType = getMyceliumStringPtrTy();
+                    llvm::FunctionType* emptyFuncType = llvm::FunctionType::get(stringPtrType, {}, false);
+                    emptyFunc = llvm::Function::Create(emptyFuncType, llvm::Function::ExternalLinkage, "Mycelium_String_get_empty", llvmModule.get());
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(emptyFunc, {}, "string_empty");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "float") {
+            if (method_name == "ToString") {
+                // Convert float to string
+                llvm::Function* fromFloatFunc = llvmModule->getFunction("Mycelium_String_from_float");
+                if (!fromFloatFunc) {
+                    log_error("Mycelium_String_from_float not found for float.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromFloatFunc, {instance_ptr}, "float_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "double") {
+            if (method_name == "ToString") {
+                // Convert double to string
+                llvm::Function* fromDoubleFunc = llvmModule->getFunction("Mycelium_String_from_double");
+                if (!fromDoubleFunc) {
+                    log_error("Mycelium_String_from_double not found for double.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromDoubleFunc, {instance_ptr}, "double_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "char") {
+            if (method_name == "ToString") {
+                // Convert char to string
+                llvm::Function* fromCharFunc = llvmModule->getFunction("Mycelium_String_from_char");
+                if (!fromCharFunc) {
+                    log_error("Mycelium_String_from_char not found for char.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromCharFunc, {instance_ptr}, "char_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+        else if (primitive_info->simple_name == "long") {
+            if (method_name == "ToString") {
+                // Convert long to string
+                llvm::Function* fromLongFunc = llvmModule->getFunction("Mycelium_String_from_long");
+                if (!fromLongFunc) {
+                    log_error("Mycelium_String_from_long not found for long.ToString()", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value* result = llvmBuilder->CreateCall(fromLongFunc, {instance_ptr}, "long_tostring");
+                return ExpressionVisitResult(result, nullptr);
+            }
+        }
+
+        log_error("Unsupported primitive method: " + primitive_info->simple_name + "." + method_name, node->location);
+        return ExpressionVisitResult(nullptr);
     }
 
     // The visit methods will be moved to separate files (compiler_expressions.cpp, etc.)

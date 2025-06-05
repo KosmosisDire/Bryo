@@ -144,6 +144,22 @@ static llvm::FunctionType* get_llvm_type_print_bool(llvm::LLVMContext& context, 
     return llvm::FunctionType::get(voidTy, {boolTy}, false);
 }
 
+// --- LLVM Type Getters for String primitive struct methods ---
+static llvm::FunctionType* get_llvm_type_Mycelium_String_get_length(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
+    (void)myceliumObjectHeaderTypePtr; // Unused
+    return llvm::FunctionType::get(llvm::Type::getInt32Ty(context), {myceliumStringTypePtr}, false);
+}
+
+static llvm::FunctionType* get_llvm_type_Mycelium_String_substring(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
+    (void)myceliumObjectHeaderTypePtr; // Unused
+    return llvm::FunctionType::get(myceliumStringTypePtr, {myceliumStringTypePtr, llvm::Type::getInt32Ty(context)}, false);
+}
+
+static llvm::FunctionType* get_llvm_type_Mycelium_String_get_empty(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
+    (void)myceliumObjectHeaderTypePtr; // Unused
+    return llvm::FunctionType::get(myceliumStringTypePtr, {}, false);
+}
+
 
 // --- The Global Registry ---
 // THIS IS THE PRIMARY PLACE YOU'LL MODIFY WHEN ADDING NEW RUNTIME FUNCTIONS
@@ -267,6 +283,22 @@ static const std::vector<RuntimeFunctionBinding> g_runtime_function_bindings_lis
         "print_bool",
         reinterpret_cast<void*>(print_bool),
         get_llvm_type_print_bool
+    },
+    // Bindings for string primitive struct methods
+    {
+        "Mycelium_String_get_length",
+        reinterpret_cast<void*>(Mycelium_String_get_length),
+        get_llvm_type_Mycelium_String_get_length
+    },
+    {
+        "Mycelium_String_substring",
+        reinterpret_cast<void*>(Mycelium_String_substring),
+        get_llvm_type_Mycelium_String_substring
+    },
+    {
+        "Mycelium_String_get_empty",
+        reinterpret_cast<void*>(Mycelium_String_get_empty),
+        get_llvm_type_Mycelium_String_get_empty
     }
 };
 
