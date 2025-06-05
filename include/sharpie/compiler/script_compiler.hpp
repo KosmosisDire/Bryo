@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../script_ast.hpp" // Updated path
+#include "class_type_info.hpp"
+#include "scope_manager.hpp"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
@@ -56,7 +58,6 @@ public:
 
 private:
     // Forward declaration for internal structs
-    struct ClassTypeInfo; 
     struct ExpressionVisitResult;
     struct VariableInfo;
 
@@ -73,19 +74,9 @@ private:
     llvm::StructType *myceliumStringType = nullptr;
     llvm::StructType *myceliumObjectHeaderType = nullptr;
     
-    struct ClassTypeInfo {
-        std::string name;
-        uint32_t type_id;
-        llvm::StructType* fieldsType; 
-        std::vector<std::string> field_names_in_order;
-        std::map<std::string, unsigned> field_indices;
-        std::vector<std::shared_ptr<TypeNameNode>> field_ast_types; // Store AST TypeNameNode for each field
-        llvm::Function* destructor_func = nullptr; // Pointer to the LLVM function for the destructor
-        
-        // VTable support for polymorphism
-        llvm::GlobalVariable* vtable_global = nullptr; // Global variable containing the vtable
-        llvm::StructType* vtable_type = nullptr;       // LLVM type for the vtable struct
-    };
+    // Scope-based object lifecycle management
+    std::unique_ptr<ScopeManager> scope_manager;
+    
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
     std::map<llvm::Function*, const ClassTypeInfo*> functionReturnClassInfoMap; // Map LLVM function to its return ClassTypeInfo if object
@@ -109,7 +100,6 @@ private:
         std::shared_ptr<TypeNameNode> declaredTypeNode = nullptr;
     };
 
-    std::map<llvm::AllocaInst*, llvm::Value*> current_function_arc_locals;
 
     // Loop context tracking for break/continue statements
     struct LoopContext {
@@ -120,6 +110,8 @@ private:
             : exit_block(exit), continue_block(cont) {}
     };
     std::vector<LoopContext> loop_context_stack;
+
+
 
     llvm::Type* getMyceliumStringPtrTy(); // Returns opaque ptr (llvm::Type*)
     llvm::Type* getMyceliumObjectHeaderPtrTy(); // Returns opaque ptr (llvm::Type*)
@@ -172,6 +164,8 @@ private:
     // --- Primitive struct helper methods ---
     std::string get_primitive_name_from_llvm_type(llvm::Type* type);
     ExpressionVisitResult handle_primitive_method_call(std::shared_ptr<MethodCallExpressionNode> node, PrimitiveStructInfo* primitive_info, llvm::Value* instance_ptr);
+
+
 
     [[noreturn]] void log_error(const std::string& message, std::optional<SourceLocation> loc = std::nullopt);
 };

@@ -147,10 +147,15 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<ClassDeclarationNode> node) {
 }
 
 llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string &class_name) {
-    namedValues.clear(); current_function_arc_locals.clear(); bool is_static = false; 
+    namedValues.clear(); bool is_static = false;
     for (auto mod : node->modifiers) if (mod.first == ModifierKind::Static) is_static = true;
     if (!node->type.has_value()) log_error("Method lacks return type.", node->location);
     llvm::Type *return_type = get_llvm_type(node->type.value());
+    
+    // Push function scope for the new method
+    std::string func_name = class_name + "." + node->name->name; 
+    if (func_name == "Program.Main") func_name = "main";
+    scope_manager->push_scope(ScopeType::Function, func_name);
     std::vector<llvm::Type *> param_llvm_types; const ClassTypeInfo* this_class_info = nullptr;
     if (!is_static) {
         auto cti_it = classTypeRegistry.find(class_name);
@@ -161,7 +166,6 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
          if (!param_node->type) log_error("Method param lacks type.", param_node->location);
          param_llvm_types.push_back(get_llvm_type(param_node->type));
     }
-    std::string func_name = class_name + "." + node->name->name; if (func_name == "Program.Main") func_name = "main";
     llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
     llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
     
@@ -235,25 +239,35 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
     if (node->body) {
         visit(node->body.value()); 
         if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
-            // Skip function-exit ARC cleanup to avoid LLVM domination issues
-            // Objects will be cleaned up by the runtime ARC system when their ref counts reach zero
+            // Pop function scope to clean up objects before return
+            scope_manager->pop_scope();
             if (return_type->isVoidTy()) llvmBuilder->CreateRetVoid(); else log_error("Non-void function '" + func_name + "' missing return.", node->body.value()->location);
         }
+        // Note: If there's already a terminator (return statement), the return visitor already popped the scope
     } else { 
         log_error("Method '" + func_name + "' has no body.", node->location);
         if (return_type->isVoidTy() && !entry_block->getTerminator()) {
-            for (auto const& [alloca_inst, header_val_or_obj_ptr] : current_function_arc_locals) {
-                 if (header_val_or_obj_ptr) { llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val_or_obj_ptr}); }
-            } llvmBuilder->CreateRetVoid();
+            scope_manager->pop_scope();
+            llvmBuilder->CreateRetVoid();
         }
-    } return function; 
+    } return function;
 }
 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<StatementNode> node) { return visit(std::static_pointer_cast<AstNode>(node)); }
 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<BlockStatementNode> node) {
+    // Push block scope for proper object lifecycle management
+    scope_manager->push_scope(ScopeType::Block, "block");
+    
     llvm::Value *last_val = nullptr;
-    for (const auto &stmt : node->statements) { if (llvmBuilder->GetInsertBlock()->getTerminator()) break; last_val = visit(stmt); }
+    for (const auto &stmt : node->statements) { 
+        if (llvmBuilder->GetInsertBlock()->getTerminator()) break; 
+        last_val = visit(stmt); 
+    }
+    
+    // Pop block scope - this will automatically clean up any objects created in this scope
+    scope_manager->pop_scope();
+    
     return last_val; 
 }
 
@@ -274,21 +288,40 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<LocalVariableDeclarationState
             if (!init_val) { log_error("Initializer for " + declarator->name->name + " failed.", declarator->initializer.value()->location); continue; }
             if (init_val->getType() != var_llvm_type) { log_error("LLVM type mismatch for initializer of " + declarator->name->name, declarator->initializer.value()->location); }
             if (var_static_class_info && init_val_class_info && var_static_class_info != init_val_class_info) { log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location); }
-            llvmBuilder->CreateStore(init_val, varInfo.alloca);
-            if (var_static_class_info && var_static_class_info->fieldsType && init_val_class_info && init_val->getType()->isPointerTy()) {
-                llvm::Value* actual_header_ptr = nullptr;
-                if (init_res.header_ptr) { // Prefer the directly provided header_ptr
-                    actual_header_ptr = init_res.header_ptr;
-                } else { // Fallback for expressions that don't directly yield a header_ptr (e.g., method calls, identifiers)
-                    actual_header_ptr = getHeaderPtrFromFieldsPtr(init_val, var_static_class_info->fieldsType);
-                }
-                
-                if (actual_header_ptr) {
-                    current_function_arc_locals[varInfo.alloca] = actual_header_ptr;
-                    
+            // CRITICAL ARC FIX: Add proper retain logic for variable initialization
+            // This ensures that `TestObject copy = original;` properly retains the source object
+            if (var_static_class_info && var_static_class_info->fieldsType && init_val->getType()->isPointerTy()) {
+                // Calculate header pointer and retain the object for ARC
+                llvm::Value* init_object_header = nullptr;
+                if (init_res.header_ptr) {
+                    init_object_header = init_res.header_ptr;
                 } else {
-                    log_error("FATAL: Could not obtain header pointer for ARC tracking of variable '" + declarator->name->name + "'. Destructor will not be called. Initializer was an object type.", declarator->location);
+                    init_object_header = getHeaderPtrFromFieldsPtr(init_val, var_static_class_info->fieldsType);
                 }
+                if (init_object_header) {
+                    llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {init_object_header});
+                }
+            }
+            
+            llvmBuilder->CreateStore(init_val, varInfo.alloca);
+            
+            // Check if this is a declared type name to exclude built-in types like 'string'
+            std::string declared_type_name;
+            if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&node->type->name_segment)) {
+                declared_type_name = (*identNode)->name;
+            }
+            
+            // UNIFIED ARC MANAGEMENT: Use only scope manager, remove dual systems
+            // Register ARC objects with scope manager for consistent cleanup
+            if (var_static_class_info && var_static_class_info->fieldsType && 
+                init_val->getType()->isPointerTy() && declared_type_name != "string") {
+                
+                // Register with scope manager for unified ARC management
+                scope_manager->register_arc_managed_object(
+                    varInfo.alloca, 
+                    var_static_class_info, 
+                    declarator->name->name
+                );
             }
         }
     } return nullptr;
@@ -431,22 +464,35 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<ForStatementNode> node) {
 }
 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<ReturnStatementNode> node) {
-    // Skip ARC cleanup in return statements to avoid domination issues
-    // Objects will be cleaned up by the runtime when their ref counts reach zero
+    // Generate the return value first
+    llvm::Value* return_value = nullptr;
     if (node->expression) {
         ExpressionVisitResult ret_res = visit(node->expression.value());
         if (!ret_res.value) {
             log_error("Return expression compiled to null.", node->expression.value()->location);
-            if(currentFunction->getReturnType()->isVoidTy()) llvmBuilder->CreateRetVoid();
-            else if(currentFunction->getReturnType()->isIntegerTy()) llvmBuilder->CreateRet(llvm::ConstantInt::get(currentFunction->getReturnType(), 0));
-            else llvmBuilder->CreateUnreachable(); return nullptr;
+            return nullptr;
         }
-        if (ret_res.value->getType() != currentFunction->getReturnType()) { log_error("Return type mismatch. Expected " + llvm_type_to_string(currentFunction->getReturnType()) + ", got " + llvm_type_to_string(ret_res.value->getType()), node->expression.value()->location); }
-        llvmBuilder->CreateRet(ret_res.value);
+        if (ret_res.value->getType() != currentFunction->getReturnType()) { 
+            log_error("Return type mismatch. Expected " + llvm_type_to_string(currentFunction->getReturnType()) + ", got " + llvm_type_to_string(ret_res.value->getType()), node->expression.value()->location); 
+        }
+        return_value = ret_res.value;
     } else {
-        if (!currentFunction->getReturnType()->isVoidTy()) { log_error("Non-void function missing return value.", node->location); }
+        if (!currentFunction->getReturnType()->isVoidTy()) { 
+            log_error("Non-void function missing return value.", node->location); 
+        }
+    }
+    
+    // Clean up function scope before return (handles all cleanup via scope manager)
+    scope_manager->pop_scope();
+    
+    // Generate the return instruction
+    if (return_value) {
+        llvmBuilder->CreateRet(return_value);
+    } else {
         llvmBuilder->CreateRetVoid();
-    } return nullptr; 
+    }
+    
+    return nullptr; 
 }
 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<BreakStatementNode> node) {
@@ -466,17 +512,25 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<ContinueStatementNode> node) 
         return nullptr;
     }
     
+    // CRITICAL: Clean up scope BEFORE creating the terminator instruction
+    // This ensures any object destructors are called before the continue jump
+    scope_manager->cleanup_current_scope_early();
+    
     const LoopContext& current_loop = loop_context_stack.back();
     llvmBuilder->CreateBr(current_loop.continue_block);
     return nullptr;
 }
 
 llvm::Function* ScriptCompiler::visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name) {
-    namedValues.clear(); current_function_arc_locals.clear(); std::string func_name = class_name + ".%ctor"; 
+    namedValues.clear(); std::string func_name = class_name + ".%ctor";
     llvm::Type *return_type = llvm::Type::getVoidTy(*llvmContext); std::vector<llvm::Type *> param_llvm_types;
     const ClassTypeInfo* this_class_info = nullptr; auto cti_it = classTypeRegistry.find(class_name);
     if (cti_it == classTypeRegistry.end()) { log_error("Class not found for constructor: " + class_name, node->location); return nullptr; }
     this_class_info = &cti_it->second; param_llvm_types.push_back(llvm::PointerType::getUnqual(*llvmContext));
+    
+    // Push constructor scope
+    scope_manager->push_scope(ScopeType::Function, func_name);
+    
     for (const auto &param_node : node->parameters) {
         if (!param_node->type) { log_error("Constructor parameter lacks type in " + class_name, param_node->location); return nullptr; }
         param_llvm_types.push_back(get_llvm_type(param_node->type));
@@ -502,26 +556,31 @@ llvm::Function* ScriptCompiler::visit(std::shared_ptr<ConstructorDeclarationNode
     if (node->body) {
         visit(node->body.value()); 
         if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
-            for (auto const& [_, header_val] : current_function_arc_locals) { if (header_val) { llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val}); } }
+            // Use scope manager instead of old cleanup system
+            scope_manager->pop_scope();
             llvmBuilder->CreateRetVoid(); 
         }
     } else {
         log_error("Constructor '" + func_name + "' has no body.", node->location);
         if (!entry_block->getTerminator()) { 
-            for (auto const& [_, header_val] : current_function_arc_locals) { if (header_val) { llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val});} }
+            scope_manager->pop_scope();
             llvmBuilder->CreateRetVoid();
         }
     } return function;
 }
 
 llvm::Function* ScriptCompiler::visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name) {
-    namedValues.clear(); current_function_arc_locals.clear(); std::string func_name = class_name + ".%dtor"; 
+    namedValues.clear(); std::string func_name = class_name + ".%dtor";
     llvm::Type *return_type = llvm::Type::getVoidTy(*llvmContext); std::vector<llvm::Type *> param_llvm_types = {llvm::PointerType::getUnqual(*llvmContext)};
     llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
     llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
     currentFunction = function; auto cti_it = classTypeRegistry.find(class_name);
     if (cti_it == classTypeRegistry.end()) { log_error("Class not found for destructor: " + class_name, node->location); return nullptr; }
     const ClassTypeInfo* this_class_info = &cti_it->second;
+    
+    // Push destructor scope (though destructors typically don't create many local objects)
+    scope_manager->push_scope(ScopeType::Function, func_name);
+    
     llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
     llvmBuilder->SetInsertPoint(entry_block); auto llvm_arg_it = function->arg_begin();
     VariableInfo thisVarInfo; thisVarInfo.alloca = create_entry_block_alloca(function, "this.dtor.arg", llvm_arg_it->getType());
@@ -561,38 +620,12 @@ llvm::Function* ScriptCompiler::visit(std::shared_ptr<DestructorDeclarationNode>
     }
     
     if (node->body) { visit(node->body.value()); }
-    if (!llvmBuilder->GetInsertBlock()->getTerminator()) { 
-        llvm::Value* loaded_this_fields_ptr = llvmBuilder->CreateLoad(llvm_arg_it->getType(), thisVarInfo.alloca, "this.for.field_release");
-        for (unsigned i = 0; i < this_class_info->field_ast_types.size(); ++i) {
-            std::shared_ptr<TypeNameNode> field_ast_type = this_class_info->field_ast_types[i];
-            llvm::Type* field_llvm_type = this_class_info->fieldsType->getElementType(i);
-            if (field_llvm_type->isPointerTy()) { 
-                const ClassTypeInfo* field_class_info = nullptr;
-                if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&field_ast_type->name_segment)) {
-                    auto field_cti_it = classTypeRegistry.find((*identNode)->name);
-                    if (field_cti_it != classTypeRegistry.end()) field_class_info = &field_cti_it->second;
-                }
-                if (field_class_info && field_class_info->fieldsType) { 
-                    llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, loaded_this_fields_ptr, i, this_class_info->field_names_in_order[i] + ".ptr.dtor");
-                    llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, this_class_info->field_names_in_order[i] + ".val.dtor");
-                    llvm::Value* field_header_ptr = getHeaderPtrFromFieldsPtr(field_val, field_class_info->fieldsType);
-                    if (field_header_ptr) {
-                         llvm::Function* release_func = llvmModule->getFunction("Mycelium_Object_release");
-                         if(release_func) llvmBuilder->CreateCall(release_func, {field_header_ptr});
-                         else log_error("Mycelium_Object_release not found during dtor field cleanup.", node->location);
-                    }
-                } else if (llvm_type_to_string(field_llvm_type) == llvm_type_to_string(getMyceliumStringPtrTy())) { 
-                    llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, loaded_this_fields_ptr, i, this_class_info->field_names_in_order[i] + ".ptr.dtor");
-                    llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, this_class_info->field_names_in_order[i] + ".val.dtor");
-                    llvm::Function* release_func = llvmModule->getFunction("Mycelium_Object_release"); 
-                    if(release_func) llvmBuilder->CreateCall(release_func, {field_val}); 
-                    else log_error("Release function not found for string field in destructor.", node->location);
-                }
-            }
-        }
-    }
+    // NOTE: Field cleanup is now handled by ARC when the object's ref count reaches zero
+    // Destructors should only contain user-defined cleanup code, not automatic field cleanup
+    // This prevents race conditions between manual field cleanup and scope management
     if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
-        for (auto const& [_, header_val] : current_function_arc_locals) { if (header_val) { llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {header_val}); } }
+        // Use scope manager instead of old cleanup system
+        scope_manager->pop_scope();
         llvmBuilder->CreateRetVoid(); 
     }
     if (llvm::verifyFunction(*function, &llvm::errs())) { log_error("Destructor function '" + func_name + "' verification failed. Dumping IR.", node->location); function->print(llvm::errs()); }
@@ -702,6 +735,14 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
         if (it == namedValues.end()) { log_error("Assigning to undeclared var: " + id_target->identifier->name, id_target->location); return ExpressionVisitResult(nullptr); }
         VariableInfo& target_var_info = it->second; llvm::Type* target_llvm_type = target_var_info.alloca->getAllocatedType();
         const ClassTypeInfo* target_static_ci = target_var_info.classInfo;
+        
+        // DEBUG: Print assignment details
+        std::cout << "[ASSIGNMENT DEBUG] Assigning to variable '" << id_target->identifier->name << "'" << std::endl;
+        std::cout << "  Target alloca: " << target_var_info.alloca << std::endl;
+        std::cout << "  Target class: " << (target_static_ci ? target_static_ci->name : "none") << std::endl;
+        std::cout << "  Source class: " << (new_val_static_ci ? new_val_static_ci->name : "none") << std::endl;
+        std::cout << "  Source header_ptr: " << source_res.header_ptr << std::endl;
+        
         if (new_llvm_val->getType() != target_llvm_type) { /* error or coerce */ }
         if (target_static_ci && new_val_static_ci && target_static_ci != new_val_static_ci) { /* error */ }
         
@@ -752,19 +793,8 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
             }
         }
         
-        if (new_val_static_ci && new_val_static_ci->fieldsType) {
-            // new_object_header_for_retain already calculated and used for retain
-            if (new_object_header_for_retain) {
-                current_function_arc_locals[target_var_info.alloca] = new_object_header_for_retain;
-            } else {
-                current_function_arc_locals.erase(target_var_info.alloca); // Remove if no valid header
-                if (new_val_static_ci && new_val_static_ci->fieldsType) { // Only log/error if it was expected to be an object
-                    log_error("FATAL: Could not obtain header pointer for ARC tracking for assignment to '" + id_target->identifier->name + "'. Destructor will not be called. Source was an object type.", node->target->location);
-                }
-            }
-        } else {
-            current_function_arc_locals.erase(target_var_info.alloca);
-        }
+        // NOTE: ARC tracking is now handled exclusively by the scope manager
+        // No need for manual tracking in current_function_arc_locals map
 
     } else if (auto member_target = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target)) {
         ExpressionVisitResult obj_res = visit(member_target->target); 
@@ -1038,5 +1068,7 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Pare
     if (!node || !node->expression) { log_error("ParenthesizedExpressionNode or its inner expression is null.", node ? node->location : std::nullopt); return ExpressionVisitResult(nullptr); }
     return visit(node->expression);
 }
+
+
 
 } // namespace Mycelium::Scripting::Lang

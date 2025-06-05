@@ -59,6 +59,9 @@ namespace Mycelium::Scripting::Lang
         }
         llvmModule = std::make_unique<llvm::Module>(module_name, *llvmContext);
         llvmBuilder = std::make_unique<llvm::IRBuilder<>>(*llvmContext);
+        
+        // Initialize scope manager
+        scope_manager = std::make_unique<ScopeManager>(llvmBuilder.get(), llvmModule.get());
 
         // Initialize MyceliumString type
         // Ensure this is done only once or correctly re-initialized if needed.
@@ -411,12 +414,14 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
 
     llvm::Type *ScriptCompiler::get_llvm_type_from_string(const std::string &type_name, std::optional<SourceLocation> loc) {
         if (type_name == "int" || type_name == "i32") return llvm::Type::getInt32Ty(*llvmContext);
+        if (type_name == "uint" || type_name == "u32") return llvm::Type::getInt32Ty(*llvmContext); // Treat uint as int32 for simplicity
         if (type_name == "bool") return llvm::Type::getInt1Ty(*llvmContext);
         if (type_name == "void") return llvm::Type::getVoidTy(*llvmContext);
         if (type_name == "float") return llvm::Type::getFloatTy(*llvmContext);
         if (type_name == "double") return llvm::Type::getDoubleTy(*llvmContext);
         if (type_name == "char" || type_name == "i8") return llvm::Type::getInt8Ty(*llvmContext);
         if (type_name == "long" || type_name == "i64") return llvm::Type::getInt64Ty(*llvmContext);
+        if (type_name == "ulong" || type_name == "u64") return llvm::Type::getInt64Ty(*llvmContext);
         
         if (type_name == "string" || classTypeRegistry.count(type_name)) {
             return llvm::PointerType::getUnqual(*llvmContext); 
