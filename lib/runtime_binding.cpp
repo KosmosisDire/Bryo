@@ -92,8 +92,9 @@ static llvm::FunctionType* get_llvm_type_Mycelium_Object_alloc(llvm::LLVMContext
     (void)myceliumStringTypePtr; // Unused
     llvm::Type* sizeTTy = llvm::Type::getInt64Ty(context);    // data_size (size_t)
     llvm::Type* typeIdTy = llvm::Type::getInt32Ty(context);   // type_id (uint32_t)
+    llvm::Type* vtablePtrTy = llvm::PointerType::getUnqual(context); // vtable (MyceliumVTable*)
     // Returns MyceliumObjectHeader*
-    return llvm::FunctionType::get(myceliumObjectHeaderTypePtr, {sizeTTy, typeIdTy}, false);
+    return llvm::FunctionType::get(myceliumObjectHeaderTypePtr, {sizeTTy, typeIdTy, vtablePtrTy}, false);
 }
 
 static llvm::FunctionType* get_llvm_type_Mycelium_Object_retain(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {

@@ -749,6 +749,32 @@ std::shared_ptr<ReturnStatementNode> ScriptParser::parse_return_statement() {
     finalize_node_location(return_node); return return_node;
 }
 
+std::shared_ptr<BreakStatementNode> ScriptParser::parse_break_statement() {
+    SourceLocation statement_start_loc = currentTokenInfo.location; auto break_node = make_ast_node<BreakStatementNode>(statement_start_loc);
+    if (check_token(TokenType::Break)) { break_node->breakKeyword = create_token_node(TokenType::Break, currentTokenInfo); advance_and_lex(); }
+    else { record_error_at_current("Internal Parser Error: parse_break_statement called without 'break' token."); }
+    if (check_token(TokenType::Semicolon)) { break_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo); advance_and_lex(); }
+    else {
+        SourceLocation error_loc = previousTokenInfo.location; 
+        if (break_node->breakKeyword && break_node->breakKeyword->location.has_value()) { error_loc.lineStart = break_node->breakKeyword->location.value().lineEnd; error_loc.columnStart = break_node->breakKeyword->location.value().columnEnd + 1; }
+        record_error("Expected ';' after break statement.", error_loc);
+    }
+    finalize_node_location(break_node); return break_node;
+}
+
+std::shared_ptr<ContinueStatementNode> ScriptParser::parse_continue_statement() {
+    SourceLocation statement_start_loc = currentTokenInfo.location; auto continue_node = make_ast_node<ContinueStatementNode>(statement_start_loc);
+    if (check_token(TokenType::Continue)) { continue_node->continueKeyword = create_token_node(TokenType::Continue, currentTokenInfo); advance_and_lex(); }
+    else { record_error_at_current("Internal Parser Error: parse_continue_statement called without 'continue' token."); }
+    if (check_token(TokenType::Semicolon)) { continue_node->semicolonToken = create_token_node(TokenType::Semicolon, currentTokenInfo); advance_and_lex(); }
+    else {
+        SourceLocation error_loc = previousTokenInfo.location; 
+        if (continue_node->continueKeyword && continue_node->continueKeyword->location.has_value()) { error_loc.lineStart = continue_node->continueKeyword->location.value().lineEnd; error_loc.columnStart = continue_node->continueKeyword->location.value().columnEnd + 1; }
+        record_error("Expected ';' after continue statement.", error_loc);
+    }
+    finalize_node_location(continue_node); return continue_node;
+}
+
 std::shared_ptr<ExpressionStatementNode> ScriptParser::parse_expression_statement() {
     SourceLocation statement_start_loc = currentTokenInfo.location; 
     auto expr_stmt_node = make_ast_node<ExpressionStatementNode>(statement_start_loc);
@@ -768,6 +794,8 @@ std::shared_ptr<StatementNode> ScriptParser::parse_statement() {
     if (is_at_end_of_token_stream()) { return nullptr; }
     if (check_token(TokenType::OpenBrace)) { return parse_block_statement(); }
     else if (check_token(TokenType::Return)) { return parse_return_statement(); }
+    else if (check_token(TokenType::Break)) { return parse_break_statement(); }
+    else if (check_token(TokenType::Continue)) { return parse_continue_statement(); }
     else if (check_token(TokenType::If)) { return parse_if_statement(); }
     else if (check_token(TokenType::While)) { return parse_while_statement(); }
     else if (check_token(TokenType::For)) { return parse_for_statement(); }

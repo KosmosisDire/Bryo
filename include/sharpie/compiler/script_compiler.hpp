@@ -81,6 +81,10 @@ private:
         std::map<std::string, unsigned> field_indices;
         std::vector<std::shared_ptr<TypeNameNode>> field_ast_types; // Store AST TypeNameNode for each field
         llvm::Function* destructor_func = nullptr; // Pointer to the LLVM function for the destructor
+        
+        // VTable support for polymorphism
+        llvm::GlobalVariable* vtable_global = nullptr; // Global variable containing the vtable
+        llvm::StructType* vtable_type = nullptr;       // LLVM type for the vtable struct
     };
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
@@ -93,9 +97,10 @@ private:
         llvm::Value* value = nullptr; // Primary value, e.g., result of an operation, or fields_ptr for an object
         const ClassTypeInfo* classInfo = nullptr; // Static type info if 'value' is an object
         llvm::Value* header_ptr = nullptr; // Direct pointer to the object's header (for ARC), if applicable
+        PrimitiveStructInfo* primitive_info = nullptr; // Primitive type info for method chaining on primitive values
 
         ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr, llvm::Value* hp = nullptr)
-            : value(v), classInfo(ci), header_ptr(hp) {}
+            : value(v), classInfo(ci), header_ptr(hp), primitive_info(nullptr) {}
     };
 
     struct VariableInfo {
@@ -105,6 +110,16 @@ private:
     };
 
     std::map<llvm::AllocaInst*, llvm::Value*> current_function_arc_locals;
+
+    // Loop context tracking for break/continue statements
+    struct LoopContext {
+        llvm::BasicBlock* exit_block;     // Where 'break' should jump
+        llvm::BasicBlock* continue_block; // Where 'continue' should jump
+        
+        LoopContext(llvm::BasicBlock* exit, llvm::BasicBlock* cont)
+            : exit_block(exit), continue_block(cont) {}
+    };
+    std::vector<LoopContext> loop_context_stack;
 
     llvm::Type* getMyceliumStringPtrTy(); // Returns opaque ptr (llvm::Type*)
     llvm::Type* getMyceliumObjectHeaderPtrTy(); // Returns opaque ptr (llvm::Type*)
@@ -124,7 +139,11 @@ private:
     llvm::Value* visit(std::shared_ptr<LocalVariableDeclarationStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ExpressionStatementNode> node);
     llvm::Value* visit(std::shared_ptr<IfStatementNode> node);
+    llvm::Value* visit(std::shared_ptr<WhileStatementNode> node);
+    llvm::Value* visit(std::shared_ptr<ForStatementNode> node);
     llvm::Value* visit(std::shared_ptr<ReturnStatementNode> node);
+    llvm::Value* visit(std::shared_ptr<BreakStatementNode> node);
+    llvm::Value* visit(std::shared_ptr<ContinueStatementNode> node);
     llvm::Function* visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
     llvm::Function* visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
 

@@ -77,8 +77,9 @@ namespace Mycelium::Scripting::Lang
         if (!myceliumObjectHeaderType)
         {
              myceliumObjectHeaderType = llvm::StructType::create(*llvmContext,
-                                                                {llvm::Type::getInt32Ty(*llvmContext), // type_id
-                                                                 llvm::Type::getInt32Ty(*llvmContext)},// ref_count (placeholder, actual RC might be elsewhere or more complex)
+                                                                {llvm::Type::getInt32Ty(*llvmContext),      // ref_count (int32_t)
+                                                                 llvm::Type::getInt32Ty(*llvmContext),      // type_id (uint32_t, treated as i32)
+                                                                 llvm::PointerType::getUnqual(*llvmContext)}, // vtable (MyceliumVTable*)
                                                                 "struct.MyceliumObjectHeader");
             if (!myceliumObjectHeaderType) log_error("Failed to initialize MyceliumObjectHeader LLVM type struct.");
         }
@@ -462,7 +463,9 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromIntFunc, {instance_ptr}, "int_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
             else if (method_name == "Parse" && instance_ptr == nullptr) { // Static method
                 // Parse string to int
@@ -483,7 +486,7 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(toIntFunc, {arg_res.value}, "parse_int");
-                return ExpressionVisitResult(result, nullptr);
+                return ExpressionVisitResult(result, nullptr); // Returns int - will be handled as primitive
             }
         }
         else if (primitive_info->simple_name == "bool") {
@@ -495,14 +498,14 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromBoolFunc, {instance_ptr}, "bool_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
         }
         else if (primitive_info->simple_name == "string") {
             if (method_name == "get_Length") {
-                // Get string length
-                // For now, create a simple runtime call that gets the length from MyceliumString
-                // We need to add this to the runtime
+                // Get string length - returns an int that should support chaining
                 llvm::Function* lenFunc = llvmModule->getFunction("Mycelium_String_get_length");
                 if (!lenFunc) {
                     // Create the function declaration if it doesn't exist
@@ -512,7 +515,11 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     lenFunc = llvm::Function::Create(lenFuncType, llvm::Function::ExternalLinkage, "Mycelium_String_get_length", llvmModule.get());
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(lenFunc, {instance_ptr}, "string_length");
-                return ExpressionVisitResult(result, nullptr);
+                
+                // Return the result with primitive info so method chaining works
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("int");
+                return visit_result;
             }
             else if (method_name == "Substring") {
                 // String substring
@@ -560,7 +567,9 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromFloatFunc, {instance_ptr}, "float_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
         }
         else if (primitive_info->simple_name == "double") {
@@ -572,7 +581,9 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromDoubleFunc, {instance_ptr}, "double_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
         }
         else if (primitive_info->simple_name == "char") {
@@ -584,7 +595,9 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromCharFunc, {instance_ptr}, "char_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
         }
         else if (primitive_info->simple_name == "long") {
@@ -596,7 +609,9 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
                     return ExpressionVisitResult(nullptr);
                 }
                 llvm::Value* result = llvmBuilder->CreateCall(fromLongFunc, {instance_ptr}, "long_tostring");
-                return ExpressionVisitResult(result, nullptr);
+                ExpressionVisitResult visit_result(result, nullptr);
+                visit_result.primitive_info = primitive_registry.get_by_simple_name("string");
+                return visit_result;
             }
         }
 

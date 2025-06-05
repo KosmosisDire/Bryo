@@ -175,9 +175,46 @@ char Mycelium_String_to_char(MyceliumString* str) {
     return str->data[0]; // Return the first character
 }
 
-// --- ARC Function Implementations ---
+// --- VTable Registry Implementation ---
+#include <map>
+#include <stdexcept>
 
-MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id) {
+// Thread-safety note: In a multi-threaded environment, this would need synchronization
+static std::map<uint32_t, MyceliumVTable*> vtable_registry;
+
+void Mycelium_VTable_register(uint32_t type_id, MyceliumVTable* vtable) {
+    if (vtable == nullptr) {
+        // Handle error - perhaps log or throw
+        return;
+    }
+    vtable_registry[type_id] = vtable;
+}
+
+MyceliumVTable* Mycelium_VTable_get(uint32_t type_id) {
+    auto it = vtable_registry.find(type_id);
+    if (it != vtable_registry.end()) {
+        return it->second;
+    }
+    return nullptr; // Type not found
+}
+
+// --- ARC Function Implementations ---
+// DESTRUCTOR SEQUENCE EXPLANATION:
+//
+// Sharpie uses a dual-layer destructor approach for efficiency and polymorphism support:
+//
+// 1. COMPILE-TIME DESTRUCTOR CALLS (Current Default):
+//    - Compiler inserts direct destructor calls before release when types are known statically
+//    - Used in local variable cleanup, assignment, and return statements
+//    - Provides zero runtime overhead for monomorphic code
+//    - Pattern: destructor_function(obj_fields_ptr) -> Mycelium_Object_release(header_ptr)
+//
+// 2. RUNTIME DESTRUCTOR DISPATCH (Vtable-based, for polymorphism):
+//    - Used when actual object type is unknown at compile-time (polymorphic scenarios)
+//    - Vtable lookup in Mycelium_Object_release handles destructor dispatch
+//    - Pattern: Mycelium_Object_release(header_ptr) -> vtable->destructor(obj_fields_ptr) -> free()
+
+MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, MyceliumVTable* vtable) {
     size_t total_size = sizeof(MyceliumObjectHeader) + data_size;
     MyceliumObjectHeader* header_ptr = (MyceliumObjectHeader*)malloc(total_size);
     if (!header_ptr) {
@@ -187,6 +224,19 @@ MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id) 
     }
     header_ptr->ref_count = 1;
     header_ptr->type_id = type_id;
+    header_ptr->vtable = vtable;
+    
+    // DEBUG: Print vtable information
+    std::cout << "[DEBUG] Mycelium_Object_alloc:" << std::endl;
+    std::cout << "  header_ptr: " << header_ptr << std::endl;
+    std::cout << "  type_id: " << type_id << std::endl;
+    std::cout << "  vtable: " << vtable << std::endl;
+    if (vtable) {
+        std::cout << "  vtable->destructor: " << (void*)vtable->destructor << std::endl;
+    } else {
+        std::cout << "  vtable->destructor: (vtable is null)" << std::endl;
+    }
+    
     // The memory for data_size immediately follows the header.
     // The caller will typically cast (header_ptr + 1) to their specific object type.
     return header_ptr;
@@ -205,8 +255,13 @@ void Mycelium_Object_release(MyceliumObjectHeader* obj_header) {
         // Future: Add atomic decrement for thread safety.
         obj_header->ref_count--;
         if (obj_header->ref_count == 0) {
-            // Future: Call object's destructor based on type_id before freeing.
-            // For this simple slice, we just free the memory.
+            // RUNTIME DESTRUCTOR DISPATCH (for polymorphic scenarios)
+            // Note: For monomorphic code, the compiler calls destructors directly before this
+            if (obj_header->vtable != nullptr && obj_header->vtable->destructor != nullptr) {
+                // Get pointer to object's data fields (skip the header)
+                void* obj_fields_ptr = (void*)((char*)obj_header + sizeof(MyceliumObjectHeader));
+                obj_header->vtable->destructor(obj_fields_ptr);
+            }
             free(obj_header); // Frees the entire block (header + data).
         }
         // Optional: Add a log here if ref_count goes below zero (indicates a bug).

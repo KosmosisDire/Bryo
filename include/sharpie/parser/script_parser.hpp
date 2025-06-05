@@ -102,6 +102,8 @@ private:
     std::shared_ptr<BlockStatementNode> parse_block_statement();
     std::shared_ptr<Mycelium::Scripting::Lang::LocalVariableDeclarationStatementNode> parse_local_variable_declaration_statement();
     std::shared_ptr<Mycelium::Scripting::Lang::ReturnStatementNode> parse_return_statement();
+    std::shared_ptr<BreakStatementNode> parse_break_statement();
+    std::shared_ptr<ContinueStatementNode> parse_continue_statement();
     std::shared_ptr<Mycelium::Scripting::Lang::StatementNode> parse_statement();
 
     bool check_token(TokenType type) const;

@@ -9,11 +9,24 @@
 extern "C" {
 #endif
 
+// --- Forward Declarations ---
+struct MyceliumVTable;
+
 // --- Object Header for ARC ---
+// NOTE: This header precedes every managed object in memory.
+// Layout: [MyceliumObjectHeader][Object's actual data fields]
 typedef struct {
-    int32_t ref_count; // Reference count
-    uint32_t type_id;  // Simple type identifier
+    int32_t ref_count;             // Reference count for ARC
+    uint32_t type_id;              // Simple type identifier  
+    struct MyceliumVTable* vtable; // Pointer to virtual method table
 } MyceliumObjectHeader;
+
+// --- Virtual Method Table Structure ---
+// Each class type has a vtable containing function pointers for virtual methods
+typedef struct MyceliumVTable {
+    void (*destructor)(void* obj_fields_ptr);  // Destructor function pointer (required)
+    // Future: Virtual method pointers will be added here
+} MyceliumVTable;
 
 // --- MyceliumString Structure (Existing) ---
 typedef struct {
@@ -23,10 +36,14 @@ typedef struct {
 } MyceliumString;
 
 // --- ARC Runtime Function Declarations ---
-MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id);
+MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, struct MyceliumVTable* vtable);
 void Mycelium_Object_retain(MyceliumObjectHeader* obj_header);
 void Mycelium_Object_release(MyceliumObjectHeader* obj_header);
 int32_t Mycelium_Object_get_ref_count(MyceliumObjectHeader* obj_header); // For debugging
+
+// --- VTable Registry Functions ---
+void Mycelium_VTable_register(uint32_t type_id, struct MyceliumVTable* vtable);
+struct MyceliumVTable* Mycelium_VTable_get(uint32_t type_id);
 
 // --- MyceliumString Runtime Function Declarations (Existing) ---
 
