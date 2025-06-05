@@ -84,13 +84,15 @@ private:
     };
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
+    std::map<llvm::Function*, const ClassTypeInfo*> functionReturnClassInfoMap; // Map LLVM function to its return ClassTypeInfo if object
 
     struct ExpressionVisitResult {
-        llvm::Value* value = nullptr;
-        const ClassTypeInfo* classInfo = nullptr; 
+        llvm::Value* value = nullptr; // Primary value, e.g., result of an operation, or fields_ptr for an object
+        const ClassTypeInfo* classInfo = nullptr; // Static type info if 'value' is an object
+        llvm::Value* header_ptr = nullptr; // Direct pointer to the object's header (for ARC), if applicable
 
-        ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr)
-            : value(v), classInfo(ci) {}
+        ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr, llvm::Value* hp = nullptr)
+            : value(v), classInfo(ci), header_ptr(hp) {}
     };
 
     struct VariableInfo {

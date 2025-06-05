@@ -117,6 +117,22 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
     std::string func_name = class_name + "." + node->name->name; if (func_name == "Program.Main") func_name = "main";
     llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
     llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
+    
+    // Populate functionReturnClassInfoMap
+    if (node->type.has_value()) {
+        // Assuming node->type.value() is a std::shared_ptr<TypeNameNode>
+        std::shared_ptr<TypeNameNode> return_ast_type_node = node->type.value();
+        if (auto identNode_variant = std::get_if<std::shared_ptr<IdentifierNode>>(&return_ast_type_node->name_segment)) {
+            if (auto identNode = *identNode_variant) {
+                auto cti_it = classTypeRegistry.find(identNode->name);
+                if (cti_it != classTypeRegistry.end()) {
+                    functionReturnClassInfoMap[function] = &cti_it->second;
+                }
+            }
+        }
+        // TODO: Handle QualifiedNameNode for return types if necessary for classes
+    }
+
     currentFunction = function; llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
     llvmBuilder->SetInsertPoint(entry_block);
     auto llvm_arg_it = function->arg_begin();
@@ -192,8 +208,19 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<LocalVariableDeclarationState
             if (var_static_class_info && init_val_class_info && var_static_class_info != init_val_class_info) { log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location); }
             llvmBuilder->CreateStore(init_val, varInfo.alloca);
             if (var_static_class_info && var_static_class_info->fieldsType && init_val_class_info && init_val->getType()->isPointerTy()) {
-                llvm::Value* header_ptr_val = getHeaderPtrFromFieldsPtr(init_val, var_static_class_info->fieldsType); 
-                if (header_ptr_val) current_function_arc_locals[varInfo.alloca] = header_ptr_val;
+                llvm::Value* actual_header_ptr = nullptr;
+                if (init_res.header_ptr) { // Prefer the directly provided header_ptr
+                    actual_header_ptr = init_res.header_ptr;
+                } else { // Fallback for expressions that don't directly yield a header_ptr (e.g., method calls, identifiers)
+                    actual_header_ptr = getHeaderPtrFromFieldsPtr(init_val, var_static_class_info->fieldsType);
+                }
+                
+                if (actual_header_ptr) {
+                    current_function_arc_locals[varInfo.alloca] = actual_header_ptr;
+                    
+                } else {
+                    log_error("FATAL: Could not obtain header pointer for ARC tracking of variable '" + declarator->name->name + "'. Destructor will not be called. Initializer was an object type.", declarator->location);
+                }
             }
         }
     } return nullptr;
@@ -460,7 +487,19 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
         const ClassTypeInfo* target_static_ci = target_var_info.classInfo;
         if (new_llvm_val->getType() != target_llvm_type) { /* error or coerce */ }
         if (target_static_ci && new_val_static_ci && target_static_ci != new_val_static_ci) { /* error */ }
-        if (new_val_static_ci && new_val_static_ci->fieldsType) { llvm::Value* new_hdr = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType); if(new_hdr) llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {new_hdr}); }
+        
+        llvm::Value* new_object_header_for_retain = nullptr;
+        if (new_val_static_ci && new_val_static_ci->fieldsType) {
+            if (source_res.header_ptr) {
+                new_object_header_for_retain = source_res.header_ptr;
+            } else {
+                new_object_header_for_retain = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType);
+            }
+            if(new_object_header_for_retain) {
+                llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {new_object_header_for_retain});
+            }
+        }
+
         llvm::Value* old_llvm_val = llvmBuilder->CreateLoad(target_llvm_type, target_var_info.alloca, "old.val.assign");
         if (target_static_ci && target_static_ci->destructor_func) {
             llvm::Value* is_null_cond = llvmBuilder->CreateICmpNE(old_llvm_val, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(old_llvm_val->getType())));
@@ -482,8 +521,21 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
             }
         }
         llvmBuilder->CreateStore(new_llvm_val, target_var_info.alloca);
-        if (new_val_static_ci && new_val_static_ci->fieldsType) { current_function_arc_locals[target_var_info.alloca] = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType); }
-        else { current_function_arc_locals.erase(target_var_info.alloca); }
+        
+        if (new_val_static_ci && new_val_static_ci->fieldsType) {
+            // new_object_header_for_retain already calculated and used for retain
+            if (new_object_header_for_retain) {
+                current_function_arc_locals[target_var_info.alloca] = new_object_header_for_retain;
+            } else {
+                current_function_arc_locals.erase(target_var_info.alloca); // Remove if no valid header
+                if (new_val_static_ci && new_val_static_ci->fieldsType) { // Only log/error if it was expected to be an object
+                    log_error("FATAL: Could not obtain header pointer for ARC tracking for assignment to '" + id_target->identifier->name + "'. Destructor will not be called. Source was an object type.", node->target->location);
+                }
+            }
+        } else {
+            current_function_arc_locals.erase(target_var_info.alloca);
+        }
+
     } else if (auto member_target = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target)) {
         ExpressionVisitResult obj_res = visit(member_target->target); 
         if (!obj_res.value || !obj_res.classInfo || !obj_res.classInfo->fieldsType) { log_error("Invalid member assignment target.", member_target->target->location); return ExpressionVisitResult(nullptr); }
@@ -545,7 +597,14 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Meth
     std::vector<llvm::Value *> args_values; if (instance_ptr_for_call) args_values.push_back(instance_ptr_for_call);
     if (node->argumentList) { for (const auto &arg_node : node->argumentList->arguments) { ExpressionVisitResult arg_res = visit(arg_node->expression); if (!arg_res.value) { log_error("Method call argument failed to compile.", arg_node->location); return ExpressionVisitResult(nullptr); } args_values.push_back(arg_res.value); } }
     llvm::Value* call_result_val = llvmBuilder->CreateCall(callee, args_values, callee->getReturnType()->isVoidTy() ? "" : "calltmp");
-    const ClassTypeInfo* return_static_ci = nullptr; return ExpressionVisitResult(call_result_val, return_static_ci);
+    
+    const ClassTypeInfo* return_static_ci = nullptr;
+    auto return_info_it = functionReturnClassInfoMap.find(callee);
+    if (return_info_it != functionReturnClassInfoMap.end()) {
+        return_static_ci = return_info_it->second;
+    }
+    // Note: header_ptr is not set here; it will be derived by the consumer (LocalVariableDeclaration or Assignment) if needed.
+    return ExpressionVisitResult(call_result_val, return_static_ci);
 }
 
 ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<ObjectCreationExpressionNode> node) {
@@ -566,7 +625,7 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Obje
     if (node->argumentList.has_value()) { for(const auto& arg_node : node->argumentList.value()->arguments) { ctor_args_values.push_back(visit(arg_node->expression).value); } }
     llvm::Function* constructor_func = llvmModule->getFunction(ctor_name_str);
     if (!constructor_func) { log_error("Constructor " + ctor_name_str + " not found.", node->location); return ExpressionVisitResult(nullptr); }
-    llvmBuilder->CreateCall(constructor_func, ctor_args_values); return ExpressionVisitResult(fields_obj_opaque_ptr, &cti); 
+    llvmBuilder->CreateCall(constructor_func, ctor_args_values); return ExpressionVisitResult(fields_obj_opaque_ptr, &cti, header_ptr_val); 
 }
 
 ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<ThisExpressionNode> node) {

@@ -86,6 +86,7 @@ namespace Mycelium::Scripting::Lang
         namedValues.clear();
         currentFunction = nullptr;
         classTypeRegistry.clear(); // Clear previous class type info
+        functionReturnClassInfoMap.clear(); // Clear function return type map
         next_type_id = 0;          // Reset type ID counter
 
         if (!ast_root) {
@@ -346,24 +347,40 @@ namespace Mycelium::Scripting::Lang
     llvm::Value* ScriptCompiler::getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMStructType) {
         if (!myceliumObjectHeaderType) { log_error("MyceliumObjectHeader type not initialized."); return nullptr; }
         llvm::Type* i8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext)); 
-        llvm::Value* header_as_i8_ptr = llvmBuilder->CreateBitCast(headerPtr, i8PtrTy, "header.i8ptr.forfields");
-        uint64_t header_size = llvmModule->getDataLayout().getTypeAllocSize(myceliumObjectHeaderType);
-        llvm::Value* offset = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), header_size);
-        llvm::Value* fields_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), header_as_i8_ptr, offset, "fields.rawptr.fromhdr");
-        return llvmBuilder->CreateBitCast(fields_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "fields.ptr.fromhdr"); 
-    }
+    llvm::Value* header_as_i8_ptr = llvmBuilder->CreateBitCast(headerPtr, i8PtrTy, "header.i8ptr.forfields");
+    uint64_t header_size = llvmModule->getDataLayout().getTypeAllocSize(myceliumObjectHeaderType);
+    llvm::Value* offset = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), header_size);
+    llvm::Value* fields_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), header_as_i8_ptr, offset, "fields.rawptr.fromhdr");
+    llvm::Value* result_fields_ptr = llvmBuilder->CreateBitCast(fields_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "fields.ptr.fromhdr");
 
-    llvm::Value* ScriptCompiler::getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMStructType) {
-        if (!myceliumObjectHeaderType) { log_error("MyceliumObjectHeader type not initialized."); return nullptr; }
-        llvm::Type* i8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext));
-        llvm::Value* fields_as_i8_ptr = llvmBuilder->CreateBitCast(fieldsPtr, i8PtrTy, "fields.i8ptr.forhdr");
-        uint64_t header_size = llvmModule->getDataLayout().getTypeAllocSize(myceliumObjectHeaderType);
-        llvm::Value* offset = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), -static_cast<int64_t>(header_size));
-        llvm::Value* header_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), fields_as_i8_ptr, offset, "header.rawptr.fromfields");
-        return llvmBuilder->CreateBitCast(header_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "header.ptr.fromfields"); 
-    }
+    llvm::errs() << "getFieldsPtrFromHeaderPtr:\n";
+    llvm::errs() << "  HeaderIn: "; headerPtr->print(llvm::errs()); llvm::errs() << "\n";
+    llvm::errs() << "  HeaderSize: " << header_size << "\n";
+    llvm::errs() << "  Offset: "; offset->print(llvm::errs()); llvm::errs() << "\n";
+    llvm::errs() << "  FieldsOut: "; result_fields_ptr->print(llvm::errs()); llvm::errs() << "\n";
 
-    llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_node) {
+    return result_fields_ptr;
+}
+
+llvm::Value* ScriptCompiler::getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMStructType) {
+    if (!myceliumObjectHeaderType) { log_error("MyceliumObjectHeader type not initialized."); return nullptr; }
+    llvm::Type* i8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext));
+    llvm::Value* fields_as_i8_ptr = llvmBuilder->CreateBitCast(fieldsPtr, i8PtrTy, "fields.i8ptr.forhdr");
+    uint64_t header_size = llvmModule->getDataLayout().getTypeAllocSize(myceliumObjectHeaderType);
+    llvm::Value* offset = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*llvmContext), -static_cast<int64_t>(header_size));
+    llvm::Value* header_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), fields_as_i8_ptr, offset, "header.rawptr.fromfields");
+    llvm::Value* result_header_ptr = llvmBuilder->CreateBitCast(header_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "header.ptr.fromfields");
+
+    llvm::errs() << "getHeaderPtrFromFieldsPtr:\n";
+    llvm::errs() << "  FieldsIn: "; fieldsPtr->print(llvm::errs()); llvm::errs() << "\n";
+    llvm::errs() << "  HeaderSize: " << header_size << "\n";
+    llvm::errs() << "  Offset: "; offset->print(llvm::errs()); llvm::errs() << "\n";
+    llvm::errs() << "  HeaderOut: "; result_header_ptr->print(llvm::errs()); llvm::errs() << "\n";
+    
+    return result_header_ptr;
+}
+
+llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_node) {
         if (!type_node) { log_error("TypeNameNode is null when trying to get LLVM type."); return nullptr; }
         
         // Simplified: assumes name_segment is IdentifierNode for primitive/class names

@@ -72,6 +72,7 @@ void Compile(std::string input)
         // The compiler instance used for compile_ast is the same one used for jit_execute_function
         auto value = compiler.jit_execute_function("main", {}); // Assuming main returns int now
         std::cout << "Output (IntVal): " << value.IntVal.getSExtValue() << std::endl; // Use getSExtValue() for APInt
+        std::cout << std::flush; // Ensure output from JIT'd code (like destructors) is flushed
         std::cout << "JIT Execution Successful!" << std::endl;
         std::cout << "---------------------" << std::endl;
 
