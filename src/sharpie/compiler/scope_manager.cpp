@@ -1,4 +1,5 @@
 #include "sharpie/compiler/scope_manager.hpp"
+#include "sharpie/common/logger.hpp"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
@@ -67,9 +68,8 @@ void ScopeManager::register_managed_object(llvm::AllocaInst* variable_alloca,
     // clean up each object once when it was originally created via 'new'
     for (const auto& existing_obj : current->managed_objects) {
         if (existing_obj.header_ptr == header_ptr) {
-            std::cout << "[ScopeManager] Object with header_ptr=" << header_ptr 
-                      << " already registered - skipping duplicate registration for '" 
-                      << debug_name << "'" << std::endl;
+            Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Object with header_ptr=" + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                      " already registered - skipping duplicate registration for '" + debug_name + "'", "SCOPE");
             return; // Object already tracked, don't register again
         }
     }
@@ -77,11 +77,11 @@ void ScopeManager::register_managed_object(llvm::AllocaInst* variable_alloca,
     ManagedObject obj(variable_alloca, header_ptr, class_info, debug_name);
     current->add_managed_object(obj);
     
-    // ALWAYS print registration for debugging double-free issues
-    std::cout << "[ScopeManager] Registered object '" << debug_name 
-              << "' in scope '" << current->debug_name 
-              << "' header_ptr=" << header_ptr 
-              << " alloca=" << variable_alloca << std::endl;
+    // Log registration for debugging double-free issues
+    Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Registered object '" + debug_name + 
+              "' in scope '" + current->debug_name + 
+              "' header_ptr=" + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+              " alloca=" + std::to_string(reinterpret_cast<uintptr_t>(variable_alloca)), "SCOPE");
 }
 
 void ScopeManager::register_arc_managed_object(llvm::AllocaInst* variable_alloca,
@@ -98,9 +98,9 @@ void ScopeManager::register_arc_managed_object(llvm::AllocaInst* variable_alloca
     ManagedObject obj(variable_alloca, nullptr, class_info, debug_name);
     current->add_managed_object(obj);
     
-    std::cout << "[ScopeManager] Registered ARC object '" << debug_name 
-              << "' in scope '" << current->debug_name 
-              << "' alloca=" << variable_alloca << " (header computed dynamically)" << std::endl;
+    Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Registered ARC object '" + debug_name + 
+              "' in scope '" + current->debug_name + 
+              "' alloca=" + std::to_string(reinterpret_cast<uintptr_t>(variable_alloca)) + " (header computed dynamically)", "SCOPE");
 }
 
 void ScopeManager::unregister_managed_object(llvm::AllocaInst* variable_alloca) {
@@ -164,14 +164,14 @@ void ScopeManager::cleanup_current_scope_early() {
 
 void ScopeManager::generate_object_cleanup(const ManagedObject& obj, llvm::Function* current_function) {
     if (!obj.class_info) {
-        std::cout << "[ScopeManager] Skipping cleanup for '" << obj.debug_name 
-                  << "' - missing class_info" << std::endl;
+        Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Skipping cleanup for '" + obj.debug_name + 
+                  "' - missing class_info", "SCOPE");
         return;
     }
     
     // For ARC objects, header_ptr is nullptr and will be computed dynamically
-    std::cout << "[ScopeManager] Generating cleanup for ARC object '" << obj.debug_name 
-              << "' (header computed dynamically)" << std::endl;
+    Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Generating cleanup for ARC object '" + obj.debug_name + 
+              "' (header computed dynamically)", "SCOPE");
     
     // Load the current value from the variable (this is the fields pointer)
     llvm::Value* current_value = builder->CreateLoad(

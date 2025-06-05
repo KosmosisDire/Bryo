@@ -7,11 +7,13 @@
 #include <chrono>
 #include <optional>
 #include <fstream>
+#include <filesystem>
 
 // #include "script_tokenizer.hpp"
 #include "sharpie/script_ast.hpp" // Updated path
 #include "sharpie/parser/script_parser.hpp" // Updated path
 #include "sharpie/compiler/script_compiler.hpp" // Updated path
+#include "sharpie/common/logger.hpp" // Add logger include
 #include "hot_reload.hpp"
 #include "platform.hpp"
 
@@ -19,78 +21,117 @@
 
 // using namespace Mycelium::UI::Lang;
 using namespace Mycelium::Scripting::Lang;
+using namespace Mycelium::Scripting::Common;
+
+// C binding functions for runtime logging
+extern "C" {
+    void runtime_log_debug(const char* message) {
+        Logger& logger = Logger::get_instance();
+        LOG_DEBUG(std::string(message), "RUNTIME");
+    }
+    
+    void runtime_log_info(const char* message) {
+        Logger& logger = Logger::get_instance();
+        LOG_INFO(std::string(message), "RUNTIME");
+    }
+    
+    void runtime_log_warn(const char* message) {
+        Logger& logger = Logger::get_instance();
+        LOG_WARN(std::string(message), "RUNTIME");
+    }
+}
 
 void Compile(std::string input)
 {
-    // ... (rest of your Compile function remains the same)
-    std::cout << "--- Input ---" << std::endl;
-    std::cout << input << std::endl;
-    std::cout << "-------------" << std::endl;
+    Logger& logger = Logger::get_instance();
+    
+    // Log the input source code
+    LOG_PHASE_BEGIN("Input Source");
+    LOG_DEBUG("Source code content:\n" + input, "INPUT");
+    LOG_PHASE_END("Input Source", true);
 
     try
     {
-        // Parsing
-        std::cout << "\n--- Parsing ---" << std::endl;
+        // Parsing Phase
+        LOG_PHASE_BEGIN("Parsing");
+        LOG_DEBUG("Creating parser for test.sp", "PARSER");
         ScriptParser parser(input, "test.sp");
+        
+        LOG_DEBUG("Starting parse operation", "PARSER");
         auto result = parser.parse();
         auto AST = result.first;
-       for (const auto &error : result.second)
+        
+        // Handle parse errors
+        bool has_errors = false;
+        for (const auto &error : result.second)
         {
-            std::cerr << "Parse Error: " << error.message << " at " << error.location.to_string() << std::endl;
+            LOG_ERROR("Parse Error: " + error.message + " at " + error.location.to_string(), "PARSER");
+            has_errors = true;
         }
-        if (!result.second.empty() && !AST) { // If there were errors and AST is null
-            std::cerr << "Parsing failed to produce an AST due to errors." << std::endl;
+        
+        if (!result.second.empty() && !AST) {
+            LOG_ERROR("Parsing failed to produce an AST due to errors", "PARSER");
+            LOG_PHASE_END("Parsing", false);
             return;
         }
+        
         if (!AST) {
-             std::cerr << "Parsing produced a null AST without explicit errors. Aborting compilation." << std::endl;
+            LOG_ERROR("Parsing produced a null AST without explicit errors. Aborting compilation", "PARSER");
+            LOG_PHASE_END("Parsing", false);
             return;
         }
-        std::cout << "Parsing Successful!" << std::endl;
-        std::cout << "---------------" << std::endl;
+        
+        LOG_DEBUG("AST created successfully", "PARSER");
+        LOG_PHASE_END("Parsing", true);
 
+        // Compilation Phase
+        LOG_PHASE_BEGIN("Compilation");
+        LOG_DEBUG("Creating compiler instance", "COMPILER");
+        ScriptCompiler compiler;
+        
+        LOG_DEBUG("Compiling AST to LLVM IR", "COMPILER");
+        compiler.compile_ast(AST, "MyceliumModule");
 
-        // compile
-        std::cout << "\n--- Compiling ---" << std::endl;
-        ScriptCompiler compiler; // Compiler is created
-        compiler.compile_ast(AST, "MyceliumModule"); // AST is compiled
-
+        // Save IR to file
+        LOG_DEBUG("Saving LLVM IR to tests/build/test.ll", "COMPILER");
         std::ofstream outFile("tests/build/test.ll");
         if (outFile)
         {
             outFile << compiler.get_ir_string();
             outFile.close();
+            LOG_DEBUG("LLVM IR saved successfully", "COMPILER");
+        }
+        else
+        {
+            LOG_WARN("Failed to save LLVM IR to file", "COMPILER");
         }
 
-        // compiler.compile_to_object_file("tests/build/test.o");
+        LOG_PHASE_END("Compilation", true);
 
-        std::cout << "Compilation Successful!" << std::endl;
-        std::cout << "----------------" << std::endl;
-
-        // JIT execution
-        std::cout << "\n--- JIT Execution ---" << std::endl;
-        // The compiler instance used for compile_ast is the same one used for jit_execute_function
-        auto value = compiler.jit_execute_function("main", {}); // Assuming main returns int now
-        std::cout << "Output (IntVal): " << value.IntVal.getSExtValue() << std::endl; // Use getSExtValue() for APInt
-        std::cout << std::flush; // Ensure output from JIT'd code (like destructors) is flushed
-        std::cout << "JIT Execution Successful!" << std::endl;
-        std::cout << "---------------------" << std::endl;
+        // JIT Execution Phase
+        LOG_PHASE_BEGIN("JIT Execution");
+        LOG_DEBUG("Starting JIT execution of main function", "JIT");
+        
+        // Capture and redirect JIT output
+        auto value = compiler.jit_execute_function("main", {});
+        
+        LOG_JIT_OUTPUT("Program returned: " + std::to_string(value.IntVal.getSExtValue()));
+        LOG_DEBUG("JIT execution completed successfully", "JIT");
+        LOG_PHASE_END("JIT Execution", true);
 
     }
     catch (const std::runtime_error &e)
     {
-        // More specific error context could be helpful here
-        std::cerr << "\n*** RUNTIME ERROR DURING COMPILATION/JIT ***" << std::endl;
-        std::cerr << "Error: " << e.what() << std::endl;
-        // Consider printing the stack trace if possible, or more context from your compiler/parser.
+        LOG_ERROR("Runtime error during compilation/JIT: " + std::string(e.what()), "RUNTIME");
+        LOG_PHASE_END("Compilation/JIT", false);
     }
     catch (const std::exception &e)
     {
-        std::cerr << "\n*** UNEXPECTED STANDARD EXCEPTION ***" << std::endl;
-        std::cerr << "Caught exception: " << e.what() << std::endl;
+        LOG_ERROR("Unexpected standard exception: " + std::string(e.what()), "EXCEPTION");
+        LOG_PHASE_END("Compilation/JIT", false);
     }
-    // It's good practice to catch more specific LLVM exceptions if you can identify them,
-    // or at least be aware that LLVM operations can throw.
+    
+    logger.flush();
 }
 
 int main()
@@ -99,12 +140,38 @@ int main()
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
     // ------------------------------------------------------
 
+    // Initialize the logger
+    Logger& logger = Logger::get_instance();
+    
+    // Create logs directory if it doesn't exist
+    std::filesystem::create_directories("logs");
+    
+    // Initialize logger with detailed log file
+    if (!logger.initialize("logs/sharpie_detailed.log")) {
+        std::cerr << "Failed to initialize logger. Continuing without file logging..." << std::endl;
+    }
+    
+    // Set log levels - show only WARN and above on console (errors), TRACE and above in file
+    logger.set_console_level(LogLevel::WARN);
+    logger.set_file_level(LogLevel::TRACE);
+    
+    LOG_INFO("Sharpie compiler started", "MAIN");
+    LOG_DEBUG("Logger initialized successfully", "MAIN");
+
     HotReload fileReloader({"tests/test.sp"}, [](const std::string &filePath, const std::string &newContent)
     {
-        std::cout << "\n--- " << filePath << " Reloaded ---" << std::endl;
+        LOG_INFO("File reloaded: " + filePath, "HOTRELOAD");
+        LOG_DEBUG("File content length: " + std::to_string(newContent.length()) + " characters", "HOTRELOAD");
+        
+        // Display simple console message for user feedback
+        std::cout << "\n\033[33m--- " << filePath << " Reloaded ---\033[0m" << std::endl;
+        
         Compile(newContent);
+        
+        std::cout << std::endl; // Add spacing after compilation
     });
 
+    LOG_INFO("Starting hot reload monitoring", "MAIN");
     fileReloader.poll_changes(); // Initial compile
 
     while (true)

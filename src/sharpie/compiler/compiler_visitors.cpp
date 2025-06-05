@@ -288,10 +288,15 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<LocalVariableDeclarationState
             if (!init_val) { log_error("Initializer for " + declarator->name->name + " failed.", declarator->initializer.value()->location); continue; }
             if (init_val->getType() != var_llvm_type) { log_error("LLVM type mismatch for initializer of " + declarator->name->name, declarator->initializer.value()->location); }
             if (var_static_class_info && init_val_class_info && var_static_class_info != init_val_class_info) { log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location); }
-            // CRITICAL ARC FIX: Add proper retain logic for variable initialization
-            // This ensures that `TestObject copy = original;` properly retains the source object
-            if (var_static_class_info && var_static_class_info->fieldsType && init_val->getType()->isPointerTy()) {
-                // Calculate header pointer and retain the object for ARC
+        // CRITICAL ARC FIX: Add proper retain logic for variable initialization
+        // This ensures that `TestObject copy = original;` properly retains the source object
+        // But skip retain for new expressions as they already have correct ref_count
+        if (var_static_class_info && var_static_class_info->fieldsType && init_val->getType()->isPointerTy()) {
+            // Check if the initializer is a new expression (ObjectCreationExpression)
+            bool is_new_expression = std::dynamic_pointer_cast<ObjectCreationExpressionNode>(declarator->initializer.value()) != nullptr;
+            
+            if (!is_new_expression) {
+                // Only retain if this is NOT a new expression
                 llvm::Value* init_object_header = nullptr;
                 if (init_res.header_ptr) {
                     init_object_header = init_res.header_ptr;
@@ -302,6 +307,7 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<LocalVariableDeclarationState
                     llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {init_object_header});
                 }
             }
+        }
             
             llvmBuilder->CreateStore(init_val, varInfo.alloca);
             
@@ -736,25 +742,28 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
         VariableInfo& target_var_info = it->second; llvm::Type* target_llvm_type = target_var_info.alloca->getAllocatedType();
         const ClassTypeInfo* target_static_ci = target_var_info.classInfo;
         
-        // DEBUG: Print assignment details
-        std::cout << "[ASSIGNMENT DEBUG] Assigning to variable '" << id_target->identifier->name << "'" << std::endl;
-        std::cout << "  Target alloca: " << target_var_info.alloca << std::endl;
-        std::cout << "  Target class: " << (target_static_ci ? target_static_ci->name : "none") << std::endl;
-        std::cout << "  Source class: " << (new_val_static_ci ? new_val_static_ci->name : "none") << std::endl;
-        std::cout << "  Source header_ptr: " << source_res.header_ptr << std::endl;
+        // Debug output removed for clean console
         
         if (new_llvm_val->getType() != target_llvm_type) { /* error or coerce */ }
         if (target_static_ci && new_val_static_ci && target_static_ci != new_val_static_ci) { /* error */ }
         
+        // CRITICAL FIX: Only retain if source is NOT a new expression
+        // New expressions already have correct ref_count, retaining them causes double-retain bug
         llvm::Value* new_object_header_for_retain = nullptr;
         if (new_val_static_ci && new_val_static_ci->fieldsType) {
-            if (source_res.header_ptr) {
-                new_object_header_for_retain = source_res.header_ptr;
-            } else {
-                new_object_header_for_retain = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType);
-            }
-            if(new_object_header_for_retain) {
-                llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {new_object_header_for_retain});
+            // Check if the source is a new expression (ObjectCreationExpression)
+            bool is_new_expression = std::dynamic_pointer_cast<ObjectCreationExpressionNode>(node->source) != nullptr;
+            
+            if (!is_new_expression) {
+                // Only retain if this is NOT a new expression
+                if (source_res.header_ptr) {
+                    new_object_header_for_retain = source_res.header_ptr;
+                } else {
+                    new_object_header_for_retain = getHeaderPtrFromFieldsPtr(new_llvm_val, new_val_static_ci->fieldsType);
+                }
+                if(new_object_header_for_retain) {
+                    llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_retain"), {new_object_header_for_retain});
+                }
             }
         }
 

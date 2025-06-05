@@ -1,4 +1,5 @@
 #include "sharpie/compiler/script_compiler.hpp"
+#include "sharpie/common/logger.hpp"
 #include "sharpie/script_ast.hpp" // For AST node types like CompilationUnitNode, SourceLocation
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/ADT/APInt.h"
@@ -360,11 +361,8 @@ namespace Mycelium::Scripting::Lang
     llvm::Value* fields_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), header_as_i8_ptr, offset, "fields.rawptr.fromhdr");
     llvm::Value* result_fields_ptr = llvmBuilder->CreateBitCast(fields_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "fields.ptr.fromhdr");
 
-    llvm::errs() << "getFieldsPtrFromHeaderPtr:\n";
-    llvm::errs() << "  HeaderIn: "; headerPtr->print(llvm::errs()); llvm::errs() << "\n";
-    llvm::errs() << "  HeaderSize: " << header_size << "\n";
-    llvm::errs() << "  Offset: "; offset->print(llvm::errs()); llvm::errs() << "\n";
-    llvm::errs() << "  FieldsOut: "; result_fields_ptr->print(llvm::errs()); llvm::errs() << "\n";
+    std::string debug_msg = "getFieldsPtrFromHeaderPtr:\n  HeaderSize: " + std::to_string(header_size) + "\n  Offset: i64 " + std::to_string(header_size);
+    Mycelium::Scripting::Common::LOG_DEBUG(debug_msg, "COMPILER");
 
     return result_fields_ptr;
 }
@@ -378,11 +376,8 @@ llvm::Value* ScriptCompiler::getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, l
     llvm::Value* header_raw_ptr = llvmBuilder->CreateGEP(llvm::Type::getInt8Ty(*llvmContext), fields_as_i8_ptr, offset, "header.rawptr.fromfields");
     llvm::Value* result_header_ptr = llvmBuilder->CreateBitCast(header_raw_ptr, llvm::PointerType::getUnqual(*llvmContext), "header.ptr.fromfields");
 
-    llvm::errs() << "getHeaderPtrFromFieldsPtr:\n";
-    llvm::errs() << "  FieldsIn: "; fieldsPtr->print(llvm::errs()); llvm::errs() << "\n";
-    llvm::errs() << "  HeaderSize: " << header_size << "\n";
-    llvm::errs() << "  Offset: "; offset->print(llvm::errs()); llvm::errs() << "\n";
-    llvm::errs() << "  HeaderOut: "; result_header_ptr->print(llvm::errs()); llvm::errs() << "\n";
+    std::string debug_msg = "getHeaderPtrFromFieldsPtr:\n  HeaderSize: " + std::to_string(header_size) + "\n  Offset: i64 -" + std::to_string(header_size);
+    Mycelium::Scripting::Common::LOG_DEBUG(debug_msg, "COMPILER");
     
     return result_header_ptr;
 }

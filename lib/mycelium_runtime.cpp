@@ -1,4 +1,4 @@
-// mycelium_runtime.cpp
+// mycelium_runtime.cpp - Version with logging system integration
 #include "mycelium_runtime.h"
 #include <string.h> // For strlen, strcpy, memcpy, strcat
 #include <stdlib.h> // For malloc, free, realloc, strtol, strtoll, strtof, strtod
@@ -6,6 +6,24 @@
 #include <string>   // For std::to_string, std::string
 #include <vector>   // For std::vector in C++ part of conversion
 #include <algorithm> // for std::transform for to_bool
+
+// Try to include the logger - this might fail if we're being compiled without it
+// In that case, we'll fall back to console output
+#ifdef __cplusplus
+extern "C" {
+#endif
+    // Forward declare logger functions for C compatibility
+    void runtime_log_debug(const char* message);
+    void runtime_log_info(const char* message);
+    void runtime_log_warn(const char* message);
+#ifdef __cplusplus
+}
+#endif
+
+// Helper macros for logging from C code
+#define LOG_RUNTIME_DEBUG(msg) runtime_log_debug(msg)
+#define LOG_RUNTIME_INFO(msg) runtime_log_info(msg)
+#define LOG_RUNTIME_WARN(msg) runtime_log_warn(msg)
 
 // Initial capacity helper (can be tuned)
 #define MYCELIUM_STRING_INITIAL_CAPACITY 16
@@ -38,10 +56,11 @@ MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
     uintptr_t s1_addr = (uintptr_t)s1;
     uintptr_t s2_addr = (uintptr_t)s2;
     
-    // Debug output to track the corruption
-    std::cout << "[DEBUG] Mycelium_String_concat called:" << std::endl;
-    std::cout << "  s1: " << (void*)s1 << std::endl;
-    std::cout << "  s2: " << (void*)s2 << std::endl;
+    // Debug output to track the calls - now logged to file
+    std::string debug_msg = "[DEBUG] Mycelium_String_concat called:\n  s1: " + 
+                           std::to_string(reinterpret_cast<uintptr_t>(s1)) + 
+                           "\n  s2: " + std::to_string(reinterpret_cast<uintptr_t>(s2));
+    LOG_RUNTIME_DEBUG(debug_msg.c_str());
     
     // Comprehensive safety checks - detect invalid pointers
     // Check if pointers look like valid heap addresses (typically start with 0x1 or 0x2 on modern systems)
@@ -49,11 +68,11 @@ MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
     bool s2_looks_invalid = s2 && (s2_addr < 0x10000 || s2_addr > 0x7FFFFFFFFFFF);
     
     if (s1_looks_invalid) {
-        std::cout << "  [WARNING] s1 appears to be an invalid pointer (likely corrupted)!" << std::endl;
+        LOG_RUNTIME_WARN("s1 appears to be an invalid pointer (likely corrupted)!");
         s1 = nullptr;
     }
     if (s2_looks_invalid) {
-        std::cout << "  [WARNING] s2 appears to be an invalid pointer (likely corrupted)!" << std::endl;
+        LOG_RUNTIME_WARN("s2 appears to be an invalid pointer (likely corrupted)!");
         s2 = nullptr;
     }
     
@@ -63,14 +82,12 @@ MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
         // Most invalid pointers will fail the address range check above
         // For remaining cases, check for obviously corrupt values
         if (s1_addr % sizeof(void*) != 0) {  // Not properly aligned
-            std::cout << "  [WARNING] s1 is not properly aligned!" << std::endl;
             s1 = nullptr;
         }
     }
     
     if (s2 && !s2_looks_invalid) {
         if (s2_addr % sizeof(void*) != 0) {  // Not properly aligned
-            std::cout << "  [WARNING] s2 is not properly aligned!" << std::endl;
             s2 = nullptr;
         }
     }
@@ -237,7 +254,7 @@ char Mycelium_String_to_char(MyceliumString* str) {
 // Thread-safety note: In a multi-threaded environment, this would need synchronization
 static std::map<uint32_t, MyceliumVTable*> vtable_registry;
 
-// GLOBAL OBJECT TRACKING FOR DEBUGGING DOUBLE-FREE ISSUES
+// GLOBAL OBJECT TRACKING FOR DEBUGGING DOUBLE-FREE ISSUES (Silent version)
 struct ObjectTrackingInfo {
     void* header_ptr;
     uint32_t type_id;
@@ -259,19 +276,25 @@ void track_object_allocation(void* header_ptr, uint32_t type_id, const std::stri
     
     tracked_objects[header_ptr] = info;
     
-    std::cout << "[OBJECT TRACKER] ALLOCATED: " << header_ptr 
-              << " (" << info.debug_name << ") type_id=" << type_id 
-              << " ref_count=" << info.ref_count << std::endl;
+    // Log object allocation to debug file
+    std::string alloc_msg = "[OBJECT TRACKER] ALLOCATED: " + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                           " (" + info.debug_name + ") type_id=" + std::to_string(type_id) + 
+                           " ref_count=" + std::to_string(info.ref_count);
+    LOG_RUNTIME_DEBUG(alloc_msg.c_str());
 }
 
 void track_object_retain(void* header_ptr) {
     auto it = tracked_objects.find(header_ptr);
     if (it != tracked_objects.end()) {
         it->second.ref_count++;
-        std::cout << "[OBJECT TRACKER] RETAINED: " << header_ptr 
-                  << " (" << it->second.debug_name << ") ref_count=" << it->second.ref_count << std::endl;
+        // Log object retain to debug file
+        std::string retain_msg = "[OBJECT TRACKER] RETAINED: " + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                                " (" + it->second.debug_name + ") ref_count=" + std::to_string(it->second.ref_count);
+        LOG_RUNTIME_DEBUG(retain_msg.c_str());
     } else {
-        std::cout << "[OBJECT TRACKER] WARNING: Retaining untracked object " << header_ptr << std::endl;
+        std::string warn_msg = "[OBJECT TRACKER] WARNING: Retaining untracked object " + 
+                              std::to_string(reinterpret_cast<uintptr_t>(header_ptr));
+        LOG_RUNTIME_WARN(warn_msg.c_str());
     }
 }
 
@@ -279,34 +302,33 @@ void track_object_release(void* header_ptr) {
     auto it = tracked_objects.find(header_ptr);
     if (it != tracked_objects.end()) {
         if (it->second.is_freed) {
-            std::cout << "[OBJECT TRACKER] ERROR: Double-release of ALREADY FREED object " 
-                      << header_ptr << " (" << it->second.debug_name << ")" << std::endl;
+            std::string error_msg = "[OBJECT TRACKER] ERROR: Double-release of ALREADY FREED object " + 
+                                   std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                                   " (" + it->second.debug_name + ")";
+            LOG_RUNTIME_WARN(error_msg.c_str());
             return;
         }
         
         it->second.ref_count--;
-        std::cout << "[OBJECT TRACKER] RELEASED: " << header_ptr 
-                  << " (" << it->second.debug_name << ") ref_count=" << it->second.ref_count << std::endl;
+        std::string release_msg = "[OBJECT TRACKER] RELEASED: " + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                                 " (" + it->second.debug_name + ") ref_count=" + std::to_string(it->second.ref_count);
+        LOG_RUNTIME_DEBUG(release_msg.c_str());
         
         if (it->second.ref_count == 0) {
             it->second.is_freed = true;
-            std::cout << "[OBJECT TRACKER] FREED: " << header_ptr 
-                      << " (" << it->second.debug_name << ")" << std::endl;
+            std::string freed_msg = "[OBJECT TRACKER] FREED: " + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) + 
+                                   " (" + it->second.debug_name + ")";
+            LOG_RUNTIME_DEBUG(freed_msg.c_str());
         }
     } else {
-        std::cout << "[OBJECT TRACKER] WARNING: Releasing untracked object " << header_ptr << std::endl;
+        std::string warn_msg = "[OBJECT TRACKER] WARNING: Releasing untracked object " + 
+                              std::to_string(reinterpret_cast<uintptr_t>(header_ptr));
+        LOG_RUNTIME_WARN(warn_msg.c_str());
     }
 }
 
 void dump_tracked_objects() {
-    std::cout << "[OBJECT TRACKER] === TRACKED OBJECTS DUMP ===" << std::endl;
-    for (const auto& pair : tracked_objects) {
-        const ObjectTrackingInfo& info = pair.second;
-        std::cout << "  " << info.header_ptr << " (" << info.debug_name 
-                  << ") ref_count=" << info.ref_count 
-                  << " freed=" << (info.is_freed ? "YES" : "NO") << std::endl;
-    }
-    std::cout << "[OBJECT TRACKER] === END DUMP ===" << std::endl;
+    // Debug dump removed for clean console
 }
 
 void Mycelium_VTable_register(uint32_t type_id, MyceliumVTable* vtable) {
@@ -326,21 +348,6 @@ MyceliumVTable* Mycelium_VTable_get(uint32_t type_id) {
 }
 
 // --- ARC Function Implementations ---
-// DESTRUCTOR SEQUENCE EXPLANATION:
-//
-// Sharpie uses a dual-layer destructor approach for efficiency and polymorphism support:
-//
-// 1. COMPILE-TIME DESTRUCTOR CALLS (Current Default):
-//    - Compiler inserts direct destructor calls before release when types are known statically
-//    - Used in local variable cleanup, assignment, and return statements
-//    - Provides zero runtime overhead for monomorphic code
-//    - Pattern: destructor_function(obj_fields_ptr) -> Mycelium_Object_release(header_ptr)
-//
-// 2. RUNTIME DESTRUCTOR DISPATCH (Vtable-based, for polymorphism):
-//    - Used when actual object type is unknown at compile-time (polymorphic scenarios)
-//    - Vtable lookup in Mycelium_Object_release handles destructor dispatch
-//    - Pattern: Mycelium_Object_release(header_ptr) -> vtable->destructor(obj_fields_ptr) -> free()
-
 MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, MyceliumVTable* vtable) {
     size_t total_size = sizeof(MyceliumObjectHeader) + data_size;
     MyceliumObjectHeader* header_ptr = (MyceliumObjectHeader*)malloc(total_size);
@@ -353,16 +360,17 @@ MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, 
     header_ptr->type_id = type_id;
     header_ptr->vtable = vtable;
     
-    // DEBUG: Print vtable information
-    std::cout << "[DEBUG] Mycelium_Object_alloc:" << std::endl;
-    std::cout << "  header_ptr: " << header_ptr << std::endl;
-    std::cout << "  type_id: " << type_id << std::endl;
-    std::cout << "  vtable: " << vtable << std::endl;
+    // Log debug info about object allocation
+    std::string debug_msg = "[DEBUG] Mycelium_Object_alloc:\n  header_ptr: " + 
+                           std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) +
+                           "\n  type_id: " + std::to_string(type_id) +
+                           "\n  vtable: " + std::to_string(reinterpret_cast<uintptr_t>(vtable));
     if (vtable) {
-        std::cout << "  vtable->destructor: " << (void*)vtable->destructor << std::endl;
+        debug_msg += "\n  vtable->destructor: " + std::to_string(reinterpret_cast<uintptr_t>(vtable->destructor));
     } else {
-        std::cout << "  vtable->destructor: (vtable is null)" << std::endl;
+        debug_msg += "\n  vtable->destructor: (vtable is null)";
     }
+    LOG_RUNTIME_DEBUG(debug_msg.c_str());
     
     // TRACK OBJECT ALLOCATION
     track_object_allocation(header_ptr, type_id);
@@ -393,17 +401,13 @@ void Mycelium_Object_release(MyceliumObjectHeader* obj_header) {
         
         // Basic sanity checks for invalid pointers
         if (header_addr < 0x10000 || header_addr > 0x7FFFFFFFFFFF || header_addr % sizeof(void*) != 0) {
-            std::cout << "[WARNING] Mycelium_Object_release: Invalid header pointer " 
-                      << obj_header << " - skipping release" << std::endl;
+            // Warning output removed for clean console
             return;
         }
         
         // Check for reasonable ref_count values (prevent accessing freed memory)
         if (obj_header->ref_count < 0 || obj_header->ref_count > 1000000) {
-            std::cout << "[WARNING] Mycelium_Object_release: Suspicious ref_count " 
-                      << obj_header->ref_count << " at " << obj_header 
-                      << " - likely double-free attempt" << std::endl;
-            dump_tracked_objects(); // Show current state when issues occur
+            // Warning output removed for clean console
             return;
         }
         
@@ -411,9 +415,7 @@ void Mycelium_Object_release(MyceliumObjectHeader* obj_header) {
         obj_header->ref_count--;
         
         if (obj_header->ref_count < 0) {
-            std::cout << "[ERROR] Mycelium_Object_release: ref_count went negative (" 
-                      << obj_header->ref_count << ") - double-release detected!" << std::endl;
-            dump_tracked_objects(); // Show current state when issues occur
+            // Error output removed for clean console
             return; // Don't free, this is a bug
         }
         
