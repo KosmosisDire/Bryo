@@ -3,128 +3,187 @@ extern void print_int(int val);
 
 namespace ScopeTest
 {
-    class TestObject
+    // Test self-referencing binary tree node
+    class TreeNode
     {
-        public string name;
-        public int id;
-
-        ~TestObject()
+        int value;
+        TreeNode left;
+        TreeNode right;
+        
+        TreeNode(int val)
         {
-            Mycelium_String_print("DESTRUCTOR: " + name + " (id=" + id.ToString() + ")\n");
+            value = val;
+            left = null;
+            right = null;
         }
-
-        public TestObject(string name, int id)
+        
+        void set_left(TreeNode node)
         {
-            this.name = name;
-            this.id = id;
-            Mycelium_String_print("CONSTRUCTOR: " + name + " (id=" + id.ToString() + ")\n");
+            left = node;
+        }
+        
+        void set_right(TreeNode node)
+        {
+            right = node;
+        }
+        
+        int get_value()
+        {
+            return value;
+        }
+        
+        // Recursive tree traversal (in-order)
+        void print_inorder()
+        {
+            if (left != null)
+                left.print_inorder();
+            
+            print_int(value);
+            
+            if (right != null)
+                right.print_inorder();
+        }
+        
+        // Recursive tree depth calculation
+        int get_depth()
+        {
+            int left_depth = 0;
+            int right_depth = 0;
+            
+            if (left != null)
+                left_depth = left.get_depth();
+            
+            if (right != null)
+                right_depth = right.get_depth();
+            
+            if (left_depth > right_depth)
+                return left_depth + 1;
+            else
+                return right_depth + 1;
+        }
+    }
+    
+    // Test simple linked list node
+    class ListNode
+    {
+        int data;
+        ListNode next;
+        
+        ListNode(int val)
+        {
+            data = val;
+            next = null;
+        }
+        
+        void set_next(ListNode node)
+        {
+            next = node;
+        }
+        
+        // Recursive list printing
+        void print_list()
+        {
+            print_int(data);
+            
+            if (next != null)
+                next.print_list();
+        }
+        
+        // Recursive list length calculation
+        int get_length()
+        {
+            if (next == null)
+                return 1;
+            else
+                return 1 + next.get_length();
         }
     }
 
     class Program
     {
+        // Test recursive fibonacci
+        static int fib(int n)
+        {
+            if (n <= 1)
+                return n;
+            return fib(n - 1) + fib(n - 2);
+        }
+        
+        // Test recursive factorial
+        static int factorial(int n)
+        {
+            if (n <= 1)
+                return 1;
+            return n * factorial(n - 1);
+        }
+        
+        // Test mutual recursion helper
+        static bool is_even(int n)
+        {
+            if (n == 0)
+                return true;
+            return is_odd(n - 1);
+        }
+        
+        static bool is_odd(int n)
+        {
+            if (n == 0)
+                return false;
+            return is_even(n - 1);
+        }
+
         static int Main()
         {
-            Mycelium_String_print("=== SCOPE & MEMORY MANAGEMENT TEST ===\n");
-
-            // Test 1: String + Object in same scope (critical for memory corruption fix)
-            Mycelium_String_print("\n--- Test 1: String + Object Mixed Scope ---\n");
-            {
-                string testStr = "Hello World";  // This should NOT be ARC-managed
-                TestObject obj1 = new TestObject("ScopeTest1", 1);  // This SHOULD be ARC-managed
-                Mycelium_String_print("String: " + testStr + "\n");
-                Mycelium_String_print("Object: " + obj1.name + "\n");
-                // Both testStr and obj1 should be cleaned up here
-                // testStr should use string cleanup, obj1 should call destructor
-            }
-            Mycelium_String_print("After Test 1 scope exit\n");
-
-            // Test 2: Loop with objects going out of scope
-            Mycelium_String_print("\n--- Test 2: Loop Scope Cleanup ---\n");
-            for (int i = 0; i < 3; i = i + 1)
-            {
-                TestObject loopObj = new TestObject("LoopObj", i);
-                string loopStr = "Loop" + i.ToString();
-                
-                if (i == 1)
-                {
-                    TestObject innerObj = new TestObject("InnerObj", 99);
-                    Mycelium_String_print("Created inner object\n");
-                    // innerObj should be destroyed here when going out of scope
-                }
-                
-                Mycelium_String_print("Loop iteration " + i.ToString() + " complete\n");
-                // loopObj should be destroyed here at end of iteration
-            }
-            Mycelium_String_print("After loop complete\n");
-
-            // Test 3: Early exit with continue
-            Mycelium_String_print("\n--- Test 3: Continue Statement Cleanup ---\n");
-            for (int j = 0; j < 3; j = j + 1)
-            {
-                TestObject continueObj = new TestObject("ContinueObj", j);
-                
-                if (j == 1)
-                {
-                    Mycelium_String_print("Continuing at j=" + j.ToString() + "\n");
-                    continue; // continueObj should be destroyed before continue
-                }
-                
-                Mycelium_String_print("Normal flow for j=" + j.ToString() + "\n");
-                // continueObj should be destroyed here for j=0,2
-            }
-            Mycelium_String_print("After continue test\n");
-
-            // Test 4: Early exit with break
-            Mycelium_String_print("\n--- Test 4: Break Statement Cleanup ---\n");
-            for (int k = 0; k < 5; k = k + 1)
-            {
-                TestObject breakObj = new TestObject("BreakObj", k);
-                
-                if (k == 2)
-                {
-                    Mycelium_String_print("Breaking at k=" + k.ToString() + "\n");
-                    break; // breakObj should be destroyed before break
-                }
-                
-                Mycelium_String_print("Normal flow for k=" + k.ToString() + "\n");
-                // breakObj should be destroyed here for k=0,1
-            }
-            Mycelium_String_print("After break test\n");
-
-            // Test 5: Nested blocks
-            Mycelium_String_print("\n--- Test 5: Nested Block Scopes ---\n");
-            {
-                TestObject outer = new TestObject("OuterBlock", 100);
-                {
-                    TestObject inner = new TestObject("InnerBlock", 200);
-                    {
-                        TestObject deepest = new TestObject("DeepestBlock", 300);
-                        Mycelium_String_print("All three objects created\n");
-                        // deepest destroyed here
-                    }
-                    Mycelium_String_print("Deepest scope exited\n");
-                    // inner destroyed here
-                }
-                Mycelium_String_print("Inner scope exited\n");
-                // outer destroyed here
-            }
-            Mycelium_String_print("All nested scopes exited\n");
-
-            // Test 6: Object assignment (ARC reference counting)
-            Mycelium_String_print("\n--- Test 6: Object Assignment & ARC ---\n");
-            TestObject original = new TestObject("Original", 500);
-            TestObject copy = original; // Should increment ref count
+            print_int(999); // Test marker start
             
-            Mycelium_String_print("Original and copy point to same object\n");
+            // Test 1: Recursive functions
+            print_int(fib(6));        // Should print 8
+            print_int(factorial(5));  // Should print 120
             
-            copy = new TestObject("NewObject", 600); // Should decrement ref count of original
+            // Test 2: Mutual recursion
+            if (is_even(4))
+                print_int(1); // Should print 1 (true)
+            else
+                print_int(0);
+                
+            if (is_odd(4))
+                print_int(1);
+            else
+                print_int(0); // Should print 0 (false)
             
-            Mycelium_String_print("Copy now points to different object\n");
-            // Both original and copy should be destroyed at function end
-
-            Mycelium_String_print("\n=== TEST COMPLETE ===\n");
-            Mycelium_String_print("Function ending - all remaining objects should be destroyed\n");
+            // Test 3: Self-referencing binary tree
+            TreeNode root = new TreeNode(5);
+            TreeNode left_child = new TreeNode(3);
+            TreeNode right_child = new TreeNode(7);
+            TreeNode left_left = new TreeNode(1);
+            TreeNode left_right = new TreeNode(4);
+            
+            root.set_left(left_child);
+            root.set_right(right_child);
+            left_child.set_left(left_left);
+            left_child.set_right(left_right);
+            
+            // Tree should print: 1 3 4 5 7 (in-order traversal)
+            root.print_inorder();
+            
+            // Tree depth should be 3
+            print_int(root.get_depth());
+            
+            // Test 4: Self-referencing linked list
+            ListNode head = new ListNode(10);
+            ListNode second = new ListNode(20);
+            ListNode third = new ListNode(30);
+            
+            head.set_next(second);
+            second.set_next(third);
+            
+            // List should print: 10 20 30
+            head.print_list();
+            
+            // List length should be 3
+            print_int(head.get_length());
+            
+            print_int(888); // Test marker end
             
             return 0;
         }

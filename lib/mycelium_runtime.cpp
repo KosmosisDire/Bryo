@@ -360,6 +360,12 @@ MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, 
     header_ptr->type_id = type_id;
     header_ptr->vtable = vtable;
     
+    // Zero-initialize the data section to prevent garbage values in fields
+    if (data_size > 0) {
+        void* data_ptr = (void*)(header_ptr + 1);
+        memset(data_ptr, 0, data_size);
+    }
+    
     // Log debug info about object allocation
     std::string debug_msg = "[DEBUG] Mycelium_Object_alloc:\n  header_ptr: " + 
                            std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) +

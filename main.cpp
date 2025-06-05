@@ -113,7 +113,7 @@ void Compile(std::string input)
         LOG_DEBUG("Starting JIT execution of main function", "JIT");
         
         // Capture and redirect JIT output
-        auto value = compiler.jit_execute_function("main", {});
+        auto value = compiler.jit_execute_function("Program.Main", {});
         
         LOG_JIT_OUTPUT("Program returned: " + std::to_string(value.IntVal.getSExtValue()));
         LOG_DEBUG("JIT execution completed successfully", "JIT");

@@ -117,7 +117,12 @@ void ScriptCompiler::visit(std::shared_ptr<ExternalMethodDeclarationNode> node) 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<ClassDeclarationNode> node) {
     std::string class_name = node->name->name;
     if (classTypeRegistry.count(class_name)) { log_error("Class '" + class_name + "' already defined.", node->location); return nullptr; }
-    ClassTypeInfo cti; cti.name = class_name; cti.type_id = next_type_id++;
+    
+    // Pre-register the class to enable self-referencing types
+    ClassTypeInfo cti; 
+    cti.name = class_name; 
+    cti.type_id = next_type_id++;
+    classTypeRegistry[class_name] = cti; // Register early for forward references
     std::vector<llvm::Type*> field_llvm_types_for_struct; unsigned field_idx_counter = 0;
     for (const auto &member : node->members) {
         if (auto fieldDecl = std::dynamic_pointer_cast<FieldDeclarationNode>(member)) {
@@ -153,8 +158,7 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
     llvm::Type *return_type = get_llvm_type(node->type.value());
     
     // Push function scope for the new method
-    std::string func_name = class_name + "." + node->name->name; 
-    if (func_name == "Program.Main") func_name = "main";
+    std::string func_name = class_name + "." + node->name->name;
     scope_manager->push_scope(ScopeType::Function, func_name);
     std::vector<llvm::Type *> param_llvm_types; const ClassTypeInfo* this_class_info = nullptr;
     if (!is_static) {
@@ -192,37 +196,8 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
         thisVarInfo.classInfo = this_class_info; llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
         namedValues["this"] = thisVarInfo; 
         
-        // Set up field access for instance methods - add each field to namedValues for direct access
-        if (this_class_info && this_class_info->fieldsType) {
-            llvm::Value* this_fields_ptr = llvmBuilder->CreateLoad(llvm_arg_it->getType(), thisVarInfo.alloca, "this.fields.method");
-            for (unsigned i = 0; i < this_class_info->field_names_in_order.size(); ++i) {
-                const std::string& field_name = this_class_info->field_names_in_order[i];
-                llvm::Type* field_llvm_type = this_class_info->fieldsType->getElementType(i);
-                
-                // Create a pseudo-alloca for the field that points directly to the struct member
-                llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, this_fields_ptr, i, field_name + ".ptr.method");
-                
-                VariableInfo fieldVarInfo;
-                fieldVarInfo.alloca = create_entry_block_alloca(function, field_name + ".method.access", field_llvm_type);
-                fieldVarInfo.declaredTypeNode = this_class_info->field_ast_types[i];
-                
-                // Load the field value and store it in the pseudo-alloca for access
-                llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, field_name + ".val.method");
-                llvmBuilder->CreateStore(field_val, fieldVarInfo.alloca);
-                
-                // Check if this is an object field for class info
-                if (field_llvm_type->isPointerTy() && fieldVarInfo.declaredTypeNode) {
-                    if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&fieldVarInfo.declaredTypeNode->name_segment)) {
-                        auto field_cti_it = classTypeRegistry.find((*identNode)->name);
-                        if (field_cti_it != classTypeRegistry.end()) {
-                            fieldVarInfo.classInfo = &field_cti_it->second;
-                        }
-                    }
-                }
-                
-                namedValues[field_name] = fieldVarInfo;
-            }
-        }
+        // Note: Field access in instance methods should use explicit this.field syntax
+        // Simple field references like "value" should be parsed as "this.value"
         
         ++llvm_arg_it;
     }
@@ -547,7 +522,12 @@ llvm::Function* ScriptCompiler::visit(std::shared_ptr<ConstructorDeclarationNode
     llvmBuilder->SetInsertPoint(entry_block); auto llvm_arg_it = function->arg_begin();
     VariableInfo thisVarInfo; thisVarInfo.alloca = create_entry_block_alloca(function, "this.ctor.arg", llvm_arg_it->getType());
     thisVarInfo.classInfo = this_class_info; llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
-    namedValues["this"] = thisVarInfo; ++llvm_arg_it; unsigned ast_param_idx = 0;
+    namedValues["this"] = thisVarInfo; 
+    
+    // Note: Field access in constructors should use explicit this.field syntax
+    // Simple field assignments like "value = val" should be parsed as "this.value = val"
+    
+    ++llvm_arg_it; unsigned ast_param_idx = 0;
     for (; llvm_arg_it != function->arg_end(); ++llvm_arg_it, ++ast_param_idx) {
         if (ast_param_idx >= node->parameters.size()) { log_error("LLVM argument count mismatch for constructor " + func_name, node->location); return function; }
         const auto& ast_param = node->parameters[ast_param_idx]; VariableInfo paramVarInfo;
@@ -681,7 +661,36 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Lite
 
 ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<IdentifierExpressionNode> node) {
     auto it = namedValues.find(node->identifier->name);
-    if (it == namedValues.end()) { log_error("Undefined variable: " + node->identifier->name, node->location); return ExpressionVisitResult(nullptr); }
+    if (it == namedValues.end()) { 
+        // Try implicit field access: if we're in an instance method/constructor and identifier not found,
+        // try to resolve it as this.fieldName
+        auto this_it = namedValues.find("this");
+        if (this_it != namedValues.end() && this_it->second.classInfo) {
+            const ClassTypeInfo* class_info = this_it->second.classInfo;
+            
+            // Check if the identifier matches a field name
+            auto field_it = class_info->field_indices.find(node->identifier->name);
+            if (field_it != class_info->field_indices.end()) {
+                // Create a member access expression: this.fieldName
+                auto this_expr = std::make_shared<IdentifierExpressionNode>();
+                this_expr->identifier = std::make_shared<IdentifierNode>("this");
+                this_expr->location = node->location;
+                
+                auto member_name = std::make_shared<IdentifierNode>(node->identifier->name);
+                
+                auto member_access = std::make_shared<MemberAccessExpressionNode>();
+                member_access->target = this_expr;
+                member_access->memberName = member_name;
+                member_access->location = node->location;
+                
+                // Recursively resolve the member access
+                return visit(member_access);
+            }
+        }
+        
+        log_error("Undefined variable: " + node->identifier->name, node->location); 
+        return ExpressionVisitResult(nullptr); 
+    }
     const VariableInfo& varInfo = it->second;
     llvm::Value* loaded_val = llvmBuilder->CreateLoad(varInfo.alloca->getAllocatedType(), varInfo.alloca, node->identifier->name.c_str());
     return ExpressionVisitResult(loaded_val, varInfo.classInfo); 
@@ -738,7 +747,42 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
     if (!new_llvm_val) { log_error("Assignment source is null.", node->source->location); return ExpressionVisitResult(nullptr); }
     if (auto id_target = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target)) {
         auto it = namedValues.find(id_target->identifier->name);
-        if (it == namedValues.end()) { log_error("Assigning to undeclared var: " + id_target->identifier->name, id_target->location); return ExpressionVisitResult(nullptr); }
+        if (it == namedValues.end()) { 
+            // Try implicit field assignment: if we're in an instance method/constructor and target not found,
+            // try to resolve it as this.fieldName assignment
+            auto this_it = namedValues.find("this");
+            if (this_it != namedValues.end() && this_it->second.classInfo) {
+                const ClassTypeInfo* class_info = this_it->second.classInfo;
+                
+                // Check if the identifier matches a field name
+                auto field_it = class_info->field_indices.find(id_target->identifier->name);
+                if (field_it != class_info->field_indices.end()) {
+                    // Create a member access assignment: this.fieldName = source
+                    auto this_expr = std::make_shared<IdentifierExpressionNode>();
+                    this_expr->identifier = std::make_shared<IdentifierNode>("this");
+                    this_expr->location = id_target->location;
+                    
+                    auto member_name = std::make_shared<IdentifierNode>(id_target->identifier->name);
+                    
+                    auto member_access = std::make_shared<MemberAccessExpressionNode>();
+                    member_access->target = this_expr;
+                    member_access->memberName = member_name;
+                    member_access->location = id_target->location;
+                    
+                    // Create a new assignment with member access as target
+                    auto member_assignment = std::make_shared<AssignmentExpressionNode>();
+                    member_assignment->target = member_access;
+                    member_assignment->source = node->source;
+                    member_assignment->location = node->location;
+                    
+                    // Recursively resolve the member access assignment
+                    return visit(member_assignment);
+                }
+            }
+            
+            log_error("Assigning to undeclared var: " + id_target->identifier->name, id_target->location); 
+            return ExpressionVisitResult(nullptr); 
+        }
         VariableInfo& target_var_info = it->second; llvm::Type* target_llvm_type = target_var_info.alloca->getAllocatedType();
         const ClassTypeInfo* target_static_ci = target_var_info.classInfo;
         
@@ -812,6 +856,52 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Assi
         if (field_it == obj_res.classInfo->field_indices.end()) { log_error("Field not found in assignment", member_target->location); return ExpressionVisitResult(nullptr); }
         unsigned field_idx = field_it->second;
         llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(obj_res.classInfo->fieldsType, obj_res.value, field_idx);
+        
+        // ARC: Release old field value before storing new value
+        llvm::Type* field_type = obj_res.classInfo->fieldsType->getElementType(field_idx);
+        auto field_ast_type = obj_res.classInfo->field_ast_types[field_idx];
+        
+        // Check if this is an object field that needs ARC management
+        const ClassTypeInfo* field_class_info = nullptr;
+        if (field_type->isPointerTy() && field_ast_type) {
+            if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&field_ast_type->name_segment)) {
+                auto field_cti_it = classTypeRegistry.find((*identNode)->name);
+                if (field_cti_it != classTypeRegistry.end()) {
+                    field_class_info = &field_cti_it->second;
+                }
+            }
+        }
+        
+        if (field_class_info && field_class_info->fieldsType) {
+            // Load old field value and release it if not null
+            llvm::Value* old_field_val = llvmBuilder->CreateLoad(field_type, field_ptr, "old.field.val");
+            
+            // First check if the old field value itself is not null
+            llvm::Value* is_field_not_null = llvmBuilder->CreateICmpNE(old_field_val, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(old_field_val->getType())));
+            llvm::BasicBlock* check_release_bb = llvm::BasicBlock::Create(*llvmContext, "check.release.field", currentFunction);
+            llvm::BasicBlock* after_release_bb = llvm::BasicBlock::Create(*llvmContext, "after.release.field", currentFunction);
+            llvmBuilder->CreateCondBr(is_field_not_null, check_release_bb, after_release_bb);
+            
+            llvmBuilder->SetInsertPoint(check_release_bb);
+            llvm::Value* old_hdr = getHeaderPtrFromFieldsPtr(old_field_val, field_class_info->fieldsType);
+            if (old_hdr) {
+                llvm::Value* is_hdr_not_null = llvmBuilder->CreateICmpNE(old_hdr, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(old_hdr->getType())));
+                llvm::BasicBlock* release_bb = llvm::BasicBlock::Create(*llvmContext, "release.old.field", currentFunction);
+                llvm::BasicBlock* skip_release_bb = llvm::BasicBlock::Create(*llvmContext, "skip.release.field", currentFunction);
+                llvmBuilder->CreateCondBr(is_hdr_not_null, release_bb, skip_release_bb);
+                
+                llvmBuilder->SetInsertPoint(release_bb);
+                llvmBuilder->CreateCall(llvmModule->getFunction("Mycelium_Object_release"), {old_hdr});
+                llvmBuilder->CreateBr(skip_release_bb);
+                
+                llvmBuilder->SetInsertPoint(skip_release_bb);
+                llvmBuilder->CreateBr(after_release_bb);
+            } else {
+                llvmBuilder->CreateBr(after_release_bb);
+            }
+            llvmBuilder->SetInsertPoint(after_release_bb);
+        }
+        
         llvmBuilder->CreateStore(new_llvm_val, field_ptr);
     } else { log_error("Invalid assignment target.", node->target->location); return ExpressionVisitResult(nullptr); }
     return ExpressionVisitResult(new_llvm_val, new_val_static_ci);
@@ -945,7 +1035,32 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Meth
             }
         }
     } else if (auto idTarget = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target)) { 
-        resolved_func_name = idTarget->identifier->name; 
+        std::string func_name = idTarget->identifier->name;
+        
+        // For calls within the same class, try to resolve the qualified name first
+        if (currentFunction) {
+            std::string current_func_name = currentFunction->getName().str();
+            size_t dot_pos = current_func_name.find('.');
+            if (dot_pos != std::string::npos) {
+                std::string current_class = current_func_name.substr(0, dot_pos);
+                std::string qualified_name = current_class + "." + func_name;
+                
+                // Try the qualified name first (for same-class calls)
+                if (llvmModule->getFunction(qualified_name)) {
+                    func_name = qualified_name;
+                } else if (llvmModule->getFunction(func_name)) {
+                    // Keep the simple name if it exists (for external functions, etc.)
+                    // func_name stays as is
+                } else {
+                    // Neither exists yet, but assume the qualified name for same-class calls
+                    // This handles the case where the method hasn't been compiled yet
+                    func_name = qualified_name;
+                }
+            }
+        }
+        // If not in a class method, just use the simple name
+        
+        resolved_func_name = func_name; 
     }
     else { 
         log_error("Unsupported method call target type.", node->target->location); 
@@ -956,8 +1071,6 @@ ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<Meth
         log_error("Could not resolve function name for method call.", node->target->location); 
         return ExpressionVisitResult(nullptr); 
     }
-    
-    if (resolved_func_name == "Program.Main") resolved_func_name = "main"; 
     
     // Handle primitive method calls differently
     if (is_primitive_method_call && primitive_info) {
