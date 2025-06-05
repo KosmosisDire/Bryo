@@ -140,11 +140,30 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<ClassDeclarationNode> node) {
     cti.fieldsType = llvm::StructType::create(*llvmContext, field_llvm_types_for_struct, class_name + "_Fields");
     if (!cti.fieldsType) { log_error("Failed to create fields struct for " + class_name, node->location); return nullptr; }
     classTypeRegistry[class_name] = cti; 
+    
+    // PASS 1: Declare all method signatures first (forward declarations)
     for (const auto &member : node->members) {
-        if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member)) { visit_method_declaration(methodDecl, class_name); }
-        else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member)) { visit(ctorDecl, class_name); }
+        if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member)) { 
+            declare_method_signature(methodDecl, class_name); 
+        }
+        else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member)) { 
+            declare_constructor_signature(ctorDecl, class_name); 
+        }
         else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member)) {
-            llvm::Function* dtor_func = visit(dtorDecl, class_name);
+            declare_destructor_signature(dtorDecl, class_name);
+        }
+    }
+    
+    // PASS 2: Compile method bodies (now all signatures are available)
+    for (const auto &member : node->members) {
+        if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member)) { 
+            compile_method_body(methodDecl, class_name); 
+        }
+        else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member)) { 
+            compile_constructor_body(ctorDecl, class_name); 
+        }
+        else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member)) {
+            llvm::Function* dtor_func = compile_destructor_body(dtorDecl, class_name);
             if (dtor_func) { auto& modifiable_cti = classTypeRegistry[class_name]; modifiable_cti.destructor_func = dtor_func; }
         }
     }
@@ -226,6 +245,255 @@ llvm::Function* ScriptCompiler::visit_method_declaration(std::shared_ptr<MethodD
             llvmBuilder->CreateRetVoid();
         }
     } return function;
+}
+
+llvm::Function* ScriptCompiler::declare_method_signature(std::shared_ptr<MethodDeclarationNode> node, const std::string &class_name) {
+    bool is_static = false;
+    for (auto mod : node->modifiers) if (mod.first == ModifierKind::Static) is_static = true;
+    if (!node->type.has_value()) log_error("Method lacks return type.", node->location);
+    llvm::Type *return_type = get_llvm_type(node->type.value());
+    
+    std::string func_name = class_name + "." + node->name->name;
+    std::vector<llvm::Type *> param_llvm_types; 
+    
+    if (!is_static) {
+        auto cti_it = classTypeRegistry.find(class_name);
+        if (cti_it == classTypeRegistry.end()) { log_error("Class not found for instance method: " + class_name, node->location); return nullptr; }
+        param_llvm_types.push_back(llvm::PointerType::getUnqual(*llvmContext)); 
+    }
+    for (const auto &param_node : node->parameters) {
+         if (!param_node->type) log_error("Method param lacks type.", param_node->location);
+         param_llvm_types.push_back(get_llvm_type(param_node->type));
+    }
+    llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
+    llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
+    
+    // Populate functionReturnClassInfoMap for forward declarations
+    if (node->type.has_value()) {
+        std::shared_ptr<TypeNameNode> return_ast_type_node = node->type.value();
+        if (auto identNode_variant = std::get_if<std::shared_ptr<IdentifierNode>>(&return_ast_type_node->name_segment)) {
+            if (auto identNode = *identNode_variant) {
+                auto cti_it = classTypeRegistry.find(identNode->name);
+                if (cti_it != classTypeRegistry.end()) {
+                    functionReturnClassInfoMap[function] = &cti_it->second;
+                }
+            }
+        }
+    }
+    
+    return function;
+}
+
+void ScriptCompiler::compile_method_body(std::shared_ptr<MethodDeclarationNode> node, const std::string &class_name) {
+    namedValues.clear(); 
+    bool is_static = false;
+    for (auto mod : node->modifiers) if (mod.first == ModifierKind::Static) is_static = true;
+    
+    std::string func_name = class_name + "." + node->name->name;
+    llvm::Function *function = llvmModule->getFunction(func_name);
+    if (!function) {
+        log_error("Function signature not found during body compilation: " + func_name, node->location);
+        return;
+    }
+    
+    // Push function scope for the method body compilation
+    scope_manager->push_scope(ScopeType::Function, func_name);
+    const ClassTypeInfo* this_class_info = nullptr;
+    if (!is_static) {
+        auto cti_it = classTypeRegistry.find(class_name);
+        if (cti_it == classTypeRegistry.end()) { log_error("Class not found for instance method: " + class_name, node->location); return; }
+        this_class_info = &cti_it->second;
+    }
+    
+    currentFunction = function; 
+    llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
+    llvmBuilder->SetInsertPoint(entry_block);
+    auto llvm_arg_it = function->arg_begin();
+    if (!is_static) {
+        VariableInfo thisVarInfo; 
+        thisVarInfo.alloca = create_entry_block_alloca(function, "this", llvm_arg_it->getType()); 
+        thisVarInfo.classInfo = this_class_info; 
+        llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
+        namedValues["this"] = thisVarInfo; 
+        ++llvm_arg_it;
+    }
+    unsigned ast_param_idx = 0;
+    for (; llvm_arg_it != function->arg_end(); ++llvm_arg_it, ++ast_param_idx) {
+        VariableInfo paramVarInfo; 
+        paramVarInfo.alloca = create_entry_block_alloca(function, node->parameters[ast_param_idx]->name->name, llvm_arg_it->getType());
+        paramVarInfo.declaredTypeNode = node->parameters[ast_param_idx]->type;
+        if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&paramVarInfo.declaredTypeNode->name_segment)) {
+            auto cti_it = classTypeRegistry.find((*identNode)->name);
+            if (cti_it != classTypeRegistry.end()) paramVarInfo.classInfo = &cti_it->second;
+        }
+        llvmBuilder->CreateStore(&*llvm_arg_it, paramVarInfo.alloca); 
+        namedValues[node->parameters[ast_param_idx]->name->name] = paramVarInfo;
+    }
+    if (node->body) {
+        visit(node->body.value()); 
+        if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
+            scope_manager->pop_scope();
+            llvm::Type* return_type = function->getReturnType();
+            if (return_type->isVoidTy()) llvmBuilder->CreateRetVoid(); 
+            else log_error("Non-void function '" + func_name + "' missing return.", node->body.value()->location);
+        }
+    } else { 
+        log_error("Method '" + func_name + "' has no body.", node->location);
+        if (function->getReturnType()->isVoidTy() && !llvmBuilder->GetInsertBlock()->getTerminator()) {
+            scope_manager->pop_scope();
+            llvmBuilder->CreateRetVoid();
+        }
+    }
+}
+
+llvm::Function* ScriptCompiler::declare_constructor_signature(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name) {
+    std::string func_name = class_name + ".%ctor";
+    llvm::Type *return_type = llvm::Type::getVoidTy(*llvmContext); 
+    std::vector<llvm::Type *> param_llvm_types;
+    
+    auto cti_it = classTypeRegistry.find(class_name);
+    if (cti_it == classTypeRegistry.end()) { log_error("Class not found for constructor: " + class_name, node->location); return nullptr; }
+    param_llvm_types.push_back(llvm::PointerType::getUnqual(*llvmContext));
+    
+    for (const auto &param_node : node->parameters) {
+        if (!param_node->type) { log_error("Constructor parameter lacks type in " + class_name, param_node->location); return nullptr; }
+        param_llvm_types.push_back(get_llvm_type(param_node->type));
+    }
+    llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
+    llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
+    return function;
+}
+
+void ScriptCompiler::compile_constructor_body(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name) {
+    namedValues.clear(); 
+    std::string func_name = class_name + ".%ctor";
+    llvm::Function *function = llvmModule->getFunction(func_name);
+    if (!function) {
+        log_error("Constructor signature not found during body compilation: " + func_name, node->location);
+        return;
+    }
+    
+    const ClassTypeInfo* this_class_info = nullptr; 
+    auto cti_it = classTypeRegistry.find(class_name);
+    if (cti_it == classTypeRegistry.end()) { log_error("Class not found for constructor: " + class_name, node->location); return; }
+    this_class_info = &cti_it->second;
+    
+    // Push constructor scope
+    scope_manager->push_scope(ScopeType::Function, func_name);
+    
+    currentFunction = function; 
+    llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
+    llvmBuilder->SetInsertPoint(entry_block); 
+    auto llvm_arg_it = function->arg_begin();
+    VariableInfo thisVarInfo; 
+    thisVarInfo.alloca = create_entry_block_alloca(function, "this.ctor.arg", llvm_arg_it->getType());
+    thisVarInfo.classInfo = this_class_info; 
+    llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
+    namedValues["this"] = thisVarInfo; 
+    
+    ++llvm_arg_it; unsigned ast_param_idx = 0;
+    for (; llvm_arg_it != function->arg_end(); ++llvm_arg_it, ++ast_param_idx) {
+        if (ast_param_idx >= node->parameters.size()) { log_error("LLVM argument count mismatch for constructor " + func_name, node->location); return; }
+        const auto& ast_param = node->parameters[ast_param_idx]; 
+        VariableInfo paramVarInfo;
+        paramVarInfo.alloca = create_entry_block_alloca(function, ast_param->name->name, llvm_arg_it->getType());
+        paramVarInfo.declaredTypeNode = ast_param->type;
+        if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&paramVarInfo.declaredTypeNode->name_segment)) {
+            auto cti_param_it = classTypeRegistry.find((*identNode)->name);
+            if (cti_param_it != classTypeRegistry.end()) paramVarInfo.classInfo = &cti_param_it->second;
+        }
+        llvmBuilder->CreateStore(&*llvm_arg_it, paramVarInfo.alloca); 
+        namedValues[ast_param->name->name] = paramVarInfo;
+    }
+    if (node->body) {
+        visit(node->body.value()); 
+        if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
+            scope_manager->pop_scope();
+            llvmBuilder->CreateRetVoid(); 
+        }
+    } else {
+        log_error("Constructor '" + func_name + "' has no body.", node->location);
+        if (!llvmBuilder->GetInsertBlock()->getTerminator()) { 
+            scope_manager->pop_scope();
+            llvmBuilder->CreateRetVoid();
+        }
+    }
+}
+
+llvm::Function* ScriptCompiler::declare_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name) {
+    std::string func_name = class_name + ".%dtor";
+    llvm::Type *return_type = llvm::Type::getVoidTy(*llvmContext); 
+    std::vector<llvm::Type *> param_llvm_types = {llvm::PointerType::getUnqual(*llvmContext)};
+    llvm::FunctionType *func_type = llvm::FunctionType::get(return_type, param_llvm_types, false);
+    llvm::Function *function = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, llvmModule.get());
+    return function;
+}
+
+llvm::Function* ScriptCompiler::compile_destructor_body(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name) {
+    namedValues.clear(); 
+    std::string func_name = class_name + ".%dtor";
+    llvm::Function *function = llvmModule->getFunction(func_name);
+    if (!function) {
+        log_error("Destructor signature not found during body compilation: " + func_name, node->location);
+        return nullptr;
+    }
+    
+    auto cti_it = classTypeRegistry.find(class_name);
+    if (cti_it == classTypeRegistry.end()) { log_error("Class not found for destructor: " + class_name, node->location); return nullptr; }
+    const ClassTypeInfo* this_class_info = &cti_it->second;
+    
+    // Push destructor scope
+    scope_manager->push_scope(ScopeType::Function, func_name);
+    
+    currentFunction = function; 
+    llvm::BasicBlock *entry_block = llvm::BasicBlock::Create(*llvmContext, "entry", function);
+    llvmBuilder->SetInsertPoint(entry_block); 
+    auto llvm_arg_it = function->arg_begin();
+    VariableInfo thisVarInfo; 
+    thisVarInfo.alloca = create_entry_block_alloca(function, "this.dtor.arg", llvm_arg_it->getType());
+    thisVarInfo.classInfo = this_class_info; 
+    llvmBuilder->CreateStore(&*llvm_arg_it, thisVarInfo.alloca);
+    namedValues["this"] = thisVarInfo; 
+    
+    // Set up field access for the destructor
+    if (this_class_info && this_class_info->fieldsType) {
+        llvm::Value* this_fields_ptr = llvmBuilder->CreateLoad(llvm_arg_it->getType(), thisVarInfo.alloca, "this.fields.dtor");
+        for (unsigned i = 0; i < this_class_info->field_names_in_order.size(); ++i) {
+            const std::string& field_name = this_class_info->field_names_in_order[i];
+            llvm::Type* field_llvm_type = this_class_info->fieldsType->getElementType(i);
+            
+            llvm::Value* field_ptr = llvmBuilder->CreateStructGEP(this_class_info->fieldsType, this_fields_ptr, i, field_name + ".ptr.dtor");
+            
+            VariableInfo fieldVarInfo;
+            fieldVarInfo.alloca = create_entry_block_alloca(function, field_name + ".dtor.access", field_llvm_type);
+            fieldVarInfo.declaredTypeNode = this_class_info->field_ast_types[i];
+            
+            llvm::Value* field_val = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, field_name + ".val.dtor");
+            llvmBuilder->CreateStore(field_val, fieldVarInfo.alloca);
+            
+            if (field_llvm_type->isPointerTy() && fieldVarInfo.declaredTypeNode) {
+                if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&fieldVarInfo.declaredTypeNode->name_segment)) {
+                    auto field_cti_it = classTypeRegistry.find((*identNode)->name);
+                    if (field_cti_it != classTypeRegistry.end()) {
+                        fieldVarInfo.classInfo = &field_cti_it->second;
+                    }
+                }
+            }
+            
+            namedValues[field_name] = fieldVarInfo;
+        }
+    }
+    
+    if (node->body) { visit(node->body.value()); }
+    if (!llvmBuilder->GetInsertBlock()->getTerminator()) {
+        scope_manager->pop_scope();
+        llvmBuilder->CreateRetVoid(); 
+    }
+    if (llvm::verifyFunction(*function, &llvm::errs())) { 
+        log_error("Destructor function '" + func_name + "' verification failed. Dumping IR.", node->location); 
+        function->print(llvm::errs()); 
+    }
+    return function;
 }
 
 llvm::Value* ScriptCompiler::visit(std::shared_ptr<StatementNode> node) { return visit(std::static_pointer_cast<AstNode>(node)); }
@@ -321,16 +589,43 @@ llvm::Value* ScriptCompiler::visit(std::shared_ptr<IfStatementNode> node) {
     llvm::Function *TheFunction = llvmBuilder->GetInsertBlock()->getParent();
     llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(*llvmContext, "then", TheFunction);
     llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(*llvmContext, "else");
-    llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*llvmContext, "ifcont");
+    
     llvmBuilder->CreateCondBr(cond_val, ThenBB, ElseBB);
-    llvmBuilder->SetInsertPoint(ThenBB); visit(node->thenStatement);
-    if (!llvmBuilder->GetInsertBlock()->getTerminator()) llvmBuilder->CreateBr(MergeBB); 
+    
+    // Compile then branch
+    llvmBuilder->SetInsertPoint(ThenBB); 
+    visit(node->thenStatement);
+    bool then_has_terminator = llvmBuilder->GetInsertBlock()->getTerminator() != nullptr;
     ThenBB = llvmBuilder->GetInsertBlock(); 
-    TheFunction->insert(TheFunction->end(), ElseBB); llvmBuilder->SetInsertPoint(ElseBB);
+    
+    // Compile else branch
+    TheFunction->insert(TheFunction->end(), ElseBB); 
+    llvmBuilder->SetInsertPoint(ElseBB);
     if (node->elseStatement.has_value()) { visit(node->elseStatement.value()); }
-    if (!llvmBuilder->GetInsertBlock()->getTerminator()) llvmBuilder->CreateBr(MergeBB);
+    bool else_has_terminator = llvmBuilder->GetInsertBlock()->getTerminator() != nullptr;
     ElseBB = llvmBuilder->GetInsertBlock();
-    TheFunction->insert(TheFunction->end(), MergeBB); llvmBuilder->SetInsertPoint(MergeBB);
+    
+    // Only create and use merge block if at least one branch doesn't have a terminator
+    if (!then_has_terminator || !else_has_terminator) {
+        llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*llvmContext, "ifcont");
+        
+        // Add branches to merge block from branches that don't have terminators
+        if (!then_has_terminator) {
+            llvmBuilder->SetInsertPoint(ThenBB);
+            llvmBuilder->CreateBr(MergeBB);
+        }
+        if (!else_has_terminator) {
+            llvmBuilder->SetInsertPoint(ElseBB);
+            llvmBuilder->CreateBr(MergeBB);
+        }
+        
+        // Insert merge block and set as current insert point
+        TheFunction->insert(TheFunction->end(), MergeBB); 
+        llvmBuilder->SetInsertPoint(MergeBB);
+    }
+    // If both branches have terminators, don't create a merge block at all
+    // The insert point will be invalid, but that's okay since control flow has ended
+    
     return nullptr; 
 }
 

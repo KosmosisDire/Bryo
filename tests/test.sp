@@ -1,6 +1,15 @@
 extern void Mycelium_String_print(string str);
 extern void print_int(int val);
 
+class Console
+{
+    static void println_int(int val)
+    {
+        print_int(val);
+        Mycelium_String_print("\n");
+    }
+}
+
 namespace ScopeTest
 {
     // Test self-referencing binary tree node
@@ -39,6 +48,7 @@ namespace ScopeTest
                 left.print_inorder();
             
             print_int(value);
+            Mycelium_String_print(" ");
             
             if (right != null)
                 right.print_inorder();
@@ -84,6 +94,7 @@ namespace ScopeTest
         void print_list()
         {
             print_int(data);
+            Mycelium_String_print(" ");
             
             if (next != null)
                 next.print_list();
@@ -101,6 +112,22 @@ namespace ScopeTest
 
     class Program
     {
+        // Test forward declaration: method_a calls method_b which is defined later
+        static int method_a(int n)
+        {
+            if (n <= 0)
+                return 0;
+            return method_b(n - 1);
+        }
+        
+        // method_b is defined after method_a but is called by it
+        static int method_b(int n)
+        {
+            if (n <= 0)
+                return 42;
+            return n + method_a(n - 1);
+        }
+        
         // Test recursive fibonacci
         static int fib(int n)
         {
@@ -116,42 +143,19 @@ namespace ScopeTest
                 return 1;
             return n * factorial(n - 1);
         }
-        
-        // Test mutual recursion helper
-        static bool is_even(int n)
-        {
-            if (n == 0)
-                return true;
-            return is_odd(n - 1);
-        }
-        
-        static bool is_odd(int n)
-        {
-            if (n == 0)
-                return false;
-            return is_even(n - 1);
-        }
 
         static int Main()
         {
-            print_int(999); // Test marker start
+            Console.println_int(999); // Test marker start
+            
+            // Test 0: Forward declaration (method_a calls method_b defined later)
+            Console.println_int(method_a(3));   // Should test forward declaration
             
             // Test 1: Recursive functions
-            print_int(fib(6));        // Should print 8
-            print_int(factorial(5));  // Should print 120
+            Console.println_int(fib(6));        // Should print 8
+            Console.println_int(factorial(5));  // Should print 120
             
-            // Test 2: Mutual recursion
-            if (is_even(4))
-                print_int(1); // Should print 1 (true)
-            else
-                print_int(0);
-                
-            if (is_odd(4))
-                print_int(1);
-            else
-                print_int(0); // Should print 0 (false)
-            
-            // Test 3: Self-referencing binary tree
+            // Test 2: Self-referencing binary tree
             TreeNode root = new TreeNode(5);
             TreeNode left_child = new TreeNode(3);
             TreeNode right_child = new TreeNode(7);
@@ -165,11 +169,12 @@ namespace ScopeTest
             
             // Tree should print: 1 3 4 5 7 (in-order traversal)
             root.print_inorder();
+            Mycelium_String_print("\n");
             
             // Tree depth should be 3
-            print_int(root.get_depth());
+            Console.println_int(root.get_depth());
             
-            // Test 4: Self-referencing linked list
+            // Test 3: Self-referencing linked list
             ListNode head = new ListNode(10);
             ListNode second = new ListNode(20);
             ListNode third = new ListNode(30);
@@ -179,11 +184,15 @@ namespace ScopeTest
             
             // List should print: 10 20 30
             head.print_list();
+            Mycelium_String_print("\n");
             
             // List length should be 3
-            print_int(head.get_length());
+            Console.println_int(head.get_length());
             
-            print_int(888); // Test marker end
+            Console.println_int(888); // Test marker end
+
+            // test mutual recursion
+            Console.println_int(method_a(5)); // Should print 42
             
             return 0;
         }

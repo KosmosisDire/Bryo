@@ -126,6 +126,14 @@ private:
     llvm::Value* visit(std::shared_ptr<NamespaceDeclarationNode> node);
     void visit(std::shared_ptr<ExternalMethodDeclarationNode> node);
     llvm::Function* visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    
+    // Two-pass method compilation support
+    llvm::Function* declare_method_signature(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    void compile_method_body(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    llvm::Function* declare_constructor_signature(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    void compile_constructor_body(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    llvm::Function* declare_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
+    llvm::Function* compile_destructor_body(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
     llvm::Value* visit(std::shared_ptr<StatementNode> node);
     llvm::Value* visit(std::shared_ptr<BlockStatementNode> node);
     llvm::Value* visit(std::shared_ptr<LocalVariableDeclarationStatementNode> node);
