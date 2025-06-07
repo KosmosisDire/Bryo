@@ -1942,18 +1942,17 @@ void SemanticAnalyzer::generate_uml_diagram_output() {
         }
     }
     
-    // Add forward declaration calls (dashed arrows with labels)
+    // Add forward declaration calls (dashed arrows)
     for (const auto& relationship : forward_class_relationships) {
         size_t arrow_pos = relationship.find(" --> ");
         if (arrow_pos != std::string::npos) {
             std::string caller_class = relationship.substr(0, arrow_pos);
             std::string callee_class = relationship.substr(arrow_pos + 5);
-            plantuml_output << caller_class << " ..> " << callee_class 
-                          << " : <<forward>>\n";
+            plantuml_output << caller_class << " ..> " << callee_class;
         }
     }
     
-    // Add normal method calls (solid arrows with labels)
+    // Add normal method calls (solid arrows)
     for (const auto& relationship : normal_class_relationships) {
         size_t arrow_pos = relationship.find(" --> ");
         if (arrow_pos != std::string::npos) {
@@ -1961,8 +1960,7 @@ void SemanticAnalyzer::generate_uml_diagram_output() {
             std::string callee_class = relationship.substr(arrow_pos + 5);
             // Only show normal calls that aren't already shown as forward calls
             if (forward_class_relationships.find(relationship) == forward_class_relationships.end()) {
-                plantuml_output << caller_class << " --> " << callee_class 
-                              << " : <<uses>>\n";
+                plantuml_output << caller_class << " --> " << callee_class;
             }
         }
     }
