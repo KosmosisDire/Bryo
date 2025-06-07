@@ -3,7 +3,7 @@
 #include "../script_ast.hpp" // Updated path
 #include "class_type_info.hpp"
 #include "scope_manager.hpp"
-#include "semantic_analyzer.hpp"
+#include "../semantic_analyzer/semantic_analyzer.hpp"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"

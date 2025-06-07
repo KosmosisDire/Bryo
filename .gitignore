@@ -4,3 +4,5 @@ dump.txt
 logs
 CLAUDE.md
 .claude
+.dumpappend
+.dumpignore

@@ -1,5 +1,5 @@
 #include "sharpie/compiler/script_compiler.hpp"
-#include "sharpie/compiler/semantic_analyzer.hpp"
+#include "sharpie/semantic_analyzer/semantic_analyzer.hpp"
 #include "sharpie/common/logger.hpp"
 #include "sharpie/script_ast.hpp" // For AST node types like CompilationUnitNode, SourceLocation
 #include "llvm/Support/ErrorHandling.h"
