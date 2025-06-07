@@ -1,0 +1,322 @@
+#pragma once
+
+#include "../script_ast.hpp"
+#include "class_type_info.hpp"
+#include "scope_manager.hpp"
+#include <string>
+#include <memory>
+#include <map>
+#include <vector>
+#include <optional>
+#include <set>
+
+namespace Mycelium::Scripting::Lang
+{
+
+/**
+ * Semantic error information
+ */
+struct SemanticError {
+    std::string message;
+    SourceLocation location;
+    enum class Severity { Error, Warning, Info } severity;
+    
+    SemanticError(const std::string& msg, SourceLocation loc, Severity sev = Severity::Error)
+        : message(msg), location(loc), severity(sev) {}
+};
+
+/**
+ * Results of semantic analysis
+ */
+class SemanticAnalysisResult {
+public:
+    std::vector<SemanticError> errors;
+    std::vector<SemanticError> warnings;
+    bool has_errors() const { return !errors.empty(); }
+    bool has_warnings() const { return !warnings.empty(); }
+    
+    void add_error(const std::string& message, SourceLocation location) {
+        errors.emplace_back(message, location, SemanticError::Severity::Error);
+    }
+    
+    void add_warning(const std::string& message, SourceLocation location) {
+        warnings.emplace_back(message, location, SemanticError::Severity::Warning);
+    }
+    
+    void merge(const SemanticAnalysisResult& other) {
+        errors.insert(errors.end(), other.errors.begin(), other.errors.end());
+        warnings.insert(warnings.end(), other.warnings.begin(), other.warnings.end());
+    }
+};
+
+/**
+ * Enhanced symbol table with comprehensive semantic information
+ * Maintains backward compatibility while adding detailed semantic data
+ */
+class SymbolTable {
+public:
+    // Enhanced variable symbol with semantic information
+    struct VariableSymbol {
+        std::string name;
+        std::shared_ptr<TypeNameNode> type;
+        SourceLocation declaration_location;
+        bool is_used = false;
+        const ClassTypeInfo* class_info = nullptr; // For object types
+        
+        // Enhanced semantic information
+        bool is_parameter = false;
+        bool is_field = false;
+        std::string owning_scope; // Method, class, or namespace name
+        bool is_definitely_assigned = false; // For definite assignment analysis
+    };
+    
+    // Enhanced method symbol with forward declaration tracking
+    struct MethodSymbol {
+        std::string name;
+        std::string qualified_name; // e.g., "ClassName.methodName"
+        std::shared_ptr<TypeNameNode> return_type;
+        std::vector<std::shared_ptr<ParameterDeclarationNode>> parameters;
+        SourceLocation declaration_location;
+        bool is_static = false;
+        bool is_used = false;
+        
+        // Enhanced semantic information
+        bool is_forward_declared = false; // Declared but not yet defined
+        bool is_defined = false; // Has implementation/body
+        std::string containing_class; // Empty for free functions
+        std::vector<std::string> parameter_names; // For easier lookup
+        std::vector<std::shared_ptr<TypeNameNode>> parameter_types; // For easier lookup
+        bool is_constructor = false;
+        bool is_destructor = false;
+        bool is_external = false; // extern functions
+    };
+    
+    // Enhanced class symbol with inheritance and comprehensive member tracking
+    struct ClassSymbol {
+        std::string name;
+        SourceLocation declaration_location;
+        std::vector<std::string> field_names;
+        std::vector<std::shared_ptr<TypeNameNode>> field_types;
+        std::vector<MethodSymbol> methods;
+        ClassTypeInfo type_info; // For IR generation
+        
+        // Enhanced semantic information
+        std::string base_class; // For single inheritance
+        std::vector<std::string> interfaces; // For interface implementation
+        std::map<std::string, MethodSymbol> method_registry; // Methods by name for fast lookup
+        std::map<std::string, VariableSymbol> field_registry; // Fields by name for fast lookup
+        bool is_forward_declared = false; // Declared but not yet defined
+        bool is_defined = false; // Has full definition
+        std::vector<std::string> constructors; // Constructor qualified names
+        std::string destructor; // Destructor qualified name (if any)
+    };
+    
+private:
+    std::vector<std::map<std::string, VariableSymbol>> variable_scopes;
+    std::map<std::string, ClassSymbol> classes;
+    std::map<std::string, MethodSymbol> methods; // Global method registry
+    
+public:
+    // Scope management
+    void push_scope();
+    void pop_scope();
+    
+    // Variable symbols
+    void declare_variable(const VariableSymbol& symbol);
+    VariableSymbol* find_variable(const std::string& name);
+    bool is_variable_declared_in_current_scope(const std::string& name);
+    void mark_variable_used(const std::string& name);
+    
+    // Class symbols
+    void declare_class(const ClassSymbol& symbol);
+    ClassSymbol* find_class(const std::string& name);
+    
+    // Method symbols
+    void declare_method(const MethodSymbol& symbol);
+    MethodSymbol* find_method(const std::string& qualified_name);
+    const MethodSymbol* find_method(const std::string& qualified_name) const;
+    
+    // Enhanced semantic analysis methods
+    void mark_method_as_forward_declared(const std::string& qualified_name);
+    void mark_method_as_defined(const std::string& qualified_name);
+    void mark_class_as_forward_declared(const std::string& class_name);
+    void mark_class_as_defined(const std::string& class_name);
+    
+    // Forward declaration resolution
+    std::vector<MethodSymbol*> get_forward_declared_methods();
+    std::vector<ClassSymbol*> get_forward_declared_classes();
+    bool has_unresolved_forward_declarations();
+    
+    // Enhanced lookup methods
+    MethodSymbol* find_method_in_class(const std::string& class_name, const std::string& method_name);
+    VariableSymbol* find_field_in_class(const std::string& class_name, const std::string& field_name);
+    std::vector<MethodSymbol*> get_constructors_for_class(const std::string& class_name);
+    MethodSymbol* get_destructor_for_class(const std::string& class_name);
+    
+    // Scope analysis
+    std::string get_current_scope_name();
+    std::vector<std::string> get_available_variables_in_scope();
+    
+    // Access to underlying data for ScriptCompiler compatibility (unchanged)
+    const std::map<std::string, ClassSymbol>& get_classes() const { return classes; }
+    std::map<std::string, ClassSymbol>& get_classes() { return classes; }
+};
+
+/**
+ * Pure semantic analyzer - no IR generation, only semantic validation
+ */
+class SemanticAnalyzer {
+private:
+    std::unique_ptr<SymbolTable> symbol_table;
+    SemanticAnalysisResult result;
+    
+    // Enhanced analysis context for detailed scope tracking
+    std::string current_class_name;
+    std::string current_method_name;
+    std::string current_namespace_name;
+    bool in_static_method = false;
+    bool in_constructor = false;
+    bool in_instance_method = false;
+    std::vector<std::string> loop_stack; // Track nested loops for break/continue validation
+    std::vector<std::string> scope_stack; // Track all scope names for detailed logging
+    int current_scope_depth = 0;
+    
+    // Primitive type registry reference
+    PrimitiveStructRegistry primitive_registry;
+    
+    // Method call dependency analysis results - part of SemanticIR
+    struct MethodCallInfo {
+        std::string caller_class;
+        std::string caller_method;
+        std::string callee_class;
+        std::string callee_method;
+        bool is_forward_call;  // true if this is a forward declaration call
+        SourceLocation call_location;
+        
+        std::string get_caller_qualified_name() const {
+            return caller_class + "." + caller_method;
+        }
+        
+        std::string get_callee_qualified_name() const {
+            return callee_class + "." + callee_method;
+        }
+    };
+    
+    std::vector<MethodCallInfo> discovered_method_calls;
+    std::set<std::string> discovered_forward_calls; // Legacy - for compatibility
+    
+public:
+    SemanticAnalyzer();
+    ~SemanticAnalyzer();
+    
+    // Main analysis entry point
+    SemanticAnalysisResult analyze(std::shared_ptr<CompilationUnitNode> ast_root);
+    
+    // Access to symbol table for ScriptCompiler
+    const SymbolTable& get_symbol_table() const { return *symbol_table; }
+    SymbolTable& get_symbol_table() { return *symbol_table; }
+    
+private:
+    // Enhanced multi-pass declaration processing
+    void collect_class_declarations(std::shared_ptr<CompilationUnitNode> node);
+    void collect_external_declarations(std::shared_ptr<CompilationUnitNode> node);
+    void collect_method_signatures(std::shared_ptr<CompilationUnitNode> node);
+    void resolve_forward_references();
+    
+    // Forward declaration specific methods
+    void collect_class_signatures(std::shared_ptr<ClassDeclarationNode> node);
+    void collect_method_signature(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    void collect_constructor_signature(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    void collect_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
+    void collect_class_structure(std::shared_ptr<ClassDeclarationNode> node);
+    void analyze_class_method_dependencies(const std::string& class_name, 
+                                           std::map<std::string, std::vector<std::string>>& dependency_graph,
+                                           std::set<std::string>& forward_declared_calls);
+    void validate_forward_declared_calls(const std::set<std::string>& forward_declared_calls);
+    
+    // Legacy declaration processing visitors (being migrated)
+    void analyze_declarations(std::shared_ptr<AstNode> node);
+    void analyze_declarations(std::shared_ptr<CompilationUnitNode> node);
+    void analyze_declarations(std::shared_ptr<NamespaceDeclarationNode> node);
+    void analyze_declarations(std::shared_ptr<ClassDeclarationNode> node);
+    void analyze_declarations(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    void analyze_declarations(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    void analyze_declarations(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
+    void analyze_declarations(std::shared_ptr<ExternalMethodDeclarationNode> node);
+    
+    // Type checking and validation visitors
+    void analyze_semantics(std::shared_ptr<AstNode> node);
+    void analyze_semantics(std::shared_ptr<CompilationUnitNode> node);
+    void analyze_semantics(std::shared_ptr<NamespaceDeclarationNode> node);
+    void analyze_semantics(std::shared_ptr<ClassDeclarationNode> node);
+    void analyze_semantics(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
+    void analyze_semantics(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
+    void analyze_semantics(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
+    
+    // Statement analysis
+    void analyze_statement(std::shared_ptr<StatementNode> node);
+    void analyze_statement(std::shared_ptr<BlockStatementNode> node);
+    void analyze_statement(std::shared_ptr<LocalVariableDeclarationStatementNode> node);
+    void analyze_statement(std::shared_ptr<ExpressionStatementNode> node);
+    void analyze_statement(std::shared_ptr<IfStatementNode> node);
+    void analyze_statement(std::shared_ptr<WhileStatementNode> node);
+    void analyze_statement(std::shared_ptr<ForStatementNode> node);
+    void analyze_statement(std::shared_ptr<ReturnStatementNode> node);
+    void analyze_statement(std::shared_ptr<BreakStatementNode> node);
+    void analyze_statement(std::shared_ptr<ContinueStatementNode> node);
+    
+    // Expression analysis
+    struct ExpressionTypeInfo {
+        std::shared_ptr<TypeNameNode> type;
+        const ClassTypeInfo* class_info = nullptr;
+        bool is_lvalue = false;
+        
+        ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t = nullptr) : type(t) {}
+    };
+    
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<ExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<LiteralExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<IdentifierExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<BinaryExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<AssignmentExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<UnaryExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<MethodCallExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<ObjectCreationExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<ThisExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<CastExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<MemberAccessExpressionNode> node);
+    ExpressionTypeInfo analyze_expression(std::shared_ptr<ParenthesizedExpressionNode> node);
+    
+    // Type checking utilities
+    bool are_types_compatible(std::shared_ptr<TypeNameNode> left, std::shared_ptr<TypeNameNode> right);
+    bool is_primitive_type(const std::string& type_name);
+    bool is_numeric_type(std::shared_ptr<TypeNameNode> type);
+    bool is_string_type(std::shared_ptr<TypeNameNode> type);
+    bool is_bool_type(std::shared_ptr<TypeNameNode> type);
+    std::shared_ptr<TypeNameNode> create_primitive_type(const std::string& type_name);
+    std::shared_ptr<TypeNameNode> promote_numeric_types(std::shared_ptr<TypeNameNode> left, std::shared_ptr<TypeNameNode> right);
+    
+    // Error reporting
+    void add_error(const std::string& message, SourceLocation location);
+    void add_warning(const std::string& message, SourceLocation location);
+    void add_error(const std::string& message, std::optional<SourceLocation> location = std::nullopt);
+    void add_warning(const std::string& message, std::optional<SourceLocation> location = std::nullopt);
+    
+    // Enhanced logging for semantic information
+    void log_semantic_ir_summary();
+    void log_forward_declarations();
+    void log_class_registry();
+    void log_method_registry();
+    void log_scope_information();
+    
+    // Enhanced scope tracking
+    void push_semantic_scope(const std::string& scope_name);
+    void pop_semantic_scope();
+    std::string get_full_scope_path();
+    void log_scope_change(const std::string& action, const std::string& scope_name);
+    
+    // UML diagram generation
+    void generate_uml_diagram_output();
+};
+
+} // namespace Mycelium::Scripting::Lang

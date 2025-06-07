@@ -3,6 +3,7 @@
 #include "../script_ast.hpp" // Updated path
 #include "class_type_info.hpp"
 #include "scope_manager.hpp"
+#include "semantic_analyzer.hpp"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
@@ -48,6 +49,11 @@ public:
     void compile_ast(std::shared_ptr<CompilationUnitNode> ast_root, const std::string& module_name = "MyceliumModule");
     std::string get_ir_string() const;
     void dump_ir() const;
+    
+    // NEW: Semantic analysis interface (parallel system during migration)
+    SemanticAnalysisResult run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root);
+    bool has_semantic_errors() const;
+    const SemanticAnalysisResult& get_semantic_result() const;
 
     static void initialize_jit_engine_dependencies();
     llvm::GenericValue jit_execute_function(const std::string& function_name,
@@ -76,6 +82,10 @@ private:
     
     // Scope-based object lifecycle management
     std::unique_ptr<ScopeManager> scope_manager;
+    
+    // NEW: Semantic analyzer (parallel system during migration)
+    std::unique_ptr<SemanticAnalyzer> semantic_analyzer;
+    SemanticAnalysisResult last_semantic_result;
     
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;

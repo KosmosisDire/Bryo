@@ -1,4 +1,5 @@
 #include "sharpie/compiler/script_compiler.hpp"
+#include "sharpie/compiler/semantic_analyzer.hpp"
 #include "sharpie/common/logger.hpp"
 #include "sharpie/script_ast.hpp" // For AST node types like CompilationUnitNode, SourceLocation
 #include "llvm/Support/ErrorHandling.h"
@@ -34,6 +35,8 @@
 #include <fstream>
 #include <algorithm> // For std::find_if
 
+using namespace Mycelium::Scripting::Common; // For Logger macros
+
 namespace Mycelium::Scripting::Lang
 {
     // Initialize static members
@@ -48,6 +51,9 @@ namespace Mycelium::Scripting::Lang
         
         // Initialize primitive struct registry
         primitive_registry.initialize_builtin_primitives();
+        
+        // NEW: Initialize semantic analyzer (parallel system during migration)
+        semantic_analyzer = std::make_unique<SemanticAnalyzer>();
     }
 
     ScriptCompiler::~ScriptCompiler() = default;
@@ -103,6 +109,16 @@ namespace Mycelium::Scripting::Lang
             return; 
         }
         
+        // NEW: Run parallel semantic analysis before IR generation
+        LOG_INFO("Running parallel semantic analysis before IR generation", "COMPILER");
+        run_semantic_analysis(ast_root);
+        
+        // For now, continue with IR generation regardless of semantic errors
+        // This allows us to test the parallel system without breaking existing functionality
+        if (has_semantic_errors()) {
+            LOG_WARN("Semantic errors detected, but continuing with IR generation for testing", "COMPILER");
+        }
+        
         visit(ast_root); // This will call the main visit(CompilationUnitNode)
 
         // Verify the module for errors
@@ -128,6 +144,33 @@ namespace Mycelium::Scripting::Lang
     {
         if (!llvmModule) { llvm::errs() << "[No LLVM Module Initialized to dump]\n"; return; }
         llvmModule->print(llvm::errs(), nullptr);
+    }
+    
+    // NEW: Semantic analysis methods (parallel system during migration)
+    SemanticAnalysisResult ScriptCompiler::run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root)
+    {
+        LOG_INFO("Running parallel semantic analysis", "COMPILER");
+        
+        if (!semantic_analyzer) {
+            semantic_analyzer = std::make_unique<SemanticAnalyzer>();
+        }
+        
+        last_semantic_result = semantic_analyzer->analyze(ast_root);
+        
+        LOG_INFO("Parallel semantic analysis complete. Errors: " + std::to_string(last_semantic_result.errors.size()) + 
+                 ", Warnings: " + std::to_string(last_semantic_result.warnings.size()), "COMPILER");
+        
+        return last_semantic_result;
+    }
+    
+    bool ScriptCompiler::has_semantic_errors() const
+    {
+        return last_semantic_result.has_errors();
+    }
+    
+    const SemanticAnalysisResult& ScriptCompiler::get_semantic_result() const
+    {
+        return last_semantic_result;
     }
     
     std::unique_ptr<llvm::Module> ScriptCompiler::take_module()
