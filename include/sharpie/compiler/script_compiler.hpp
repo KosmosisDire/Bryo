@@ -53,7 +53,7 @@ public:
     // NEW: Semantic analysis interface (parallel system during migration)
     SemanticAnalysisResult run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root);
     bool has_semantic_errors() const;
-    const SemanticAnalysisResult& get_semantic_result() const;
+    const SemanticAnalysisResult& getSemanticResult() const;
 
     static void initialize_jit_engine_dependencies();
     llvm::GenericValue jit_execute_function(const std::string& function_name,
@@ -85,7 +85,7 @@ private:
     
     // NEW: Semantic analyzer (parallel system during migration)
     std::unique_ptr<SemanticAnalyzer> semantic_analyzer;
-    SemanticAnalysisResult last_semantic_result;
+    SemanticAnalysisResult lastSemanticResult;
     
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;

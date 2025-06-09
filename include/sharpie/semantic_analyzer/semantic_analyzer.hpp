@@ -4,6 +4,9 @@
 #include "../compiler/class_type_info.hpp"
 #include "../compiler/scope_manager.hpp"
 #include "symbol_table.hpp"
+#include "semantic_error.hpp"
+#include "semantic_context.hpp"
+#include "dependency_info.hpp" // New include
 #include <string>
 #include <memory>
 #include <map>
@@ -15,83 +18,20 @@ namespace Mycelium::Scripting::Lang
 {
 
 /**
- * Semantic error information
- */
-struct SemanticError {
-    std::string message;
-    SourceLocation location;
-    enum class Severity { Error, Warning, Info } severity;
-    
-    SemanticError(const std::string& msg, SourceLocation loc, Severity sev = Severity::Error)
-        : message(msg), location(loc), severity(sev) {}
-};
-
-/**
- * Results of semantic analysis
- */
-class SemanticAnalysisResult {
-public:
-    std::vector<SemanticError> errors;
-    std::vector<SemanticError> warnings;
-    bool has_errors() const { return !errors.empty(); }
-    bool has_warnings() const { return !warnings.empty(); }
-    
-    void add_error(const std::string& message, SourceLocation location) {
-        errors.emplace_back(message, location, SemanticError::Severity::Error);
-    }
-    
-    void add_warning(const std::string& message, SourceLocation location) {
-        warnings.emplace_back(message, location, SemanticError::Severity::Warning);
-    }
-    
-    void merge(const SemanticAnalysisResult& other) {
-        errors.insert(errors.end(), other.errors.begin(), other.errors.end());
-        warnings.insert(warnings.end(), other.warnings.begin(), other.warnings.end());
-    }
-};
-
-/**
  * Pure semantic analyzer - no IR generation, only semantic validation
  */
 class SemanticAnalyzer {
 private:
-    std::unique_ptr<SymbolTable> symbol_table;
-    SemanticAnalysisResult result;
-    
-    // Enhanced analysis context for detailed scope tracking
-    std::string current_class_name;
-    std::string current_method_name;
-    std::string current_namespace_name;
-    bool in_static_method = false;
-    bool in_constructor = false;
-    bool in_instance_method = false;
-    std::vector<std::string> loop_stack; // Track nested loops for break/continue validation
-    std::vector<std::string> scope_stack; // Track all scope names for detailed logging
-    int current_scope_depth = 0;
+    std::unique_ptr<SymbolTable> symbolTable;
+    SemanticAnalysisResult analysisResult;
+    std::unique_ptr<SemanticContext> context; // Encapsulated analysis state
     
     // Primitive type registry reference
-    PrimitiveStructRegistry primitive_registry;
+    PrimitiveStructRegistry primitiveRegistry;
     
     // Method call dependency analysis results - part of SemanticIR
-    struct MethodCallInfo {
-        std::string caller_class;
-        std::string caller_method;
-        std::string callee_class;
-        std::string callee_method;
-        bool is_forward_call;  // true if this is a forward declaration call
-        SourceLocation call_location;
-        
-        std::string get_caller_qualified_name() const {
-            return caller_class + "." + caller_method;
-        }
-        
-        std::string get_callee_qualified_name() const {
-            return callee_class + "." + callee_method;
-        }
-    };
-    
-    std::vector<MethodCallInfo> discovered_method_calls;
-    std::set<std::string> discovered_forward_calls; // Legacy - for compatibility
+    std::vector<MethodCallInfo> discoveredMethodCalls;
+    std::set<std::string> discoveredForwardCalls; // Legacy - for compatibility
     
 public:
     SemanticAnalyzer();
@@ -101,8 +41,8 @@ public:
     SemanticAnalysisResult analyze(std::shared_ptr<CompilationUnitNode> ast_root);
     
     // Access to symbol table for ScriptCompiler
-    const SymbolTable& get_symbol_table() const { return *symbol_table; }
-    SymbolTable& get_symbol_table() { return *symbol_table; }
+    const SymbolTable& getSymbolTable() const { return *symbolTable; }
+    SymbolTable& getSymbolTable() { return *symbolTable; }
     
 private:
     // Enhanced multi-pass declaration processing
@@ -200,11 +140,7 @@ private:
     // Enhanced scope tracking
     void push_semantic_scope(const std::string& scope_name);
     void pop_semantic_scope();
-    std::string get_full_scope_path();
     void log_scope_change(const std::string& action, const std::string& scope_name);
-    
-    // UML diagram generation
-    void generate_uml_diagram_output();
 };
 
 } // namespace Mycelium::Scripting::Lang

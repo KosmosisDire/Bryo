@@ -152,7 +152,7 @@ int main()
     }
     
     // Set log levels - show only WARN and above on console (errors), TRACE and above in file
-    logger.set_console_level(LogLevel::WARN);
+    logger.set_console_level(LogLevel::TRACE);
     logger.set_file_level(LogLevel::TRACE);
     
     LOG_INFO("Sharpie compiler started", "MAIN");

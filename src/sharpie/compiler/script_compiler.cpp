@@ -155,22 +155,22 @@ namespace Mycelium::Scripting::Lang
             semantic_analyzer = std::make_unique<SemanticAnalyzer>();
         }
         
-        last_semantic_result = semantic_analyzer->analyze(ast_root);
+        lastSemanticResult = semantic_analyzer->analyze(ast_root);
         
-        LOG_INFO("Parallel semantic analysis complete. Errors: " + std::to_string(last_semantic_result.errors.size()) + 
-                 ", Warnings: " + std::to_string(last_semantic_result.warnings.size()), "COMPILER");
+        LOG_INFO("Parallel semantic analysis complete. Errors: " + std::to_string(lastSemanticResult.errors.size()) + 
+                 ", Warnings: " + std::to_string(lastSemanticResult.warnings.size()), "COMPILER");
         
-        return last_semantic_result;
+        return lastSemanticResult;
     }
     
     bool ScriptCompiler::has_semantic_errors() const
     {
-        return last_semantic_result.has_errors();
+        return lastSemanticResult.has_errors();
     }
     
-    const SemanticAnalysisResult& ScriptCompiler::get_semantic_result() const
+    const SemanticAnalysisResult& ScriptCompiler::getSemanticResult() const
     {
-        return last_semantic_result;
+        return lastSemanticResult;
     }
     
     std::unique_ptr<llvm::Module> ScriptCompiler::take_module()
@@ -438,7 +438,6 @@ llvm::Type *ScriptCompiler::get_llvm_type(std::shared_ptr<TypeNameNode> type_nod
             // This requires resolving the qualified name to a simple class name string.
             // For now, let's assume qualified names are not directly mapped to simple LLVM types here
             // unless they resolve to a registered class.
-            // This part needs a robust name resolution for qualified types.
             // As a placeholder, try to get the rightmost identifier.
             if (auto qnNode = *qnNode_variant) {
                 if (qnNode->right) {
