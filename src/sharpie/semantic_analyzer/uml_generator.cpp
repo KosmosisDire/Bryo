@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <set>
+#include <string>
 
 using namespace Mycelium::Scripting::Common;
 
@@ -10,20 +11,18 @@ namespace Mycelium::Scripting::Lang
 {
 
 void UmlGenerator::generate(
-    const SymbolTable& symbolTable,
-    const std::vector<MethodCallInfo>& discoveredMethodCalls,
+    const SemanticIR& ir,
     const std::string& output_filename)
 {
-    LOG_INFO("Generating PlantUML class diagram...", "UML_GENERATOR");
+    LOG_INFO("Generating PlantUML class diagram from Semantic IR...", "UML_GENERATOR");
     
     std::stringstream plantuml_output;
     
     plantuml_output << "@startuml\n";
     plantuml_output << "!theme toy\n";
     
-    // Generate classes
-    const auto& classes = symbolTable.get_classes();
-    
+    // --- FIX: Restore the generation of class content ---
+    const auto& classes = ir.symbol_table.get_classes();
     for (const auto& [class_name, class_symbol] : classes) {
         plantuml_output << "class " << class_name << " {\n";
         
@@ -35,8 +34,7 @@ void UmlGenerator::generate(
                     type_name = (*ident)->name;
                 }
             }
-            // Use + for public fields (following current pattern)
-            plantuml_output << "  +" << type_name << " " << field_name << "\n";
+            plantuml_output << "  + " << type_name << " " << field_name << "\n";
         }
         
         // Add separator line if we have both fields and methods
@@ -47,13 +45,10 @@ void UmlGenerator::generate(
         // Add methods with proper visibility and signatures
         for (const auto& [method_name, method_symbol] : class_symbol.method_registry) {
             if (method_name == "%ctor" || method_name == "%dtor") {
-                continue; // Skip internal constructor/destructor names for cleaner display
+                continue; // Skip internal names for cleaner display
             }
             
-            // Determine visibility (assuming public for now)
             std::string visibility = "+";
-            
-            // Get return type
             std::string return_type = "void";
             if (method_symbol.return_type) {
                 if (auto ident = std::get_if<std::shared_ptr<IdentifierNode>>(&method_symbol.return_type->name_segment)) {
@@ -61,11 +56,9 @@ void UmlGenerator::generate(
                 }
             }
             
-            // Build parameter string
             std::stringstream params;
             for (size_t i = 0; i < method_symbol.parameter_names.size(); ++i) {
                 if (i > 0) params << ", ";
-                
                 std::string param_type = "unknown";
                 if (i < method_symbol.parameter_types.size() && method_symbol.parameter_types[i]) {
                     if (auto ident = std::get_if<std::shared_ptr<IdentifierNode>>(&method_symbol.parameter_types[i]->name_segment)) {
@@ -75,60 +68,62 @@ void UmlGenerator::generate(
                 params << param_type << " " << method_symbol.parameter_names[i];
             }
             
-            // Add static modifier if applicable
             std::string static_modifier = method_symbol.is_static ? "{static} " : "";
             
-            plantuml_output << "  " << visibility << static_modifier << method_name 
+            plantuml_output << "  " << visibility << " " << static_modifier << method_name 
                           << "(" << params.str() << ") : " << return_type << "\n";
         }
         
         plantuml_output << "}\n\n";
     }
     
-    // Add method call dependencies using structured call information
+    // --- Generate dependencies from the usage_graph ---
     plantuml_output << "' Method call dependencies\n";
     
-    // Group calls by type (forward vs normal) and deduplicate class-level relationships
     std::set<std::string> forward_class_relationships;
     std::set<std::string> normal_class_relationships;
     
-    for (const auto& call_info : discoveredMethodCalls) {
-        if (call_info.caller_class != call_info.callee_class) {
-            std::string relationship = call_info.caller_class + " --> " + call_info.callee_class;
-            if (call_info.is_forward_call) {
-                forward_class_relationships.insert(relationship);
-            } else {
-                normal_class_relationships.insert(relationship);
+    for (const auto& [symbol_id, usages] : ir.usage_graph) {
+        for (const auto& usage : usages) {
+            if (usage.kind == UsageKind::Call) {
+                const auto* callee_symbol = ir.symbol_table.find_method(usage.qualified_symbol_id);
+                if (!callee_symbol) continue;
+
+                const std::string& caller_class = usage.context_class_name;
+                const std::string& callee_class = callee_symbol->containing_class;
+
+                if (caller_class.empty() || callee_class.empty() || caller_class == callee_class) {
+                    continue;
+                }
+
+                std::string relationship = caller_class + " --> " + callee_class;
+
+                bool is_forward_call = callee_symbol->declaration_location.lineStart > usage.location.lineStart;
+
+                if (is_forward_call) {
+                    forward_class_relationships.insert(relationship);
+                } else {
+                    normal_class_relationships.insert(relationship);
+                }
             }
         }
     }
     
-    // Add forward declaration calls (dashed arrows)
+    // Render forward relationships
     for (const auto& relationship : forward_class_relationships) {
-        size_t arrow_pos = relationship.find(" --> ");
-        if (arrow_pos != std::string::npos) {
-            std::string caller_class = relationship.substr(0, arrow_pos);
-            std::string callee_class = relationship.substr(arrow_pos + 5);
-            plantuml_output << caller_class << " ..> " << callee_class << "\n";
-        }
+        plantuml_output << relationship << " : forward\n";
     }
     
-    // Add normal method calls (solid arrows)
+    // Render normal relationships
     for (const auto& relationship : normal_class_relationships) {
-        size_t arrow_pos = relationship.find(" --> ");
-        if (arrow_pos != std::string::npos) {
-            std::string caller_class = relationship.substr(0, arrow_pos);
-            std::string callee_class = relationship.substr(arrow_pos + 5);
-            // Only show normal calls that aren't already shown as forward calls
-            if (forward_class_relationships.find(relationship) == forward_class_relationships.end()) {
-                plantuml_output << caller_class << " --> " << callee_class << "\n";
-            }
+        if (forward_class_relationships.find(relationship) == forward_class_relationships.end()) {
+             plantuml_output << relationship << "\n";
         }
     }
     
     plantuml_output << "\n@enduml\n";
     
-    // Save to .puml file
+    // Save to file
     std::string diagram_content = plantuml_output.str();
     std::ofstream file(output_filename);
     if (file.is_open()) {
@@ -136,9 +131,8 @@ void UmlGenerator::generate(
         file.close();
         LOG_INFO("PlantUML class diagram saved to: " + output_filename, "UML_GENERATOR");
     } else {
-        LOG_WARN("Could not save PlantUML diagram to file '" + output_filename + "', outputting to log:", "UML_GENERATOR");
-        LOG_INFO("PlantUML Diagram:\n" + diagram_content, "UML_GENERATOR");
+        LOG_WARN("Could not save PlantUML diagram to file '" + output_filename + "'", "UML_GENERATOR");
     }
 }
 
-} // namespace Mycelium::Scripting::Lang
+}

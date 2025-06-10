@@ -1,9 +1,11 @@
 #pragma once
 
-#include "../script_ast.hpp" // Updated path
 #include "class_type_info.hpp"
 #include "scope_manager.hpp"
-#include "../semantic_analyzer/semantic_analyzer.hpp"
+#include "sharpie/script_ast.hpp" // Updated path
+#include "sharpie/semantic_analyzer/semantic_analyzer.hpp" // Has the needed headers now
+#include "sharpie/semantic_analyzer/semantic_ir.hpp"       // Include the new IR header
+
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
@@ -32,11 +34,8 @@ namespace llvm {
     class Type;
     class BasicBlock;
     class StructType;
-    // PointerType forward declaration might not be needed if we always use llvm::Type* for opaque ptr
 }
 
-// All AST nodes (CompilationUnitNode, TypeNameNode, AstNode, etc.) are included via ../script_ast.hpp
-// SourceLocation is also included via ../script_ast.hpp -> ast_base.hpp -> ast_location.hpp
 namespace Mycelium::Scripting::Lang
 {
 
@@ -50,10 +49,10 @@ public:
     std::string get_ir_string() const;
     void dump_ir() const;
     
-    // NEW: Semantic analysis interface (parallel system during migration)
-    SemanticAnalysisResult run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root);
+    // --- Semantic Analysis Interface ---
+    void run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root);
+    const SemanticIR* getSemanticIR() const;
     bool has_semantic_errors() const;
-    const SemanticAnalysisResult& getSemanticResult() const;
 
     static void initialize_jit_engine_dependencies();
     llvm::GenericValue jit_execute_function(const std::string& function_name,
@@ -80,18 +79,17 @@ private:
     llvm::StructType *myceliumStringType = nullptr;
     llvm::StructType *myceliumObjectHeaderType = nullptr;
     
-    // Scope-based object lifecycle management
     std::unique_ptr<ScopeManager> scope_manager;
     
-    // NEW: Semantic analyzer (parallel system during migration)
+    // --- Semantic Analysis Members (Corrected) ---
     std::unique_ptr<SemanticAnalyzer> semantic_analyzer;
-    SemanticAnalysisResult lastSemanticResult;
-    
+    std::unique_ptr<SemanticIR> lastSemanticIR; // This will hold the result
+    const SymbolTable* symbolTable = nullptr;   // A pointer to the table inside lastSemanticIR
+
     std::map<std::string, ClassTypeInfo> classTypeRegistry;
     uint32_t next_type_id = 0;
     std::map<llvm::Function*, const ClassTypeInfo*> functionReturnClassInfoMap; // Map LLVM function to its return ClassTypeInfo if object
     
-    // Primitive struct registry for supporting methods on primitives
     PrimitiveStructRegistry primitive_registry;
 
     struct ExpressionVisitResult {
@@ -121,8 +119,7 @@ private:
     };
     std::vector<LoopContext> loop_context_stack;
 
-
-
+    // --- Private Methods ---
     llvm::Type* getMyceliumStringPtrTy(); // Returns opaque ptr (llvm::Type*)
     llvm::Type* getMyceliumObjectHeaderPtrTy(); // Returns opaque ptr (llvm::Type*)
     void declare_all_runtime_functions();
@@ -182,8 +179,6 @@ private:
     // --- Primitive struct helper methods ---
     std::string get_primitive_name_from_llvm_type(llvm::Type* type);
     ExpressionVisitResult handle_primitive_method_call(std::shared_ptr<MethodCallExpressionNode> node, PrimitiveStructInfo* primitive_info, llvm::Value* instance_ptr);
-
-
 
     [[noreturn]] void log_error(const std::string& message, std::optional<SourceLocation> loc = std::nullopt);
 };

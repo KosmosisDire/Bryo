@@ -83,6 +83,8 @@ public:
     ScopeManager(llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module)
         : builder(ir_builder), module(llvm_module) {}
     
+     void reset(llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module);
+
     // Scope management
     void push_scope(ScopeType type, const std::string& debug_name = "");
     void pop_scope();

@@ -10,6 +10,14 @@
 namespace Mycelium::Scripting::Lang
 {
 
+    void ScopeManager::reset(llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module) {
+        this->builder = ir_builder;
+        this->module = llvm_module;
+        this->scope_stack.clear();
+        Mycelium::Scripting::Common::LOG_DEBUG("ScopeManager has been reset for a new compilation run.", "SCOPE");
+    }
+
+
 void ScopeManager::push_scope(ScopeType type, const std::string& debug_name) {
     std::string name = debug_name.empty() ? 
         ("scope_" + std::to_string(scope_stack.size())) : debug_name;

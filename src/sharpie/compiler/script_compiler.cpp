@@ -2,6 +2,8 @@
 #include "sharpie/semantic_analyzer/semantic_analyzer.hpp"
 #include "sharpie/common/logger.hpp"
 #include "sharpie/script_ast.hpp" // For AST node types like CompilationUnitNode, SourceLocation
+
+
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/CFG.h" 
@@ -43,134 +45,97 @@ namespace Mycelium::Scripting::Lang
     bool ScriptCompiler::jit_initialized = false;
     bool ScriptCompiler::aot_initialized = false;
 
-    ScriptCompiler::ScriptCompiler()
-        : next_type_id(0) // Initialize next_type_id
+    ScriptCompiler::ScriptCompiler() : next_type_id(0)
     {
         llvmContext = std::make_unique<llvm::LLVMContext>();
-        // llvmModule and llvmBuilder are initialized in compile_ast
-        
-        // Initialize primitive struct registry
         primitive_registry.initialize_builtin_primitives();
-        
-        // NEW: Initialize semantic analyzer (parallel system during migration)
         semantic_analyzer = std::make_unique<SemanticAnalyzer>();
+        scope_manager = std::make_unique<ScopeManager>(nullptr, nullptr);
     }
 
     ScriptCompiler::~ScriptCompiler() = default;
 
     void ScriptCompiler::compile_ast(std::shared_ptr<CompilationUnitNode> ast_root, const std::string &module_name)
     {
-        if (!llvmContext) // Should have been created by constructor
-        {
-            llvmContext = std::make_unique<llvm::LLVMContext>();
+        // --- Phase 1: Semantic Analysis ---
+        run_semantic_analysis(ast_root);
+
+        if (has_semantic_errors()) {
+            log_error("Semantic errors detected. Halting compilation.");
+            return; // Stop before generating any LLVM IR
         }
+        
+        // --- Phase 2: LLVM IR Generation Setup ---
         llvmModule = std::make_unique<llvm::Module>(module_name, *llvmContext);
         llvmBuilder = std::make_unique<llvm::IRBuilder<>>(*llvmContext);
         
-        // Initialize scope manager
-        scope_manager = std::make_unique<ScopeManager>(llvmBuilder.get(), llvmModule.get());
+        // Update ScopeManager with the new builder and module
+        scope_manager->reset(llvmBuilder.get(), llvmModule.get());
 
-        // Initialize MyceliumString type
-        // Ensure this is done only once or correctly re-initialized if needed.
-        // For now, assuming it's okay to define here if not already defined.
-        if (!myceliumStringType) 
-        {
-            myceliumStringType = llvm::StructType::create(*llvmContext,
-                                                          {llvm::PointerType::getUnqual(*llvmContext), // char* data
-                                                           llvm::Type::getInt64Ty(*llvmContext),      // length
-                                                           llvm::Type::getInt64Ty(*llvmContext)},     // capacity
-                                                          "struct.MyceliumString");
-            if (!myceliumStringType) log_error("Failed to initialize MyceliumString LLVM type struct.");
-        }
+        // Set the symbol table pointer for the visitors to use
+        symbolTable = &lastSemanticIR->symbol_table;
+
+        // Initialize LLVM types
+        myceliumStringType = llvm::StructType::create(*llvmContext, "struct.MyceliumString");
+        myceliumObjectHeaderType = llvm::StructType::create(*llvmContext, "struct.MyceliumObjectHeader");
         
-        // Initialize MyceliumObjectHeader type
-        if (!myceliumObjectHeaderType)
-        {
-             myceliumObjectHeaderType = llvm::StructType::create(*llvmContext,
-                                                                {llvm::Type::getInt32Ty(*llvmContext),      // ref_count (int32_t)
-                                                                 llvm::Type::getInt32Ty(*llvmContext),      // type_id (uint32_t, treated as i32)
-                                                                 llvm::PointerType::getUnqual(*llvmContext)}, // vtable (MyceliumVTable*)
-                                                                "struct.MyceliumObjectHeader");
-            if (!myceliumObjectHeaderType) log_error("Failed to initialize MyceliumObjectHeader LLVM type struct.");
-        }
-
-
-        declare_all_runtime_functions(); // Declare C runtime functions in the LLVM module
+        declare_all_runtime_functions();
 
         namedValues.clear();
         currentFunction = nullptr;
-        classTypeRegistry.clear(); // Clear previous class type info
-        functionReturnClassInfoMap.clear(); // Clear function return type map
-        next_type_id = 0;          // Reset type ID counter
+        classTypeRegistry.clear();
+        functionReturnClassInfoMap.clear();
+        next_type_id = 0;
 
         if (!ast_root) {
             log_error("AST root is null. Cannot compile.");
-            // No throw here, allow verifyModule to catch issues if it proceeds.
             return; 
         }
         
-        // NEW: Run parallel semantic analysis before IR generation
-        LOG_INFO("Running parallel semantic analysis before IR generation", "COMPILER");
-        run_semantic_analysis(ast_root);
-        
-        // For now, continue with IR generation regardless of semantic errors
-        // This allows us to test the parallel system without breaking existing functionality
-        if (has_semantic_errors()) {
-            LOG_WARN("Semantic errors detected, but continuing with IR generation for testing", "COMPILER");
-        }
-        
-        visit(ast_root); // This will call the main visit(CompilationUnitNode)
+        // --- Phase 3: Visit AST and Generate IR ---
+        visit(ast_root);
 
-        // Verify the module for errors
-        if (llvm::verifyModule(*llvmModule, &llvm::errs()))
-        {
-            log_error("LLVM Module verification failed. Dumping potentially corrupt IR.");
-            // llvmModule->print(llvm::errs(), nullptr); // Already done by log_error essentially
-            throw std::runtime_error("LLVM module verification failed.");
+        if (llvm::verifyModule(*llvmModule, &llvm::errs())) {
+            log_error("LLVM Module verification failed.");
         }
     }
 
-    std::string ScriptCompiler::get_ir_string() const
-    {
-        if (!llvmModule) return "[No LLVM Module Initialized]";
-        std::string irString;
-        llvm::raw_string_ostream ostream(irString);
+    std::string ScriptCompiler::get_ir_string() const {
+        if (!llvmModule) {
+            return "Error: No LLVM module has been compiled.";
+        }
+        std::string ir_str;
+        llvm::raw_string_ostream ostream(ir_str);
         llvmModule->print(ostream, nullptr);
-        ostream.flush();
-        return irString;
+        return ir_str;
     }
 
-    void ScriptCompiler::dump_ir() const
-    {
-        if (!llvmModule) { llvm::errs() << "[No LLVM Module Initialized to dump]\n"; return; }
-        llvmModule->print(llvm::errs(), nullptr);
-    }
-    
-    // NEW: Semantic analysis methods (parallel system during migration)
-    SemanticAnalysisResult ScriptCompiler::run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root)
-    {
-        LOG_INFO("Running parallel semantic analysis", "COMPILER");
-        
-        if (!semantic_analyzer) {
-            semantic_analyzer = std::make_unique<SemanticAnalyzer>();
+    void ScriptCompiler::dump_ir() const {
+        if (llvmModule) {
+            llvmModule->print(llvm::errs(), nullptr);
         }
-        
-        lastSemanticResult = semantic_analyzer->analyze(ast_root);
-        
-        LOG_INFO("Parallel semantic analysis complete. Errors: " + std::to_string(lastSemanticResult.errors.size()) + 
-                 ", Warnings: " + std::to_string(lastSemanticResult.warnings.size()), "COMPILER");
-        
-        return lastSemanticResult;
+    }
+
+    void ScriptCompiler::run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root) {
+        LOG_INFO("Running semantic analysis...", "COMPILER");
+        lastSemanticIR = semantic_analyzer->analyze(ast_root); // Analyze and store the result
+
+        if (lastSemanticIR && lastSemanticIR->has_errors()) {
+            LOG_INFO("Semantic analysis complete. Errors: " + std::to_string(lastSemanticIR->errors.size()) +
+                    ", Warnings: " + std::to_string(lastSemanticIR->warnings.size()), "COMPILER");
+        } else {
+            LOG_INFO("Semantic analysis successful", "COMPILER");
+        }
+    }
+
+
+    const SemanticIR* ScriptCompiler::getSemanticIR() const {
+        return lastSemanticIR.get();
     }
     
     bool ScriptCompiler::has_semantic_errors() const
     {
-        return lastSemanticResult.has_errors();
-    }
-    
-    const SemanticAnalysisResult& ScriptCompiler::getSemanticResult() const
-    {
-        return lastSemanticResult;
+        return lastSemanticIR->has_errors();
     }
     
     std::unique_ptr<llvm::Module> ScriptCompiler::take_module()
