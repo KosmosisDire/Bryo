@@ -381,12 +381,64 @@ namespace Mycelium::Scripting::Lang
 
     void SemanticAnalyzer::analyze_statement(std::shared_ptr<ForStatementNode> node)
     {
-        // TODO: Implement in future steps
+        if (!node)
+            return;
+
+        // Push a new scope for the for loop
+        push_semantic_scope("for_" + std::to_string(context->currentScopeDepth + 1));
+        
+        // Analyze initializers
+        if (std::holds_alternative<std::shared_ptr<LocalVariableDeclarationStatementNode>>(node->initializers))
+        {
+            // Variable declaration initializer
+            auto var_decl = std::get<std::shared_ptr<LocalVariableDeclarationStatementNode>>(node->initializers);
+            analyze_statement(var_decl);
+        }
+        else if (std::holds_alternative<std::vector<std::shared_ptr<ExpressionNode>>>(node->initializers))
+        {
+            // Expression list initializers
+            auto expr_list = std::get<std::vector<std::shared_ptr<ExpressionNode>>>(node->initializers);
+            for (const auto& expr : expr_list)
+            {
+                analyze_expression(expr);
+            }
+        }
+        
+        // Analyze condition if it exists
+        if (node->condition.has_value())
+        {
+            ExpressionTypeInfo cond_type = analyze_expression(node->condition.value());
+            if (cond_type.type && !is_bool_type(cond_type.type))
+            {
+                add_error("For loop condition must be of type 'bool'", node->condition.value()->location);
+            }
+        }
+        
+        // Analyze incrementors
+        for (const auto& incrementor : node->incrementors)
+        {
+            analyze_expression(incrementor);
+        }
+        
+        // Analyze body
+        context->loopStack.push_back("for");
+        if (node->body)
+            analyze_statement(node->body);
+        context->loopStack.pop_back();
+        
+        pop_semantic_scope();
     }
 
     void SemanticAnalyzer::analyze_statement(std::shared_ptr<ReturnStatementNode> node)
     {
-        // TODO: Implement in future steps
+        if (!node)
+            return;
+        
+        // Analyze the return expression if it exists
+        if (node->expression.has_value())
+        {
+            analyze_expression(node->expression.value());
+        }
     }
 
     void SemanticAnalyzer::analyze_statement(std::shared_ptr<BreakStatementNode> node)
