@@ -8,6 +8,8 @@
 #include <optional>
 #include <fstream>
 #include <filesystem>
+#include <signal.h>
+#include <atomic>
 
 // #include "script_tokenizer.hpp"
 #include "sharpie/script_ast.hpp" // Updated path
@@ -17,11 +19,21 @@
 #include "hot_reload.hpp"
 #include "platform.hpp"
 
-#include "llvm/Support/DynamicLibrary.h" // <--- ADD THIS INCLUDE
+#include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/ErrorHandling.h" // Contains llvm_shutdown
 
 // using namespace Mycelium::UI::Lang;
 using namespace Mycelium::Scripting::Lang;
 using namespace Mycelium::Scripting::Common;
+
+// Global flag for graceful shutdown
+std::atomic<bool> should_exit{false};
+
+// Signal handler for graceful shutdown
+void signal_handler(int signal) {
+    std::cout << "\nReceived shutdown signal (" << signal << "). Exiting gracefully..." << std::endl;
+    should_exit.store(true);
+}
 
 // C binding functions for runtime logging
 extern "C" {
@@ -134,51 +146,81 @@ void Compile(std::string input)
     logger.flush();
 }
 
+// RAII wrapper for application resources
+class ApplicationContext {
+public:
+    ApplicationContext() {
+        // Initialize LLVM
+        llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+        
+        // Initialize signal handlers
+        signal(SIGINT, signal_handler);
+        signal(SIGTERM, signal_handler);
+        
+        // Initialize logger
+        std::filesystem::create_directories("logs");
+        Logger& logger = Logger::get_instance();
+        
+        if (!logger.initialize("logs/sharpie_detailed.log")) {
+            std::cerr << "Failed to initialize logger. Continuing without file logging..." << std::endl;
+        }
+        
+        logger.set_console_level(LogLevel::TRACE);
+        logger.set_file_level(LogLevel::TRACE);
+        
+        LOG_INFO("Sharpie compiler started", "MAIN");
+        LOG_DEBUG("Logger initialized successfully", "MAIN");
+    }
+    
+    ~ApplicationContext() {
+        LOG_INFO("Shutting down Sharpie compiler", "MAIN");
+        
+        // Cleanup logger
+        Logger& logger = Logger::get_instance();
+        logger.shutdown();
+        
+        // Cleanup LLVM
+        llvm::llvm_shutdown();
+        
+        std::cout << "Application shutdown complete." << std::endl;
+    }
+};
+
 int main()
 {
-    // --- ADD THIS LINE AT THE VERY BEGINNING OF main() ---
-    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
-    // ------------------------------------------------------
+    try {
+        ApplicationContext app_context;
+        
+        HotReload fileReloader({"tests/test.sp"}, [](const std::string &filePath, const std::string &newContent)
+        {
+            LOG_INFO("File reloaded: " + filePath, "HOTRELOAD");
+            LOG_DEBUG("File content length: " + std::to_string(newContent.length()) + " characters", "HOTRELOAD");
+            
+            // Display simple console message for user feedback
+            std::cout << "\n\033[33m--- " << filePath << " Reloaded ---\033[0m" << std::endl;
+            
+            Compile(newContent);
+            
+            std::cout << std::endl; // Add spacing after compilation
+        });
 
-    // Initialize the logger
-    Logger& logger = Logger::get_instance();
-    
-    // Create logs directory if it doesn't exist
-    std::filesystem::create_directories("logs");
-    
-    // Initialize logger with detailed log file
-    if (!logger.initialize("logs/sharpie_detailed.log")) {
-        std::cerr << "Failed to initialize logger. Continuing without file logging..." << std::endl;
+        LOG_INFO("Starting hot reload monitoring", "MAIN");
+        fileReloader.poll_changes(); // Initial compile
+
+        // Main event loop with graceful shutdown support
+        while (!should_exit.load()) {
+            fileReloader.poll_changes();
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        
+        LOG_INFO("Graceful shutdown initiated", "MAIN");
+        return 0;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error in main: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "Unknown fatal error in main" << std::endl;
+        return 1;
     }
-    
-    // Set log levels - show only WARN and above on console (errors), TRACE and above in file
-    logger.set_console_level(LogLevel::TRACE);
-    logger.set_file_level(LogLevel::TRACE);
-    
-    LOG_INFO("Sharpie compiler started", "MAIN");
-    LOG_DEBUG("Logger initialized successfully", "MAIN");
-
-    HotReload fileReloader({"tests/test.sp"}, [](const std::string &filePath, const std::string &newContent)
-    {
-        LOG_INFO("File reloaded: " + filePath, "HOTRELOAD");
-        LOG_DEBUG("File content length: " + std::to_string(newContent.length()) + " characters", "HOTRELOAD");
-        
-        // Display simple console message for user feedback
-        std::cout << "\n\033[33m--- " << filePath << " Reloaded ---\033[0m" << std::endl;
-        
-        Compile(newContent);
-        
-        std::cout << std::endl; // Add spacing after compilation
-    });
-
-    LOG_INFO("Starting hot reload monitoring", "MAIN");
-    fileReloader.poll_changes(); // Initial compile
-
-    while (true)
-    {
-        fileReloader.poll_changes();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    return 0;
 }

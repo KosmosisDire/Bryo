@@ -69,6 +69,9 @@ public:
     // Flush all outputs
     void flush();
     
+    // Explicit shutdown method for graceful cleanup
+    void shutdown();
+    
     // Cleanup
     ~Logger();
 };

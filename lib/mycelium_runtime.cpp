@@ -6,6 +6,7 @@
 #include <string>   // For std::to_string, std::string
 #include <vector>   // For std::vector in C++ part of conversion
 #include <algorithm> // for std::transform for to_bool
+#include <atomic>   // For std::atomic operations (thread-safe reference counting)
 
 // Try to include the logger - this might fail if we're being compiled without it
 // In that case, we'll fall back to console output
@@ -21,9 +22,11 @@ extern "C" {
 #endif
 
 // Helper macros for logging from C code
+#define LOG_RUNTIME_TRACE(msg) runtime_log_debug(msg)  // Map TRACE to DEBUG level
 #define LOG_RUNTIME_DEBUG(msg) runtime_log_debug(msg)
 #define LOG_RUNTIME_INFO(msg) runtime_log_info(msg)
 #define LOG_RUNTIME_WARN(msg) runtime_log_warn(msg)
+#define LOG_RUNTIME_ERROR(msg) runtime_log_warn(msg)   // Map ERROR to WARN level (no error function defined)
 
 // Initial capacity helper (can be tuned)
 #define MYCELIUM_STRING_INITIAL_CAPACITY 16
@@ -51,61 +54,27 @@ MyceliumString* Mycelium_String_new_from_literal(const char* c_str, size_t len) 
 }
 
 MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
-    // Enhanced safety checks to prevent access violations during cleanup
-    // Check for common freed memory patterns (Windows debug heap patterns)
-    uintptr_t s1_addr = (uintptr_t)s1;
-    uintptr_t s2_addr = (uintptr_t)s2;
+    // Simple, safe null pointer validation - removed dangerous address range checks
+    LOG_RUNTIME_TRACE("Mycelium_String_concat called");
     
-    // Debug output to track the calls - now logged to file
-    std::string debug_msg = "[DEBUG] Mycelium_String_concat called:\n  s1: " + 
-                           std::to_string(reinterpret_cast<uintptr_t>(s1)) + 
-                           "\n  s2: " + std::to_string(reinterpret_cast<uintptr_t>(s2));
-    LOG_RUNTIME_DEBUG(debug_msg.c_str());
-    
-    // Comprehensive safety checks - detect invalid pointers
-    // Check if pointers look like valid heap addresses (typically start with 0x1 or 0x2 on modern systems)
-    bool s1_looks_invalid = s1 && (s1_addr < 0x10000 || s1_addr > 0x7FFFFFFFFFFF);
-    bool s2_looks_invalid = s2 && (s2_addr < 0x10000 || s2_addr > 0x7FFFFFFFFFFF);
-    
-    if (s1_looks_invalid) {
-        LOG_RUNTIME_WARN("s1 appears to be an invalid pointer (likely corrupted)!");
-        s1 = nullptr;
-    }
-    if (s2_looks_invalid) {
-        LOG_RUNTIME_WARN("s2 appears to be an invalid pointer (likely corrupted)!");
-        s2 = nullptr;
-    }
-    
-    // Additional validation - check for reasonable length/capacity values
-    if (s1 && !s1_looks_invalid) {
-        // Check if the struct fields look reasonable without exception handling
-        // Most invalid pointers will fail the address range check above
-        // For remaining cases, check for obviously corrupt values
-        if (s1_addr % sizeof(void*) != 0) {  // Not properly aligned
-            s1 = nullptr;
-        }
-    }
-    
-    if (s2 && !s2_looks_invalid) {
-        if (s2_addr % sizeof(void*) != 0) {  // Not properly aligned
-            s2 = nullptr;
-        }
-    }
-    
+    // Handle null string cases safely
     if (!s1) {
         if (!s2) return Mycelium_String_new_from_literal("", 0);
-        if (!s2->data) return Mycelium_String_new_from_literal("", 0);
-        return Mycelium_String_new_from_literal(s2->data, s2->length);
-    }
-    
-    if (!s1->data) {
-        if (!s2) return Mycelium_String_new_from_literal("", 0);
+        // Only access s2 fields after confirming s2 is not null
         if (!s2->data) return Mycelium_String_new_from_literal("", 0);
         return Mycelium_String_new_from_literal(s2->data, s2->length);
     }
     
     if (!s2) {
+        // Only access s1 fields after confirming s1 is not null
+        if (!s1->data) return Mycelium_String_new_from_literal("", 0);
         return Mycelium_String_new_from_literal(s1->data, s1->length);
+    }
+    
+    // Both s1 and s2 are non-null, now safe to access their data fields
+    if (!s1->data) {
+        if (!s2->data) return Mycelium_String_new_from_literal("", 0);
+        return Mycelium_String_new_from_literal(s2->data, s2->length);
     }
     
     if (!s2->data) {
@@ -356,7 +325,13 @@ MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, 
         // For now, returning NULL indicates failure.
         return NULL;
     }
+    
+    // Properly construct the atomic ref_count using placement new
+#ifdef __cplusplus
+    new (&header_ptr->ref_count) std::atomic<int32_t>(1);
+#else
     header_ptr->ref_count = 1;
+#endif
     header_ptr->type_id = type_id;
     header_ptr->vtable = vtable;
     
@@ -387,65 +362,58 @@ MyceliumObjectHeader* Mycelium_Object_alloc(size_t data_size, uint32_t type_id, 
 }
 
 void Mycelium_Object_retain(MyceliumObjectHeader* obj_header) {
-    if (obj_header != NULL) {
-        // TRACK OBJECT RETAIN
-        track_object_retain(obj_header);
-        
-        // Future: Add atomic increment for thread safety if Sharpie supports concurrency.
-        // For now, simple increment is fine for single-threaded or externally synchronized scenarios.
-        obj_header->ref_count++;
+    if (obj_header == NULL) {
+        return;
+    }
+    
+    // TRACK OBJECT RETAIN
+    track_object_retain(obj_header);
+    
+    // Use atomic increment for thread safety
+    int32_t new_ref_count = Mycelium_Object_atomic_increment(obj_header);
+    
+    // Check for overflow (extremely unlikely but indicates a serious bug)
+    if (new_ref_count <= 0) {
+        LOG_RUNTIME_ERROR("Reference count overflow detected - possible memory corruption");
     }
 }
 
 void Mycelium_Object_release(MyceliumObjectHeader* obj_header) {
-    if (obj_header != NULL) {
-        // TRACK OBJECT RELEASE FIRST
-        track_object_release(obj_header);
-        
-        // CRITICAL SAFETY: Check for already-freed memory patterns
-        uintptr_t header_addr = (uintptr_t)obj_header;
-        
-        // Basic sanity checks for invalid pointers
-        if (header_addr < 0x10000 || header_addr > 0x7FFFFFFFFFFF || header_addr % sizeof(void*) != 0) {
-            // Warning output removed for clean console
-            return;
+    if (obj_header == NULL) {
+        return;
+    }
+    
+    // TRACK OBJECT RELEASE FIRST
+    track_object_release(obj_header);
+    
+    // Use atomic decrement for thread safety
+    int32_t new_ref_count = Mycelium_Object_atomic_decrement(obj_header);
+    
+    // Check for underflow (indicates double-release bug)
+    if (new_ref_count < 0) {
+        LOG_RUNTIME_ERROR("Reference count underflow detected - possible double-release bug");
+        return; // Don't free, this is a critical bug
+    }
+    
+    if (new_ref_count == 0) {
+        // RUNTIME DESTRUCTOR DISPATCH (for polymorphic scenarios)
+        // Note: For monomorphic code, the compiler calls destructors directly before this
+        if (obj_header->vtable != nullptr && obj_header->vtable->destructor != nullptr) {
+            // Get pointer to object's data fields (skip the header)
+            void* obj_fields_ptr = (void*)((char*)obj_header + sizeof(MyceliumObjectHeader));
+            obj_header->vtable->destructor(obj_fields_ptr);
         }
         
-        // Check for reasonable ref_count values (prevent accessing freed memory)
-        if (obj_header->ref_count < 0 || obj_header->ref_count > 1000000) {
-            // Warning output removed for clean console
-            return;
-        }
-        
-        // Future: Add atomic decrement for thread safety.
-        obj_header->ref_count--;
-        
-        if (obj_header->ref_count < 0) {
-            // Error output removed for clean console
-            return; // Don't free, this is a bug
-        }
-        
-        if (obj_header->ref_count == 0) {
-            // RUNTIME DESTRUCTOR DISPATCH (for polymorphic scenarios)
-            // Note: For monomorphic code, the compiler calls destructors directly before this
-            if (obj_header->vtable != nullptr && obj_header->vtable->destructor != nullptr) {
-                // Get pointer to object's data fields (skip the header)
-                void* obj_fields_ptr = (void*)((char*)obj_header + sizeof(MyceliumObjectHeader));
-                obj_header->vtable->destructor(obj_fields_ptr);
-            }
-            
-            // Mark as freed before actually freeing (helps detect double-free)
-            obj_header->ref_count = -999999; // Sentinel value for freed objects
-            free(obj_header); // Frees the entire block (header + data).
-        }
+        // Free the object (no sentinel values - clean approach)
+        free(obj_header);
     }
 }
 
 int32_t Mycelium_Object_get_ref_count(MyceliumObjectHeader* obj_header) {
-    if (obj_header != NULL) {
-        return obj_header->ref_count;
+    if (obj_header == NULL) {
+        return -1;
     }
-    return -1; // Or some other error indicator (e.g., 0 if null implies no refs)
+    return Mycelium_Object_atomic_load(obj_header);
 }
 
 // --- Basic Print Utilities Implementation ---
@@ -480,3 +448,33 @@ MyceliumString* Mycelium_String_substring(MyceliumString* str, int startIndex) {
 MyceliumString* Mycelium_String_get_empty(void) {
     return Mycelium_String_new_from_literal("", 0);
 }
+
+// --- Thread-safe atomic operations for reference counting ---
+#ifdef __cplusplus
+int32_t Mycelium_Object_atomic_increment(MyceliumObjectHeader* obj_header) {
+    if (obj_header == NULL) {
+        return -1;
+    }
+    return obj_header->ref_count.fetch_add(1) + 1;
+}
+
+int32_t Mycelium_Object_atomic_decrement(MyceliumObjectHeader* obj_header) {
+    if (obj_header == NULL) {
+        return -1;
+    }
+    return obj_header->ref_count.fetch_sub(1) - 1;
+}
+
+int32_t Mycelium_Object_atomic_load(MyceliumObjectHeader* obj_header) {
+    if (obj_header == NULL) {
+        return -1;
+    }
+    return obj_header->ref_count.load();
+}
+
+void Mycelium_Object_atomic_store(MyceliumObjectHeader* obj_header, int32_t value) {
+    if (obj_header != NULL) {
+        obj_header->ref_count.store(value);
+    }
+}
+#endif

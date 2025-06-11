@@ -58,8 +58,47 @@ set(LLVM_LINK_COMPONENTS
 
 llvm_map_components_to_libnames(MY_LLVM_LIBS ${LLVM_LINK_COMPONENTS})
 
-file(GLOB_RECURSE MY_SOURCE_FILES src/*.cpp src/*.h src/*.hpp)
-file(GLOB_RECURSE MY_RUNTIME_FILES lib/*.cpp lib/*.h)
+set(MY_SOURCE_FILES
+    # AST Implementation
+    src/sharpie/ast/ast_base.cpp
+    src/sharpie/ast/primitive_structs.cpp
+    
+    # Parser System
+    src/sharpie/parser/parser_helpers.cpp
+    src/sharpie/parser/parser_lexer.cpp
+    src/sharpie/parser/parser_rules.cpp
+    src/sharpie/parser/script_parser.cpp
+    
+    # Compiler System
+    src/sharpie/compiler/compiler_visitors.cpp
+    src/sharpie/compiler/scope_manager.cpp
+    src/sharpie/compiler/script_compiler.cpp
+    
+    # Semantic Analyzer
+    src/sharpie/semantic_analyzer/declaration_pass.cpp
+    src/sharpie/semantic_analyzer/semantic_analyzer.cpp
+    src/sharpie/semantic_analyzer/semantic_logging.cpp
+    src/sharpie/semantic_analyzer/symbol_table.cpp
+    src/sharpie/semantic_analyzer/uml_generator.cpp
+    src/sharpie/semantic_analyzer/usage_collection_pass.cpp
+    
+    # Common Utilities
+    src/sharpie/common/logger.cpp
+    
+    # UI System
+    src/ui/ui_ast.cpp
+    src/ui/ui_lexer.cpp
+    src/ui/ui_parser.cpp
+    src/ui/ui_token.cpp
+    
+    # Hot Reload
+    src/hot_reload.cpp
+)
+
+set(MY_RUNTIME_FILES
+    lib/mycelium_runtime.cpp
+    lib/runtime_binding.cpp
+)
 
 add_executable(MyceliumUI ${MY_SOURCE_FILES} ${MY_RUNTIME_FILES} main.cpp)
 

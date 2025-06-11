@@ -7,6 +7,7 @@
 // Platform-specific includes
 #ifdef _WIN32
     #include <windows.h>
+    #include <sstream>  // For std::wostringstream
     // For MAX_PATH, though we'll use a dynamic buffer
 
     

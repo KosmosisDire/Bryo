@@ -48,7 +48,17 @@ std::string Logger::get_timestamp() const {
         now.time_since_epoch()) % 1000;
     
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+#ifdef _WIN32
+    // Use localtime_s on Windows to avoid deprecation warning
+    std::tm tm_buf;
+    localtime_s(&tm_buf, &time_t);
+    ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+#else
+    // Use localtime_r on POSIX systems
+    std::tm tm_buf;
+    localtime_r(&time_t, &tm_buf);
+    ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+#endif
     ss << "." << std::setfill('0') << std::setw(3) << ms.count();
     return ss.str();
 }
@@ -190,10 +200,23 @@ void Logger::flush() {
     std::cerr.flush();
 }
 
-Logger::~Logger() {
+void Logger::shutdown() {
+    std::lock_guard<std::mutex> lock(log_mutex_);
     if (initialized_ && log_file_.is_open()) {
         log_file_ << "\n" << std::string(80, '=') << "\n";
-        log_file_ << "LOGGER SHUTDOWN AT " << get_timestamp() << "\n";
+        log_file_ << "LOGGER EXPLICIT SHUTDOWN AT " << get_timestamp() << "\n";
+        log_file_ << std::string(80, '=') << "\n\n";
+        log_file_.flush();
+        log_file_.close();
+        initialized_ = false;
+    }
+}
+
+Logger::~Logger() {
+    // If shutdown() wasn't called explicitly, do cleanup
+    if (initialized_ && log_file_.is_open()) {
+        log_file_ << "\n" << std::string(80, '=') << "\n";
+        log_file_ << "LOGGER DESTRUCTOR SHUTDOWN AT " << get_timestamp() << "\n";
         log_file_ << std::string(80, '=') << "\n\n";
         log_file_.close();
     }
