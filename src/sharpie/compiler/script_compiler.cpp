@@ -192,7 +192,6 @@ namespace Mycelium::Scripting::Lang
             ss << " " << loc->to_string();
         }
         ss << ": " << message;
-        llvm::errs() << ss.str() << "\n";
         if (llvmModule)
         { // Dump IR if module exists, might help debug
             llvm::errs() << "Current LLVM IR state:\n";

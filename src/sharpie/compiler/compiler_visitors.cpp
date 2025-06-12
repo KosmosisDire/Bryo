@@ -2086,6 +2086,86 @@ namespace Mycelium::Scripting::Lang
         }
         llvm::Value *cast_val = nullptr;
         llvm::Type *src_llvm_type = expr_val->getType();
+        
+        // Special case: Primitive-to-string conversions using ToString() methods
+        if (target_llvm_type->isPointerTy())
+        {
+            if (auto typeNameNode = node->targetType)
+            {
+                if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&typeNameNode->name_segment))
+                {
+                    std::string target_type_name = (*identNode)->name;
+                    if (target_type_name == "string")
+                    {
+                        // Check if we're converting from a primitive type to string
+                        if (src_llvm_type->isIntegerTy())
+                        {
+                            unsigned bit_width = src_llvm_type->getIntegerBitWidth();
+                            if (bit_width == 32)
+                            {
+                                // int to string
+                                llvm::Function *int_to_string_func = llvmModule->getFunction("Mycelium_String_from_int");
+                                if (int_to_string_func)
+                                {
+                                    cast_val = llvmBuilder->CreateCall(int_to_string_func, {expr_val}, "int_to_string");
+                                }
+                            }
+                            else if (bit_width == 64)
+                            {
+                                // long to string
+                                llvm::Function *long_to_string_func = llvmModule->getFunction("Mycelium_String_from_long");
+                                if (long_to_string_func)
+                                {
+                                    cast_val = llvmBuilder->CreateCall(long_to_string_func, {expr_val}, "long_to_string");
+                                }
+                            }
+                            else if (bit_width == 1)
+                            {
+                                // bool to string
+                                llvm::Function *bool_to_string_func = llvmModule->getFunction("Mycelium_String_from_bool");
+                                if (bool_to_string_func)
+                                {
+                                    cast_val = llvmBuilder->CreateCall(bool_to_string_func, {expr_val}, "bool_to_string");
+                                }
+                            }
+                            else if (bit_width == 8)
+                            {
+                                // char to string
+                                llvm::Function *char_to_string_func = llvmModule->getFunction("Mycelium_String_from_char");
+                                if (char_to_string_func)
+                                {
+                                    cast_val = llvmBuilder->CreateCall(char_to_string_func, {expr_val}, "char_to_string");
+                                }
+                            }
+                        }
+                        else if (src_llvm_type->isFloatTy())
+                        {
+                            // float to string
+                            llvm::Function *float_to_string_func = llvmModule->getFunction("Mycelium_String_from_float");
+                            if (float_to_string_func)
+                            {
+                                cast_val = llvmBuilder->CreateCall(float_to_string_func, {expr_val}, "float_to_string");
+                            }
+                        }
+                        else if (src_llvm_type->isDoubleTy())
+                        {
+                            // double to string
+                            llvm::Function *double_to_string_func = llvmModule->getFunction("Mycelium_String_from_double");
+                            if (double_to_string_func)
+                            {
+                                cast_val = llvmBuilder->CreateCall(double_to_string_func, {expr_val}, "double_to_string");
+                            }
+                        }
+                        
+                        if (cast_val)
+                        {
+                            return ExpressionVisitResult(cast_val, target_static_ci);
+                        }
+                    }
+                }
+            }
+        }
+        
         if (target_llvm_type == src_llvm_type)
         {
             cast_val = expr_val;

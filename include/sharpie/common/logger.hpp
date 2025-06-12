@@ -13,14 +13,14 @@ namespace Mycelium
 {
     enum class LogLevel
     {
-        RUNTIME = 0, // Special level for runtime logs
         TRACE = 1,
         DEBUG = 2,
         INFO = 3,
         WARN = 4,
         ERR = 5,
         FATAL = 6,
-        NONE = 7
+        RUNTIME = 7, // Special level for runtime logs
+        NONE = 8
     };
 }
 

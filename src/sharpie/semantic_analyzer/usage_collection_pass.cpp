@@ -999,6 +999,19 @@ namespace Mycelium::Scripting::Lang
             }
         }
 
+        // Rule 2.5: Allow casting from primitive types to string (using ToString() methods)
+        if (is_string_type(node->targetType))
+        {
+            // Check if source is a primitive type that has ToString() method
+            bool is_source_primitive = (source_type_name == "int" || source_type_name == "bool" || 
+                                      source_type_name == "float" || source_type_name == "double" ||
+                                      source_type_name == "char" || source_type_name == "long");
+            if (is_source_primitive)
+            {
+                return {node->targetType};
+            }
+        }
+
         // Rule 3: Allow explicit downcasting and upcasting in an inheritance hierarchy.
         // (This requires implementing base class tracking, which is planned for the future).
         // For now, we'll check if both are class types as a placeholder.

@@ -65,6 +65,7 @@ std::string Logger::get_timestamp() const {
 
 std::string Logger::level_to_string(LogLevel level) const {
     switch (level) {
+        case LogLevel::RUNTIME: return "RUNTIME";
         case LogLevel::TRACE: return "TRACE";
         case LogLevel::DEBUG: return "DEBUG";
         case LogLevel::INFO:  return "INFO ";
@@ -77,6 +78,7 @@ std::string Logger::level_to_string(LogLevel level) const {
 
 std::string Logger::get_color_code(LogLevel level) const {
     switch (level) {
+        case LogLevel::RUNTIME: return "\033[90m";  // Bright Black (Gray)
         case LogLevel::TRACE: return "\033[37m";   // White
         case LogLevel::DEBUG: return "\033[36m";   // Cyan
         case LogLevel::INFO:  return "\033[32m";   // Green
@@ -110,7 +112,12 @@ void Logger::log(LogLevel level, const std::string& message, const std::string& 
         std::string reset = get_reset_color();
         
         std::ostream& output = (level >= LogLevel::ERR) ? std::cerr : std::cout;
-        output << color << timestamp << " " << level_str << category_str << ": " << message << reset << std::endl;
+        if (!category.empty()) {
+            output << color << category_str << ": " << message << reset << std::endl;
+        } else {
+            output << color << message << reset << std::endl;
+        }
+        
     }
 }
 

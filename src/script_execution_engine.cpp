@@ -290,7 +290,7 @@ void ScriptExecutionEngine::print_execution_result(const ExecutionResult& result
         std::cout << "\033[31mFAILED\033[0m";
     }
     
-    std::cout << " (" << result.timing.total_time.count() << "ms)";
+    std::cout << " (" << result.timing.jit_time.count() << "ms)";
     
     if (result.output.exit_code.has_value()) {
         std::cout << " [exit: " << result.output.exit_code.value() << "]";
