@@ -1,5 +1,6 @@
 #include "sharpie/compiler/script_compiler.hpp"
 #include "sharpie/script_ast.hpp" // Includes all ast node headers
+#include "sharpie/common/logger.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -11,6 +12,8 @@
 #include <stdexcept>
 #include <algorithm>
 #include <iostream>
+
+using namespace Mycelium::Scripting::Common; // For Logger macros
 
 namespace Mycelium::Scripting::Lang
 {
@@ -117,36 +120,88 @@ namespace Mycelium::Scripting::Lang
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<CompilationUnitNode> node)
     {
+        // Process external declarations first
         for (const auto &ext_decl : node->externs)
         {
             visit(ext_decl);
         }
-        for (const auto &member : node->members)
+
+        // A helper lambda to recursively traverse namespaces and collect class declarations.
+        // It maintains the current namespace path.
+        std::function<void(const std::vector<std::shared_ptr<NamespaceMemberDeclarationNode>>&, const std::string&)> collect_classes_recursive;
+        
+        // We need to store classes with their namespace context to process them correctly.
+        std::vector<std::pair<std::shared_ptr<ClassDeclarationNode>, std::string>> all_classes_with_context;
+
+        collect_classes_recursive = 
+            [&](const std::vector<std::shared_ptr<NamespaceMemberDeclarationNode>>& members, const std::string& current_namespace)
         {
-            if (auto nsDecl = std::dynamic_pointer_cast<NamespaceDeclarationNode>(member))
-                visit(nsDecl);
-            else if (auto classDecl = std::dynamic_pointer_cast<ClassDeclarationNode>(member))
-                visit(classDecl);
-            else
-                log_error("Unsupported top-level member in CompilationUnit.", member->location);
+            for (const auto& member : members)
+            {
+                if (auto class_decl = std::dynamic_pointer_cast<ClassDeclarationNode>(member))
+                {
+                    all_classes_with_context.push_back({class_decl, current_namespace});
+                }
+                else if (auto ns_decl = std::dynamic_pointer_cast<NamespaceDeclarationNode>(member))
+                {
+                    std::string next_namespace = current_namespace.empty() 
+                                                    ? ns_decl->name->name 
+                                                    : current_namespace + "." + ns_decl->name->name;
+                    collect_classes_recursive(ns_decl->members, next_namespace);
+                }
+            }
+        };
+
+        // Start the collection from the top level (global namespace)
+        collect_classes_recursive(node->members, "");
+
+        // PASS 1: Create class structures and declare ALL method signatures across ALL classes
+        for (const auto& pair : all_classes_with_context) {
+            std::shared_ptr<ClassDeclarationNode> class_decl = pair.first;
+            const std::string& namespace_context = pair.second;
+            
+            // Construct the fully qualified class name
+            std::string fq_class_name = namespace_context.empty() 
+                                        ? class_decl->name->name 
+                                        : namespace_context + "." + class_decl->name->name;
+            
+            // Pass the fully qualified name to the declaration method.
+            declare_class_structure_and_signatures(class_decl, fq_class_name);
         }
+
+        // PASS 2: Compile ALL method bodies (now all signatures are available for forward calls)
+        for (const auto& pair : all_classes_with_context) {
+            std::shared_ptr<ClassDeclarationNode> class_decl = pair.first;
+            const std::string& namespace_context = pair.second;
+            
+            std::string fq_class_name = namespace_context.empty() 
+                                        ? class_decl->name->name 
+                                        : namespace_context + "." + class_decl->name->name;
+                                        
+            compile_all_method_bodies(class_decl, fq_class_name);
+        }
+
         return nullptr;
     }
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<NamespaceDeclarationNode> node)
     {
-        for (const auto &member : node->members)
-        {
-            if (auto classDecl = std::dynamic_pointer_cast<ClassDeclarationNode>(member))
-                visit(classDecl);
-            else
-                log_error("Unsupported namespace member.", member->location);
-        }
+        // This method should no longer be called directly since we now use
+        // a proper two-pass approach in visit(CompilationUnitNode).
+        log_error("Old visit(NamespaceDeclarationNode) called - this should not happen with the new two-pass compilation approach", node->location);
         return nullptr;
     }
 
     void ScriptCompiler::visit(std::shared_ptr<ExternalMethodDeclarationNode> node)
     {
+        // Check if the function is already declared (e.g., from the runtime bindings)
+        if (llvmModule->getFunction(node->name->name)) {
+            // This function already exists, likely from the runtime library.
+            // We assume the signature is correct and do not re-declare it.
+            // This prevents the creation of duplicate functions with suffixes (e.g., "print_int.1").
+            return; 
+        }
+
         if (!node->type.has_value())
             log_error("External method lacks return type.", node->location);
         llvm::Type *return_type = get_llvm_type(node->type.value());
@@ -163,90 +218,10 @@ namespace Mycelium::Scripting::Lang
 
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<ClassDeclarationNode> node)
     {
-        std::string class_name = node->name->name;
-        if (classTypeRegistry.count(class_name))
-        {
-            log_error("Class '" + class_name + "' already defined.", node->location);
-            return nullptr;
-        }
-
-        // Pre-register the class to enable self-referencing types
-        ClassTypeInfo cti;
-        cti.name = class_name;
-        cti.type_id = next_type_id++;
-        classTypeRegistry[class_name] = cti; // Register early for forward references
-        std::vector<llvm::Type *> field_llvm_types_for_struct;
-        unsigned field_idx_counter = 0;
-        for (const auto &member : node->members)
-        {
-            if (auto fieldDecl = std::dynamic_pointer_cast<FieldDeclarationNode>(member))
-            {
-                if (!fieldDecl->type)
-                {
-                    log_error("Field missing type in " + class_name, fieldDecl->location);
-                    continue;
-                }
-                llvm::Type *actual_field_llvm_type = get_llvm_type(fieldDecl->type.value());
-                if (!actual_field_llvm_type)
-                {
-                    log_error("Could not get LLVM type for field in " + class_name, fieldDecl->type.value()->location);
-                    continue;
-                }
-                for (const auto &declarator : fieldDecl->declarators)
-                {
-                    field_llvm_types_for_struct.push_back(actual_field_llvm_type);
-                    cti.field_names_in_order.push_back(declarator->name->name);
-                    cti.field_indices[declarator->name->name] = field_idx_counter++;
-                    cti.field_ast_types.push_back(fieldDecl->type.value());
-                }
-            }
-        }
-        cti.fieldsType = llvm::StructType::create(*llvmContext, field_llvm_types_for_struct, class_name + "_Fields");
-        if (!cti.fieldsType)
-        {
-            log_error("Failed to create fields struct for " + class_name, node->location);
-            return nullptr;
-        }
-        classTypeRegistry[class_name] = cti;
-
-        // PASS 1: Declare all method signatures first (forward declarations)
-        for (const auto &member : node->members)
-        {
-            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member))
-            {
-                declare_method_signature(methodDecl, class_name);
-            }
-            else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member))
-            {
-                declare_constructor_signature(ctorDecl, class_name);
-            }
-            else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member))
-            {
-                declare_destructor_signature(dtorDecl, class_name);
-            }
-        }
-
-        // PASS 2: Compile method bodies (now all signatures are available)
-        for (const auto &member : node->members)
-        {
-            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member))
-            {
-                compile_method_body(methodDecl, class_name);
-            }
-            else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member))
-            {
-                compile_constructor_body(ctorDecl, class_name);
-            }
-            else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member))
-            {
-                llvm::Function *dtor_func = compile_destructor_body(dtorDecl, class_name);
-                if (dtor_func)
-                {
-                    auto &modifiable_cti = classTypeRegistry[class_name];
-                    modifiable_cti.destructor_func = dtor_func;
-                }
-            }
-        }
+        // This method should no longer be called directly since we now use
+        // a proper two-pass approach in visit(CompilationUnitNode).
+        // If this is called, it means the compilation flow is incorrect.
+        log_error("Old visit(ClassDeclarationNode) called - this should not happen with the new two-pass compilation approach", node->location);
         return nullptr;
     }
 
@@ -1369,43 +1344,72 @@ namespace Mycelium::Scripting::Lang
 
     ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<IdentifierExpressionNode> node)
     {
-        auto it = namedValues.find(node->identifier->name);
-        if (it == namedValues.end())
+        std::string name = node->identifier->name;
+
+        // 1. Check for local variables or parameters
+        auto it = namedValues.find(name);
+        if (it != namedValues.end())
         {
-            // Try implicit field access: if we're in an instance method/constructor and identifier not found,
-            // try to resolve it as this.fieldName
-            auto this_it = namedValues.find("this");
-            if (this_it != namedValues.end() && this_it->second.classInfo)
+            const VariableInfo &varInfo = it->second;
+            llvm::Value *loaded_val = llvmBuilder->CreateLoad(varInfo.alloca->getAllocatedType(), varInfo.alloca, name.c_str());
+            return ExpressionVisitResult(loaded_val, varInfo.classInfo);
+        }
+
+        // 2. Check for implicit 'this' field access
+        auto this_it = namedValues.find("this");
+        if (this_it != namedValues.end() && this_it->second.classInfo)
+        {
+            const ClassTypeInfo *class_info = this_it->second.classInfo;
+            auto field_it = class_info->field_indices.find(name);
+            if (field_it != class_info->field_indices.end())
             {
-                const ClassTypeInfo *class_info = this_it->second.classInfo;
+                auto this_expr = std::make_shared<ThisExpressionNode>();
+                this_expr->thisKeyword = std::make_shared<TokenNode>();
+                this_expr->location = node->location;
 
-                // Check if the identifier matches a field name
-                auto field_it = class_info->field_indices.find(node->identifier->name);
-                if (field_it != class_info->field_indices.end())
+                auto member_access = std::make_shared<MemberAccessExpressionNode>();
+                member_access->target = this_expr;
+                member_access->memberName = node->identifier;
+                member_access->location = node->location;
+                return visit(member_access);
+            }
+        }
+
+        // 3. Check for a class name
+        if (symbolTable)
+        {
+            const auto* class_symbol = symbolTable->find_class(name);
+            if (class_symbol)
+            {
+                auto cti_it = classTypeRegistry.find(name);
+                if (cti_it != classTypeRegistry.end())
                 {
-                    // Create a member access expression: this.fieldName
-                    auto this_expr = std::make_shared<IdentifierExpressionNode>();
-                    this_expr->identifier = std::make_shared<IdentifierNode>("this");
-                    this_expr->location = node->location;
-
-                    auto member_name = std::make_shared<IdentifierNode>(node->identifier->name);
-
-                    auto member_access = std::make_shared<MemberAccessExpressionNode>();
-                    member_access->target = this_expr;
-                    member_access->memberName = member_name;
-                    member_access->location = node->location;
-
-                    // Recursively resolve the member access
-                    return visit(member_access);
+                    ExpressionVisitResult res;
+                    res.classInfo = &cti_it->second;
+                    res.is_static_type = true;
+                    res.resolved_path = name;
+                    return res;
                 }
             }
-
-            log_error("Undefined variable: " + node->identifier->name, node->location);
-            return ExpressionVisitResult(nullptr);
         }
-        const VariableInfo &varInfo = it->second;
-        llvm::Value *loaded_val = llvmBuilder->CreateLoad(varInfo.alloca->getAllocatedType(), varInfo.alloca, node->identifier->name.c_str());
-        return ExpressionVisitResult(loaded_val, varInfo.classInfo);
+
+        // 4. Check for a namespace
+        if (symbolTable)
+        {
+            const auto& all_classes = symbolTable->get_classes();
+            for (const auto& [class_name, class_symbol] : all_classes)
+            {
+                if (class_name.rfind(name + ".", 0) == 0)
+                { 
+                    ExpressionVisitResult res;
+                    res.resolved_path = name;
+                    return res; 
+                }
+            }
+        }
+
+        log_error("Undefined variable, type, or namespace: " + name, node->location);
+        return ExpressionVisitResult(nullptr);
     }
 
     ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<BinaryExpressionNode> node)
@@ -1837,165 +1841,82 @@ namespace Mycelium::Scripting::Lang
 
     ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<MethodCallExpressionNode> node)
     {
-        std::string resolved_func_name;
-        llvm::Value *instance_ptr_for_call = nullptr;
-        const ClassTypeInfo *callee_class_info = nullptr;
-        bool is_primitive_method_call = false;
-        PrimitiveStructInfo *primitive_info = nullptr;
+        std::string method_name;
+        const ClassTypeInfo* callee_class_info = nullptr;
+        llvm::Value* instance_ptr_for_call = nullptr;
+        bool is_primitive_call = false;
+        PrimitiveStructInfo* primitive_info = nullptr;
 
-        if (auto memberAccess = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target))
+        // The target of a method call is typically a MemberAccessExpression or an IdentifierExpression.
+        // We visit it to get the context for the call.
+        if (auto member_access = std::dynamic_pointer_cast<MemberAccessExpressionNode>(node->target))
         {
-            std::shared_ptr<ExpressionNode> lhs_of_dot = memberAccess->target;
-            std::string member_name_str = memberAccess->memberName->name;
+            method_name = member_access->memberName->name;
+            // Visit the expression to the left of the dot (e.g., `myInstance` or `MyClass`)
+            ExpressionVisitResult target_res = visit(member_access->target);
 
-            if (auto class_ident_node = std::dynamic_pointer_cast<IdentifierExpressionNode>(lhs_of_dot))
+            callee_class_info = target_res.classInfo;
+            instance_ptr_for_call = target_res.value; // Will be null for static calls.
+            primitive_info = target_res.primitive_info;
+            is_primitive_call = (primitive_info != nullptr);
+        }
+        else if (auto identifier = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target))
+        {
+            method_name = identifier->identifier->name;
+
+            // This could be an extern function or an implicit call (static or instance).
+            if (symbolTable && symbolTable->find_method(method_name) && symbolTable->find_method(method_name)->is_external)
             {
-                std::string lhs_name = class_ident_node->identifier->name;
-                auto cti_it = classTypeRegistry.find(lhs_name);
-
-                // Check if it's a static call on a primitive type
-                if (primitive_registry.is_primitive_simple_name(lhs_name))
-                {
-                    primitive_info = primitive_registry.get_by_simple_name(lhs_name);
-                    is_primitive_method_call = true;
-                    resolved_func_name = primitive_info->name + "." + member_name_str;
-                    instance_ptr_for_call = nullptr; // Static call
+                // Extern function call. It has no class context.
+            }
+            else if (currentFunction)
+            {
+                // It's an implicit call within a method. We need to determine if it's static or instance.
+                std::string current_func_name = currentFunction->getName().str();
+                size_t dot_pos = current_func_name.find('.');
+                if (dot_pos == std::string::npos) {
+                    log_error("Cannot make implicit call to '" + method_name + "' from a function without a class context.", node->location);
+                    return ExpressionVisitResult(nullptr);
                 }
-                else if (cti_it != classTypeRegistry.end())
+                std::string current_class_name = current_func_name.substr(0, dot_pos);
+
+                // Find the target method symbol within the current class to check its properties.
+                const auto* target_method_symbol = symbolTable->find_method_in_class(current_class_name, method_name);
+                if (!target_method_symbol) {
+                    log_error("Method '" + method_name + "' not found in current class '" + current_class_name + "'.", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                
+                // Get the ClassTypeInfo for the current class.
+                auto cti_it = classTypeRegistry.find(current_class_name);
+                if (cti_it == classTypeRegistry.end()) {
+                    log_error("Internal compiler error: Class '" + current_class_name + "' not found in registry during method call.", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                callee_class_info = &cti_it->second;
+
+                // Check if the call is static or instance based on the target method's properties.
+                if (target_method_symbol->is_static)
                 {
-                    callee_class_info = &cti_it->second;
-                    resolved_func_name = callee_class_info->name + "." + member_name_str;
+                    // It's a static call. No instance pointer is needed.
                     instance_ptr_for_call = nullptr;
                 }
-                else
+                else // It's an instance call.
                 {
-                    ExpressionVisitResult target_obj_res = visit(lhs_of_dot);
-
-                    // Check if the target expression is a primitive type
-                    if (target_obj_res.value)
-                    {
-                        // First try to get primitive type from LLVM type
-                        llvm::Type *target_type = target_obj_res.value->getType();
-                        std::string primitive_name = get_primitive_name_from_llvm_type(target_type);
-
-                        // If that fails and this is an identifier, check its declared type
-                        if (primitive_name.empty())
-                        {
-                            auto ident_expr = std::dynamic_pointer_cast<IdentifierExpressionNode>(lhs_of_dot);
-                            if (ident_expr)
-                            {
-                                auto var_it = namedValues.find(ident_expr->identifier->name);
-                                if (var_it != namedValues.end() && var_it->second.declaredTypeNode)
-                                {
-                                    if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&var_it->second.declaredTypeNode->name_segment))
-                                    {
-                                        std::string declared_type_name = (*identNode)->name;
-                                        if (primitive_registry.is_primitive_simple_name(declared_type_name))
-                                        {
-                                            primitive_name = declared_type_name;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!primitive_name.empty() && primitive_registry.is_primitive_simple_name(primitive_name))
-                        {
-                            primitive_info = primitive_registry.get_by_simple_name(primitive_name);
-                            is_primitive_method_call = true;
-                            resolved_func_name = primitive_info->name + "." + member_name_str;
-                            instance_ptr_for_call = target_obj_res.value; // Instance call
-                        }
-                        else if (target_obj_res.classInfo)
-                        {
-                            instance_ptr_for_call = target_obj_res.value;
-                            callee_class_info = target_obj_res.classInfo;
-                            resolved_func_name = callee_class_info->name + "." + member_name_str;
-                        }
-                        else
-                        {
-                            log_error("Cannot call method '" + member_name_str + "' on undefined variable or non-class type '" + lhs_name + "'.", lhs_of_dot->location);
-                            return ExpressionVisitResult(nullptr);
-                        }
+                    // We need 'this'.
+                    auto this_it = namedValues.find("this");
+                    if (this_it == namedValues.end()) {
+                        log_error("Cannot make implicit instance call to '" + method_name + "' from a static context.", node->location);
+                        return ExpressionVisitResult(nullptr);
                     }
+                    instance_ptr_for_call = llvmBuilder->CreateLoad(this_it->second.alloca->getAllocatedType(), this_it->second.alloca, "this.for.implicit.call");
                 }
             }
             else
             {
-                ExpressionVisitResult target_obj_res = visit(lhs_of_dot);
-
-                if (target_obj_res.value)
-                {
-                    // First check if the result has primitive_info (from method chaining)
-                    if (target_obj_res.primitive_info)
-                    {
-                        primitive_info = target_obj_res.primitive_info;
-                        is_primitive_method_call = true;
-                        resolved_func_name = primitive_info->name + "." + member_name_str;
-                        instance_ptr_for_call = target_obj_res.value; // Instance call
-                    }
-                    else
-                    {
-                        llvm::Type *target_type = target_obj_res.value->getType();
-                        std::string primitive_name = get_primitive_name_from_llvm_type(target_type);
-
-                        if (!primitive_name.empty() && primitive_registry.is_primitive_simple_name(primitive_name))
-                        {
-                            primitive_info = primitive_registry.get_by_simple_name(primitive_name);
-                            is_primitive_method_call = true;
-                            resolved_func_name = primitive_info->name + "." + member_name_str;
-                            instance_ptr_for_call = target_obj_res.value; // Instance call
-                        }
-                        else if (target_obj_res.classInfo)
-                        {
-                            instance_ptr_for_call = target_obj_res.value;
-                            callee_class_info = target_obj_res.classInfo;
-                            resolved_func_name = callee_class_info->name + "." + member_name_str;
-                        }
-                        else
-                        {
-                            log_error("Cannot call method '" + member_name_str + "' on expression that does not resolve to a class instance.", lhs_of_dot->location);
-                            return ExpressionVisitResult(nullptr);
-                        }
-                    }
-                }
+                log_error("Cannot make implicit call to '" + method_name + "' from a global context.", node->location);
+                return ExpressionVisitResult(nullptr);
             }
-        }
-        else if (auto idTarget = std::dynamic_pointer_cast<IdentifierExpressionNode>(node->target))
-        {
-            std::string func_name = idTarget->identifier->name;
-
-            // For calls within the same class, try to resolve the qualified name first
-            if (currentFunction)
-            {
-                std::string current_func_name = currentFunction->getName().str();
-                size_t dot_pos = current_func_name.find('.');
-                if (dot_pos != std::string::npos)
-                {
-                    std::string current_class = current_func_name.substr(0, dot_pos);
-                    std::string qualified_name = current_class + "." + func_name;
-
-                    // Try the qualified name first (for same-class calls)
-                    if (llvmModule->getFunction(qualified_name))
-                    {
-                        func_name = qualified_name;
-                    }
-                    else if (llvmModule->getFunction(func_name))
-                    {
-                        // Keep the simple name if it exists (for external functions, etc.)
-                        // func_name stays as is
-                    }
-                    else
-                    {
-                        // Neither exists yet, but assume the qualified name for same-class calls
-                        // This handles the case where the method hasn't been compiled yet
-                        func_name = qualified_name;
-                    }
-                }
-            }
-            // If not in a class method, just use the simple name
-
-            resolved_func_name = func_name;
         }
         else
         {
@@ -2003,14 +1924,15 @@ namespace Mycelium::Scripting::Lang
             return ExpressionVisitResult(nullptr);
         }
 
-        if (resolved_func_name.empty())
-        {
-            log_error("Could not resolve function name for method call.", node->target->location);
-            return ExpressionVisitResult(nullptr);
+        // Now, build the function name and find it.
+        std::string resolved_func_name;
+        if (callee_class_info) {
+            resolved_func_name = callee_class_info->name + "." + method_name;
+        } else if (!is_primitive_call) {
+            resolved_func_name = method_name; // For extern functions
         }
-
-        // Handle primitive method calls differently
-        if (is_primitive_method_call && primitive_info)
+        
+        if (is_primitive_call && primitive_info)
         {
             return handle_primitive_method_call(node, primitive_info, instance_ptr_for_call);
         }
@@ -2024,7 +1946,10 @@ namespace Mycelium::Scripting::Lang
 
         std::vector<llvm::Value *> args_values;
         if (instance_ptr_for_call)
+        {
             args_values.push_back(instance_ptr_for_call);
+        }
+        
         if (node->argumentList)
         {
             for (const auto &arg_node : node->argumentList->arguments)
@@ -2037,6 +1962,12 @@ namespace Mycelium::Scripting::Lang
                 }
                 args_values.push_back(arg_res.value);
             }
+        }
+
+        // Verify argument count
+        if (callee->arg_size() != args_values.size()) {
+            log_error("Incorrect number of arguments for function " + resolved_func_name + ". Expected " + std::to_string(callee->arg_size()) + ", got " + std::to_string(args_values.size()), node->location);
+            return ExpressionVisitResult(nullptr);
         }
 
         llvm::Value *call_result_val = llvmBuilder->CreateCall(callee, args_values, callee->getReturnType()->isVoidTy() ? "" : "calltmp");
@@ -2204,36 +2135,108 @@ namespace Mycelium::Scripting::Lang
         return ExpressionVisitResult(cast_val, target_static_ci);
     }
 
+        
     ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<MemberAccessExpressionNode> node)
     {
-        ExpressionVisitResult target_obj_res = visit(node->target);
-        if (!target_obj_res.value || !target_obj_res.classInfo || !target_obj_res.classInfo->fieldsType)
+        ExpressionVisitResult target_res = visit(node->target);
+        std::string member_name = node->memberName->name;
+
+        // Case 1: Target is a namespace (e.g., MyCompany.Services)
+        if (!target_res.resolved_path.empty() && target_res.classInfo == nullptr)
         {
-            log_error("Invalid target for member access.", node->target->location);
-            return ExpressionVisitResult(nullptr);
-        }
-        auto field_it = target_obj_res.classInfo->field_indices.find(node->memberName->name);
-        if (field_it == target_obj_res.classInfo->field_indices.end())
-        {
-            log_error("Field " + node->memberName->name + " not found in " + target_obj_res.classInfo->name, node->memberName->location);
-            return ExpressionVisitResult(nullptr);
-        }
-        unsigned field_idx = field_it->second;
-        llvm::Type *field_llvm_type = target_obj_res.classInfo->fieldsType->getElementType(field_idx);
-        llvm::Value *field_ptr = llvmBuilder->CreateStructGEP(target_obj_res.classInfo->fieldsType, target_obj_res.value, field_idx, node->memberName->name + ".ptr");
-        llvm::Value *loaded_field = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, node->memberName->name);
-        const ClassTypeInfo *field_static_ci = nullptr;
-        if (field_llvm_type->isPointerTy() && field_idx < target_obj_res.classInfo->field_ast_types.size())
-        {
-            std::shared_ptr<TypeNameNode> field_ast_type = target_obj_res.classInfo->field_ast_types[field_idx];
-            if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&field_ast_type->name_segment))
+            std::string new_path = target_res.resolved_path + "." + member_name;
+
+            // Check if the new path resolves to a class
+            if (symbolTable)
             {
-                auto cti_it = classTypeRegistry.find((*identNode)->name);
-                if (cti_it != classTypeRegistry.end())
-                    field_static_ci = &cti_it->second;
+                const auto* class_symbol = symbolTable->find_class(new_path);
+                if (class_symbol)
+                {
+                    auto cti_it = classTypeRegistry.find(new_path);
+                    if (cti_it != classTypeRegistry.end())
+                    {
+                        ExpressionVisitResult res;
+                        res.classInfo = &cti_it->second;
+                        res.is_static_type = true;
+                        res.resolved_path = new_path;
+                        return res;
+                    }
+                }
             }
+
+            // Check if the new path is still a namespace prefix
+            if (symbolTable)
+            {
+                const auto& all_classes = symbolTable->get_classes();
+                for (const auto& [class_name, class_symbol] : all_classes)
+                {
+                    if (class_name.rfind(new_path + ".", 0) == 0)
+                    {
+                        ExpressionVisitResult res;
+                        res.resolved_path = new_path;
+                        return res;
+                    }
+                }
+            }
+            
+            log_error("Symbol '" + member_name + "' not found in namespace '" + target_res.resolved_path + "'.", node->memberName->location);
+            return ExpressionVisitResult(nullptr);
         }
-        return ExpressionVisitResult(loaded_field, field_static_ci);
+
+        // Case 2: Target is a static class type or an instance
+        if (target_res.classInfo)
+        {
+            // Check for a field first.
+            auto field_it = target_res.classInfo->field_indices.find(member_name);
+            if (field_it != target_res.classInfo->field_indices.end())
+            {
+                if (target_res.is_static_type)
+                {
+                    // TODO: Handle static fields when they are supported.
+                    log_error("Static fields are not yet supported. Cannot access '" + member_name + "'.", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+
+                if (!target_res.value)
+                {
+                    log_error("Cannot access field '" + member_name + "' on a null instance.", node->target->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+
+                // It's an instance field access.
+                unsigned field_idx = field_it->second;
+                llvm::Type *field_llvm_type = target_res.classInfo->fieldsType->getElementType(field_idx);
+                llvm::Value *field_ptr = llvmBuilder->CreateStructGEP(target_res.classInfo->fieldsType, target_res.value, field_idx, member_name + ".ptr");
+                llvm::Value *loaded_field = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, member_name);
+                
+                const ClassTypeInfo *field_static_ci = nullptr;
+                if (field_llvm_type->isPointerTy() && field_idx < target_res.classInfo->field_ast_types.size())
+                {
+                    std::shared_ptr<TypeNameNode> field_ast_type = target_res.classInfo->field_ast_types[field_idx];
+                    if (auto identNode = std::get_if<std::shared_ptr<IdentifierNode>>(&field_ast_type->name_segment))
+                    {
+                        auto cti_it = classTypeRegistry.find((*identNode)->name);
+                        if (cti_it != classTypeRegistry.end())
+                            field_static_ci = &cti_it->second;
+                    }
+                }
+                return ExpressionVisitResult(loaded_field, field_static_ci);
+            }
+
+            // If not a field, it might be a method. The MethodCall visitor will verify.
+            // We just pass the target info up the chain.
+            return target_res;
+        }
+        
+        // Handle primitive member access (e.g., string.Length)
+        if (target_res.primitive_info)
+        {
+            // This is a property/method on a primitive. Let the method call visitor handle it.
+            return target_res;
+        }
+        
+        log_error("Invalid target for member access. Not a class, instance, or namespace.", node->target->location);
+        return ExpressionVisitResult(nullptr);
     }
 
     ScriptCompiler::ExpressionVisitResult ScriptCompiler::visit(std::shared_ptr<ParenthesizedExpressionNode> node)

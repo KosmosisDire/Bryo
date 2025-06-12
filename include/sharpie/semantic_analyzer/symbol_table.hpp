@@ -1,3 +1,5 @@
+// include/sharpie/semantic_analyzer/symbol_table.hpp
+
 #pragma once
 
 #include "../script_ast.hpp"
@@ -93,6 +95,7 @@ public:
     // Class symbols
     void declare_class(const ClassSymbol& symbol);
     ClassSymbol* find_class(const std::string& name);
+    const ClassSymbol* find_class(const std::string& name) const;
     
     // Method symbols
     void declare_method(const MethodSymbol& symbol);
@@ -112,6 +115,7 @@ public:
     
     // Enhanced lookup methods
     MethodSymbol* find_method_in_class(const std::string& class_name, const std::string& method_name);
+    const MethodSymbol* find_method_in_class(const std::string& class_name, const std::string& method_name) const;
     VariableSymbol* find_field_in_class(const std::string& class_name, const std::string& field_name);
     std::vector<MethodSymbol*> get_constructors_for_class(const std::string& class_name);
     MethodSymbol* get_destructor_for_class(const std::string& class_name);
@@ -120,9 +124,10 @@ public:
     std::string get_current_scope_name();
     std::vector<std::string> get_available_variables_in_scope();
     
-    // Access to underlying data for ScriptCompiler compatibility (unchanged)
+    // Access to underlying data for ScriptCompiler compatibility
     const std::map<std::string, ClassSymbol>& get_classes() const { return classes; }
     std::map<std::string, ClassSymbol>& get_classes() { return classes; }
+    const std::map<std::string, MethodSymbol>& get_methods() const { return methods; }
 };
 
 } // namespace Mycelium::Scripting::Lang

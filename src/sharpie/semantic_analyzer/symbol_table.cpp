@@ -76,6 +76,12 @@ namespace Mycelium::Scripting::Lang
         return (it != classes.end()) ? &it->second : nullptr;
     }
 
+    const SymbolTable::ClassSymbol *SymbolTable::find_class(const std::string &name) const
+    {
+        auto it = classes.find(name);
+        return (it != classes.end()) ? &it->second : nullptr;
+    }
+
     void SymbolTable::declare_method(const MethodSymbol &symbol)
     {
         methods[symbol.qualified_name] = symbol;
@@ -176,6 +182,16 @@ namespace Mycelium::Scripting::Lang
         return (it != class_symbol->method_registry.end()) ? &it->second : nullptr;
     }
 
+    const SymbolTable::MethodSymbol *SymbolTable::find_method_in_class(const std::string &class_name, const std::string &method_name) const
+    {
+        const auto *class_symbol = find_class(class_name);
+        if (!class_symbol)
+            return nullptr;
+
+        auto it = class_symbol->method_registry.find(method_name);
+        return (it != class_symbol->method_registry.end()) ? &it->second : nullptr;
+    }
+
     SymbolTable::VariableSymbol *SymbolTable::find_field_in_class(const std::string &class_name, const std::string &field_name)
     {
         auto *class_symbol = find_class(class_name);
@@ -232,5 +248,4 @@ namespace Mycelium::Scripting::Lang
         }
         return available_vars;
     }
-
 } // namespace Mycelium::Scripting::Lang

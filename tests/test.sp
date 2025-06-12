@@ -9,7 +9,7 @@
 // --- External Function Declarations ---
 // These are required for the test functions to print output.
 
-extern void print(string str);
+extern void Mycelium_String_print(string str);
 extern void print_int(int val);
 extern void print_bool(bool val);
 
@@ -19,18 +19,18 @@ extern void print_bool(bool val);
 // ============================================================================
 class ScopeTester {
     static void testAllScopes() {
-        print("--- Test 1: Scope and Variable Test ---\n");
+        Mycelium_String_print("--- Test 1: Scope and Variable Test ---\n");
         
         int outerVar = 10;
         
         if (outerVar > 5) {
             string innerVar = "Hello from if-block";
-            print(innerVar + "\n");
+            Mycelium_String_print(innerVar + "\n");
             outerVar = 15; // Modifying outer scope variable is allowed
         }
         
         // ERROR: innerVar is not defined here. Uncommenting should cause a semantic error.
-        // print(innerVar); 
+        // Mycelium_String_print(innerVar); 
 
         while (outerVar > 10) {
             bool loopVar = true;
@@ -61,14 +61,14 @@ class InstanceTester {
 
     // Instance method using both explicit and implicit `this`
     void printDetails() {
-        print("Instance ID: ");
+        Mycelium_String_print("Instance ID: ");
         print_int(this.id);
-        print(", Name: " + name + "\n"); // `name` is an implicit `this.name`
+        Mycelium_String_print(", Name: " + name + "\n"); // `name` is an implicit `this.name`
     }
     
     // A static method has no `this` context
     static InstanceTester createDefault() {
-        print("Creating default instance...\n");
+        Mycelium_String_print("Creating default instance...\n");
         return new InstanceTester(0, "Default");
 
         // ERROR: A static method cannot use `this`. Uncommenting should fail.
@@ -78,7 +78,7 @@ class InstanceTester {
     // Private helper method defined after its use in the constructor
     private void initialize() {
         this.is_initialized = true;
-        print("InstanceTester Initialized.\n");
+        Mycelium_String_print("InstanceTester Initialized.\n");
     }
 }
 
@@ -108,7 +108,7 @@ class RecursiveTester {
 class ServiceA {
     // This method makes a forward call to a method in ServiceB
     static string processRequest(string input) {
-        print("ServiceA: Received request, forwarding to ServiceB...\n");
+        Mycelium_String_print("ServiceA: Received request, forwarding to ServiceB...\n");
         // Forward call: ServiceB is not fully defined yet.
         return ServiceB.handleRequest(input); 
     }
@@ -123,7 +123,7 @@ class ServiceA {
 class ServiceB {
     // This method is called by ServiceA.
     static string handleRequest(string data) {
-        print("ServiceB: Handling request.\n");
+        Mycelium_String_print("ServiceB: Handling request.\n");
         string result = "Response from B for: " + data;
         
         // This is a normal (not forward) call back to ServiceA.
@@ -138,21 +138,21 @@ class ServiceB {
 // ============================================================================
 class ChainLinkA {
     static int startChain(int val) {
-        print("Chain A -> B\n");
+        Mycelium_String_print("Chain A -> B\n");
         return ChainLinkB.continueChain(val + 1); // Forward call
     }
 }
 
 class ChainLinkB {
     static int continueChain(int val) {
-        print("Chain B -> C\n");
+        Mycelium_String_print("Chain B -> C\n");
         return ChainLinkC.finishChain(val * 2); // Forward call
     }
 }
 
 class ChainLinkC {
     static int finishChain(int val) {
-        print("Chain C -> A (loop)\n");
+        Mycelium_String_print("Chain C -> A (loop)\n");
         if (val > 100) return val;
         // Circular forward call back to the start of the chain.
         return ChainLinkA.startChain(val); 
@@ -166,7 +166,7 @@ class ChainLinkC {
 namespace MyCompany.Services {
     class InternalLogger {
         static void log(string message) {
-            print("[LOG]: " + message + "\n");
+            Mycelium_String_print("[LOG]: " + message + "\n");
         }
     }
 }
@@ -174,7 +174,7 @@ namespace MyCompany.Services {
 // A class outside the namespace that depends on a class inside it.
 class ExternalClient {
     static void performAction() {
-        print("ExternalClient: Performing action, will log via internal service.\n");
+        Mycelium_String_print("ExternalClient: Performing action, will log via internal service.\n");
         // This should create a dependency from ExternalClient to InternalLogger.
         MyCompany.Services.InternalLogger.log("Action performed by ExternalClient");
     }
@@ -185,42 +185,42 @@ class ExternalClient {
 // TEST 7: Main orchestrator class
 // This class calls all other test classes to build the full usage graph.
 // ============================================================================
-class Main {
+class Program {
     static int Main() {
-        print("=== Comprehensive Semantic Test Suite Starting ===\n\n");
+        Mycelium_String_print("=== Comprehensive Semantic Test Suite Starting ===\n\n");
 
         // Test 1
         ScopeTester.testAllScopes();
 
         // Test 2
-        print("\n--- Test 2: Instance and `this` Test ---\n");
+        Mycelium_String_print("\n--- Test 2: Instance and `this` Test ---\n");
         InstanceTester tester = new InstanceTester(101, "MyInstance");
         tester.printDetails();
         InstanceTester defaultTester = InstanceTester.createDefault();
         defaultTester.printDetails();
 
         // Test 3
-        print("\n--- Test 3: Mutual Recursion Test ---\n");
+        Mycelium_String_print("\n--- Test 3: Mutual Recursion Test ---\n");
         bool evenResult = RecursiveTester.isEven(10);
-        print("Is 10 even? "); print_bool(evenResult); print("\n");
+        Mycelium_String_print("Is 10 even? "); print_bool(evenResult); Mycelium_String_print("\n");
         bool oddResult = RecursiveTester.isOdd(7);
-        print("Is 7 odd? "); print_bool(oddResult); print("\n");
+        Mycelium_String_print("Is 7 odd? "); print_bool(oddResult); Mycelium_String_print("\n");
 
         // Test 4
-        print("\n--- Test 4: Cross-Class Forward Call Test ---\n");
+        Mycelium_String_print("\n--- Test 4: Cross-Class Forward Call Test ---\n");
         string response = ServiceA.processRequest("MyData");
-        print("Final Response: " + response + "\n");
+        Mycelium_String_print("Final Response: " + response + "\n");
 
         // Test 5
-        print("\n--- Test 5: Circular Dependency Test ---\n");
+        Mycelium_String_print("\n--- Test 5: Circular Dependency Test ---\n");
         int chainResult = ChainLinkA.startChain(1);
-        print("Circular chain ended with value: "); print_int(chainResult); print("\n");
+        Mycelium_String_print("Circular chain ended with value: "); print_int(chainResult); Mycelium_String_print("\n");
 
         // Test 6
-        print("\n--- Test 6: Namespace Test ---\n");
+        Mycelium_String_print("\n--- Test 6: Namespace Test ---\n");
         ExternalClient.performAction();
 
-        print("\n=== Comprehensive Semantic Test Suite Complete ===\n");
+        Mycelium_String_print("\n=== Comprehensive Semantic Test Suite Complete ===\n");
         return 0;
     }
 }

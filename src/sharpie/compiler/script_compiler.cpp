@@ -26,6 +26,7 @@
 // #include "llvm/Transforms/Scalar/GVN.h"               // Not directly used by methods moved here yet
 #include "llvm/IR/IRBuilder.h"    // Used by create_entry_block_alloca
 #include "llvm/Support/CodeGen.h" // For CodeGenFileType
+#include "llvm/Support/DynamicLibrary.h"
 
 // Assuming runtime_binding.h is in a path accessible to the compiler, e.g., lib/
 // If it's relative to this file, the path needs adjustment.
@@ -233,6 +234,32 @@ namespace Mycelium::Scripting::Lang
             log_error("No LLVM module available for JIT. Was it compiled or taken?");
         }
 
+        if (lastSemanticIR)
+        {
+            LOG_INFO("Performing runtime validation of external symbols...", "JIT");
+            std::vector<std::string> missing_symbols;
+            const auto& all_methods = lastSemanticIR->symbol_table.get_methods();
+            for (const auto& [name, symbol] : all_methods) {
+                if (symbol.is_external) {
+                    // Search the current process for the symbol.
+                    void* addr = llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(symbol.name);
+                    if (addr == nullptr) {
+                        missing_symbols.push_back(symbol.name);
+                    }
+                }
+            }
+
+            if (!missing_symbols.empty()) {
+                std::string error_msg = "The following required external functions could not be found at runtime:\n";
+                for (const auto& sym : missing_symbols) {
+                    error_msg += " - " + sym + "\n";
+                }
+                error_msg += "Please ensure they are linked or provided by the host application with 'extern \"C\"' linkage.";
+                log_error(error_msg);
+            }
+            LOG_INFO("All external symbols validated successfully.", "JIT");
+        }   
+
         // Create a new module for the JIT if the main one is gone, or clone.
         // For simplicity, let's assume we take_module for JIT.
         std::unique_ptr<llvm::Module> jitModule = take_module();
@@ -256,16 +283,16 @@ namespace Mycelium::Scripting::Lang
         }
 
         // Add global mappings for runtime functions
-        for (const auto &binding : get_runtime_bindings())
-        {
-            if (binding.c_function_pointer == nullptr)
-            {
-                // llvm::errs() << "Skipping null C function pointer for: " << binding.ir_function_name << "\n";
-                continue;
-            }
-            // llvm::errs() << "Mapping IR func: " << binding.ir_function_name << " to C func at " << binding.c_function_pointer << "\n";
-            ee->addGlobalMapping(binding.ir_function_name, reinterpret_cast<uint64_t>(binding.c_function_pointer));
-        }
+        // for (const auto &binding : get_runtime_bindings())
+        // {
+        //     if (binding.c_function_pointer == nullptr)
+        //     {
+        //         // llvm::errs() << "Skipping null C function pointer for: " << binding.ir_function_name << "\n";
+        //         continue;
+        //     }
+        //     // llvm::errs() << "Mapping IR func: " << binding.ir_function_name << " to C func at " << binding.c_function_pointer << "\n";
+        //     ee->addGlobalMapping(binding.ir_function_name, reinterpret_cast<uint64_t>(binding.c_function_pointer));
+        // }
 
         ee->finalizeObject(); // Finalize object code before running.
 
@@ -406,21 +433,45 @@ namespace Mycelium::Scripting::Lang
             log_error("LLVM module not available for declaring runtime functions.");
             return;
         }
-        llvm::Type *opaque_ptr_type = llvm::PointerType::getUnqual(*llvmContext); // General opaque pointer
-        llvm::Type *i64_type = llvm::Type::getInt64Ty(*llvmContext);
-        llvm::Type *i32_type = llvm::Type::getInt32Ty(*llvmContext);
-        llvm::Type *void_type = llvm::Type::getVoidTy(*llvmContext);
-        llvm::Type *i8_ptr_type = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*llvmContext));
+
+        // Get the canonical pointer types from the helper methods. This ensures consistency.
+        llvm::Type *string_ptr_type = getMyceliumStringPtrTy();
+        llvm::Type *header_ptr_type = getMyceliumObjectHeaderPtrTy();
 
         for (const auto &binding : get_runtime_bindings())
         {
-            llvm::FunctionType *func_type = binding.get_llvm_type(*llvmContext, opaque_ptr_type, i8_ptr_type);
+            // Pass the canonical types to the type getter for each binding.
+            llvm::FunctionType *func_type = binding.get_llvm_type(*llvmContext, string_ptr_type, header_ptr_type);
             if (!func_type)
             {
                 log_error("Failed to get LLVM FunctionType for: " + binding.ir_function_name);
                 continue;
             }
-            llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, binding.ir_function_name, llvmModule.get());
+            
+            // Ensure we don't re-declare a function that might already exist from an extern declaration.
+            if (!llvmModule->getFunction(binding.ir_function_name)) {
+                llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, binding.ir_function_name, llvmModule.get());
+            }
+        }
+    }
+
+    void ScriptCompiler::populate_class_registry_from_semantic_ir()
+    {
+        if (!symbolTable)
+        {
+            log_error("Cannot populate class registry: symbolTable is null");
+            return;
+        }
+
+        // Get all classes from the SemanticIR and add them to classTypeRegistry
+        const auto &classes = symbolTable->get_classes();
+        for (const auto &[class_name, class_symbol] : classes)
+        {
+            // Copy the ClassTypeInfo from the semantic analysis
+            ClassTypeInfo cti = class_symbol.type_info;
+            cti.name = class_name;
+            cti.type_id = next_type_id++;
+            classTypeRegistry[class_name] = cti;
         }
     }
 
@@ -769,6 +820,113 @@ namespace Mycelium::Scripting::Lang
 
         log_error("Unsupported primitive method: " + primitive_info->simple_name + "." + method_name, node->location);
         return ExpressionVisitResult(nullptr);
+    }
+
+    void ScriptCompiler::declare_class_structure_and_signatures(std::shared_ptr<ClassDeclarationNode> node, const std::string &fq_class_name)
+    {
+        if (classTypeRegistry.count(fq_class_name))
+        {
+            // Already processed this class structure, skip it
+            return;
+        }
+
+        // Look up the class in the SemanticIR to get all its information
+        ClassTypeInfo cti;
+        if (symbolTable)
+        {
+            const auto *class_symbol = symbolTable->find_class(fq_class_name);
+            if (class_symbol)
+            {
+                // Use the ClassTypeInfo from the semantic analysis
+                cti = class_symbol->type_info;
+                cti.name = fq_class_name;
+                cti.type_id = next_type_id++;
+            }
+            else
+            {
+                log_error("Class not found in SemanticIR: " + fq_class_name, node->location);
+                return;
+            }
+        }
+        else
+        {
+            // Fallback to old method if SemanticIR not available
+            cti.name = fq_class_name;
+            cti.type_id = next_type_id++;
+        }
+
+        // Create LLVM struct type for fields
+        std::vector<llvm::Type *> field_llvm_types_for_struct;
+        unsigned field_idx_counter = 0;
+        for (const auto &member : node->members)
+        {
+            if (auto fieldDecl = std::dynamic_pointer_cast<FieldDeclarationNode>(member))
+            {
+                if (!fieldDecl->type)
+                {
+                    log_error("Field missing type in " + fq_class_name, fieldDecl->location);
+                    continue;
+                }
+                llvm::Type *actual_field_llvm_type = get_llvm_type(fieldDecl->type.value());
+                if (!actual_field_llvm_type)
+                {
+                    log_error("Could not get LLVM type for field in " + fq_class_name, fieldDecl->type.value()->location);
+                    continue;
+                }
+                for (const auto &declarator : fieldDecl->declarators)
+                {
+                    field_llvm_types_for_struct.push_back(actual_field_llvm_type);
+                    cti.field_names_in_order.push_back(declarator->name->name);
+                    cti.field_indices[declarator->name->name] = field_idx_counter++;
+                    cti.field_ast_types.push_back(fieldDecl->type.value());
+                }
+            }
+        }
+
+        cti.fieldsType = llvm::StructType::create(*llvmContext, field_llvm_types_for_struct, fq_class_name + "_Fields");
+        if (!cti.fieldsType)
+        {
+            log_error("Failed to create fields struct for " + fq_class_name, node->location);
+            return;
+        }
+        classTypeRegistry[fq_class_name] = cti;
+
+        // Declare all method signatures for this class
+        for (const auto &member : node->members)
+        {
+            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member))
+            {
+                declare_method_signature(methodDecl, fq_class_name);
+            }
+            else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member))
+            {
+                declare_constructor_signature(ctorDecl, fq_class_name);
+            }
+            else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member))
+            {
+                declare_destructor_signature(dtorDecl, fq_class_name);
+            }
+        }
+    }
+
+    void ScriptCompiler::compile_all_method_bodies(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name)
+    {
+        // Compile method bodies (now all signatures across all classes are available)
+        for (const auto &member : node->members)
+        {
+            if (auto methodDecl = std::dynamic_pointer_cast<MethodDeclarationNode>(member))
+            {
+                compile_method_body(methodDecl, fq_class_name);
+            }
+            else if (auto ctorDecl = std::dynamic_pointer_cast<ConstructorDeclarationNode>(member))
+            {
+                compile_constructor_body(ctorDecl, fq_class_name);
+            }
+            else if (auto dtorDecl = std::dynamic_pointer_cast<DestructorDeclarationNode>(member))
+            {
+                compile_destructor_body(dtorDecl, fq_class_name);
+            }
+        }
     }
 
     // The visit methods will be moved to separate files (compiler_expressions.cpp, etc.)

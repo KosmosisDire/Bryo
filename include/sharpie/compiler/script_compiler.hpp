@@ -92,14 +92,17 @@ private:
     
     PrimitiveStructRegistry primitive_registry;
 
-    struct ExpressionVisitResult {
+     struct ExpressionVisitResult {
         llvm::Value* value = nullptr; // Primary value, e.g., result of an operation, or fields_ptr for an object
         const ClassTypeInfo* classInfo = nullptr; // Static type info if 'value' is an object
         llvm::Value* header_ptr = nullptr; // Direct pointer to the object's header (for ARC), if applicable
         PrimitiveStructInfo* primitive_info = nullptr; // Primitive type info for method chaining on primitive values
+        
+        std::string resolved_path;    // e.g. "MyCompany" or "MyCompany.Services"
+        bool is_static_type = false; // True if this result represents a type, not an instance.
 
         ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr, llvm::Value* hp = nullptr)
-            : value(v), classInfo(ci), header_ptr(hp), primitive_info(nullptr) {}
+            : value(v), classInfo(ci), header_ptr(hp), primitive_info(nullptr), is_static_type(false) {}
     };
 
     struct VariableInfo {
@@ -168,6 +171,9 @@ private:
     ExpressionVisitResult visit(std::shared_ptr<ParenthesizedExpressionNode> node);
 
     // --- Helper Methods (snake_case) ---
+    void populate_class_registry_from_semantic_ir();
+    void declare_class_structure_and_signatures(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
+    void compile_all_method_bodies(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
     llvm::Value* getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMType);
     llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType);
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
