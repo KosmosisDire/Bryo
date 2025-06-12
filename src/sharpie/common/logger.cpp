@@ -69,7 +69,7 @@ std::string Logger::level_to_string(LogLevel level) const {
         case LogLevel::DEBUG: return "DEBUG";
         case LogLevel::INFO:  return "INFO ";
         case LogLevel::WARN:  return "WARN ";
-        case LogLevel::ERROR: return "ERROR";
+        case LogLevel::ERR: return "ERROR";
         case LogLevel::FATAL: return "FATAL";
         default: return "UNKNOWN";
     }
@@ -81,7 +81,7 @@ std::string Logger::get_color_code(LogLevel level) const {
         case LogLevel::DEBUG: return "\033[36m";   // Cyan
         case LogLevel::INFO:  return "\033[32m";   // Green
         case LogLevel::WARN:  return "\033[33m";   // Yellow
-        case LogLevel::ERROR: return "\033[31m";   // Red
+        case LogLevel::ERR: return "\033[31m";   // Red
         case LogLevel::FATAL: return "\033[35m";   // Magenta
         default: return "";
     }
@@ -109,9 +109,13 @@ void Logger::log(LogLevel level, const std::string& message, const std::string& 
         std::string color = get_color_code(level);
         std::string reset = get_reset_color();
         
-        std::ostream& output = (level >= LogLevel::ERROR) ? std::cerr : std::cout;
+        std::ostream& output = (level >= LogLevel::ERR) ? std::cerr : std::cout;
         output << color << timestamp << " " << level_str << category_str << ": " << message << reset << std::endl;
     }
+}
+
+void Logger::runtime(const std::string& message, const std::string& category) {
+    log(LogLevel::RUNTIME, message, category);
 }
 
 void Logger::trace(const std::string& message, const std::string& category) {
@@ -131,7 +135,7 @@ void Logger::warn(const std::string& message, const std::string& category) {
 }
 
 void Logger::error(const std::string& message, const std::string& category) {
-    log(LogLevel::ERROR, message, category);
+    log(LogLevel::ERR, message, category);
 }
 
 void Logger::fatal(const std::string& message, const std::string& category) {

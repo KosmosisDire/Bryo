@@ -10,8 +10,7 @@
 // These are required for the test functions to print output.
 
 extern void Mycelium_String_print(string str);
-extern void print_int(int val);
-extern void print_bool(bool val);
+
 
 
 // ============================================================================
@@ -34,12 +33,12 @@ class ScopeTester {
 
         while (outerVar > 10) {
             bool loopVar = true;
-            print_bool(loopVar);
+            Mycelium_String_print((string)loopVar);
             outerVar = outerVar - 1;
         }
 
         // ERROR: loopVar is not defined here.
-        // print_bool(loopVar);
+        // Mycelium_String_print((string)loopVar);
     }
 }
 
@@ -62,7 +61,7 @@ class InstanceTester {
     // Instance method using both explicit and implicit `this`
     void printDetails() {
         Mycelium_String_print("Instance ID: ");
-        print_int(this.id);
+        Mycelium_String_print((string)this.id);
         Mycelium_String_print(", Name: " + name + "\n"); // `name` is an implicit `this.name`
     }
     
@@ -202,9 +201,13 @@ class Program {
         // Test 3
         Mycelium_String_print("\n--- Test 3: Mutual Recursion Test ---\n");
         bool evenResult = RecursiveTester.isEven(10);
-        Mycelium_String_print("Is 10 even? "); print_bool(evenResult); Mycelium_String_print("\n");
+        Mycelium_String_print("Is 10 even? "); 
+        Mycelium_String_print((string)evenResult); 
+        Mycelium_String_print("\n");
         bool oddResult = RecursiveTester.isOdd(7);
-        Mycelium_String_print("Is 7 odd? "); print_bool(oddResult); Mycelium_String_print("\n");
+        Mycelium_String_print("Is 7 odd? "); 
+        Mycelium_String_print((string)oddResult); 
+        Mycelium_String_print("\n");
 
         // Test 4
         Mycelium_String_print("\n--- Test 4: Cross-Class Forward Call Test ---\n");
@@ -214,7 +217,7 @@ class Program {
         // Test 5
         Mycelium_String_print("\n--- Test 5: Circular Dependency Test ---\n");
         int chainResult = ChainLinkA.startChain(1);
-        Mycelium_String_print("Circular chain ended with value: "); print_int(chainResult); Mycelium_String_print("\n");
+        Mycelium_String_print("Circular chain ended with value: "); Mycelium_String_print((string)chainResult); Mycelium_String_print("\n");
 
         // Test 6
         Mycelium_String_print("\n--- Test 6: Namespace Test ---\n");
@@ -242,10 +245,10 @@ class ErrorTester {
         int b = c; 
 
         // --- Wrong Argument Count Error ---
-        print_int(1, 2, 3);
+        Mycelium_String_print((string)1, 2, 3);
 
         // --- Wrong Argument Type Error ---
-        print_int("this is not an int");
+        Mycelium_String_print((string)"this is not an int");
 
         // --- Accessing Instance Member from Static Context ---
         int d = instanceField;

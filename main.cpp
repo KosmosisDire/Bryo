@@ -1,30 +1,28 @@
+#define NOMINMAX  // Prevent Windows min/max macros
 #include <iostream>
 #include <string>
 #include <vector>
 #include <memory>
-#include <stdexcept>
 #include <thread>
 #include <chrono>
-#include <optional>
-#include <fstream>
 #include <filesystem>
 #include <signal.h>
 #include <atomic>
+#include <cstring>
+#include <algorithm>
 
-// #include "script_tokenizer.hpp"
-#include "sharpie/script_ast.hpp" // Updated path
-#include "sharpie/parser/script_parser.hpp" // Updated path
-#include "sharpie/compiler/script_compiler.hpp" // Updated path
-#include "sharpie/common/logger.hpp" // Add logger include
+#include "sharpie/common/logger.hpp"
 #include "hot_reload.hpp"
 #include "platform.hpp"
+#include "script_execution_engine.hpp"
+#include "test_runner.hpp"
 
 #include "llvm/Support/DynamicLibrary.h"
-#include "llvm/Support/ErrorHandling.h" // Contains llvm_shutdown
+#include "llvm/Support/ErrorHandling.h"
 
-// using namespace Mycelium::UI::Lang;
-using namespace Mycelium::Scripting::Lang;
 using namespace Mycelium::Scripting::Common;
+using namespace Mycelium::Execution;
+using namespace Mycelium::Testing;
 
 // Global flag for graceful shutdown
 std::atomic<bool> should_exit{false};
@@ -53,97 +51,118 @@ extern "C" {
     }
 }
 
-void Compile(std::string input)
-{
-    Logger& logger = Logger::get_instance();
+void print_usage(const char* program_name) {
+    std::cout << "Usage: " << program_name << " [OPTIONS]\n";
+    std::cout << "\nModes:\n";
+    std::cout << "  --test                Run test suite only (exit after tests)\n";
+    std::cout << "  --execute FILE        Execute a single script file\n";
+    std::cout << "  --watch FILE          Watch and hot-reload a single file\n";
+    std::cout << "\nOptions:\n";
+    std::cout << "  --test-pattern PATTERN   Specify test file pattern (default: tests/*.sp)\n";
+    std::cout << "  --verbose                Enable verbose output\n";
+    std::cout << "  --silent                 Minimal output (errors only)\n";
+    std::cout << "  --log-level LEVEL        Set logging level (NONE|ERROR|WARN|INFO|DEBUG|TRACE)\n";
+    std::cout << "  --no-save                Don't save IR files or test results\n";
+    std::cout << "  --help                   Show this help message\n";
+    std::cout << "\nDefault behavior: Run all tests, then hot-reload tests/test.sp\n";
+}
+
+struct CommandLineArgs {
+    enum class Mode {
+        DEFAULT,        // Run tests then hot-reload
+        TEST_ONLY,      // Run tests and exit
+        EXECUTE_FILE,   // Execute single file and exit
+        WATCH_FILE      // Watch single file for changes
+    };
     
-    // Log the input source code
-    LOG_PHASE_BEGIN("Input Source");
-    LOG_DEBUG("Source code content:\n" + input, "INPUT");
-    LOG_PHASE_END("Input Source", true);
+    Mode mode = Mode::DEFAULT;
+    bool verbose = false;
+    bool silent = false;
+    bool save_outputs = true;
+    bool show_help = false;
+    Mycelium::LogLevel log_level = Mycelium::LogLevel::WARN;
+    std::vector<std::string> test_patterns = {"tests/*.sp"};
+    std::string target_file = "tests/test.sp";
+};
 
-    try
-    {
-        // Parsing Phase
-        LOG_PHASE_BEGIN("Parsing");
-        LOG_DEBUG("Creating parser for test.sp", "PARSER");
-        ScriptParser parser(input, "test.sp");
-        
-        LOG_DEBUG("Starting parse operation", "PARSER");
-        auto result = parser.parse();
-        auto AST = result.first;
-        
-        // Handle parse errors
-        bool has_errors = false;
-        for (const auto &error : result.second)
-        {
-            LOG_ERROR("Parse Error: " + error.message + " at " + error.location.to_string(), "PARSER");
-            has_errors = true;
+Mycelium::LogLevel parse_log_level(const std::string& level_str) {
+    std::string upper_level = level_str;
+    std::transform(upper_level.begin(), upper_level.end(), upper_level.begin(), ::toupper);
+    
+    if (upper_level == "NONE") return Mycelium::LogLevel::NONE;
+    if (upper_level == "ERROR") return Mycelium::LogLevel::ERR;
+    if (upper_level == "WARN") return Mycelium::LogLevel::WARN;
+    if (upper_level == "INFO") return Mycelium::LogLevel::INFO;
+    if (upper_level == "DEBUG") return Mycelium::LogLevel::DEBUG;
+    if (upper_level == "TRACE") return Mycelium::LogLevel::TRACE;
+    
+    std::cerr << "Warning: Unknown log level '" << level_str << "', using WARN" << std::endl;
+    return Mycelium::LogLevel::WARN;
+}
+
+CommandLineArgs parse_args(int argc, char* argv[]) {
+    CommandLineArgs args;
+    
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--test") == 0) {
+            args.mode = CommandLineArgs::Mode::TEST_ONLY;
         }
-        
-        if (!result.second.empty() && !AST) {
-            LOG_ERROR("Parsing failed to produce an AST due to errors", "PARSER");
-            LOG_PHASE_END("Parsing", false);
-            return;
+        else if (std::strcmp(argv[i], "--execute") == 0) {
+            if (i + 1 < argc) {
+                args.mode = CommandLineArgs::Mode::EXECUTE_FILE;
+                args.target_file = argv[++i];
+            } else {
+                std::cerr << "Error: --execute requires a file argument\n";
+                args.show_help = true;
+            }
         }
-        
-        if (!AST) {
-            LOG_ERROR("Parsing produced a null AST without explicit errors. Aborting compilation", "PARSER");
-            LOG_PHASE_END("Parsing", false);
-            return;
+        else if (std::strcmp(argv[i], "--watch") == 0) {
+            if (i + 1 < argc) {
+                args.mode = CommandLineArgs::Mode::WATCH_FILE;
+                args.target_file = argv[++i];
+            } else {
+                std::cerr << "Error: --watch requires a file argument\n";
+                args.show_help = true;
+            }
         }
-        
-        LOG_DEBUG("AST created successfully", "PARSER");
-        LOG_PHASE_END("Parsing", true);
-
-        // Compilation Phase
-        LOG_PHASE_BEGIN("Compilation");
-        LOG_DEBUG("Creating compiler instance", "COMPILER");
-        ScriptCompiler compiler;
-        
-        LOG_DEBUG("Compiling AST to LLVM IR", "COMPILER");
-        compiler.compile_ast(AST, "MyceliumModule");
-
-        // Save IR to file
-        LOG_DEBUG("Saving LLVM IR to tests/build/test.ll", "COMPILER");
-        std::ofstream outFile("tests/build/test.ll");
-        if (outFile)
-        {
-            outFile << compiler.get_ir_string();
-            outFile.close();
-            LOG_DEBUG("LLVM IR saved successfully", "COMPILER");
+        else if (std::strcmp(argv[i], "--test-pattern") == 0) {
+            if (i + 1 < argc) {
+                args.test_patterns.clear();
+                args.test_patterns.push_back(argv[++i]);
+            } else {
+                std::cerr << "Error: --test-pattern requires a pattern argument\n";
+                args.show_help = true;
+            }
         }
-        else
-        {
-            LOG_WARN("Failed to save LLVM IR to file", "COMPILER");
+        else if (std::strcmp(argv[i], "--verbose") == 0) {
+            args.verbose = true;
+            if (args.log_level < Mycelium::LogLevel::INFO) args.log_level = Mycelium::LogLevel::INFO;
         }
-
-        LOG_PHASE_END("Compilation", true);
-
-        // JIT Execution Phase
-        LOG_PHASE_BEGIN("JIT Execution");
-        LOG_DEBUG("Starting JIT execution of main function", "JIT");
-        
-        // Capture and redirect JIT output
-        auto value = compiler.jit_execute_function("Program.Main", {});
-        
-        LOG_JIT_OUTPUT("Program returned: " + std::to_string(value.IntVal.getSExtValue()));
-        LOG_DEBUG("JIT execution completed successfully", "JIT");
-        LOG_PHASE_END("JIT Execution", true);
-
-    }
-    catch (const std::runtime_error &e)
-    {
-        LOG_ERROR("Runtime error during compilation/JIT: " + std::string(e.what()), "RUNTIME");
-        LOG_PHASE_END("Compilation/JIT", false);
-    }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR("Unexpected standard exception: " + std::string(e.what()), "EXCEPTION");
-        LOG_PHASE_END("Compilation/JIT", false);
+        else if (std::strcmp(argv[i], "--silent") == 0) {
+            args.silent = true;
+            args.log_level = Mycelium::LogLevel::ERR;
+        }
+        else if (std::strcmp(argv[i], "--log-level") == 0) {
+            if (i + 1 < argc) {
+                args.log_level = parse_log_level(argv[++i]);
+            } else {
+                std::cerr << "Error: --log-level requires a level argument\n";
+                args.show_help = true;
+            }
+        }
+        else if (std::strcmp(argv[i], "--no-save") == 0) {
+            args.save_outputs = false;
+        }
+        else if (std::strcmp(argv[i], "--help") == 0) {
+            args.show_help = true;
+        }
+        else {
+            std::cerr << "Error: Unknown option " << argv[i] << "\n";
+            args.show_help = true;
+        }
     }
     
-    logger.flush();
+    return args;
 }
 
 // RAII wrapper for application resources
@@ -165,15 +184,48 @@ public:
             std::cerr << "Failed to initialize logger. Continuing without file logging..." << std::endl;
         }
         
-        logger.set_console_level(LogLevel::TRACE);
-        logger.set_file_level(LogLevel::TRACE);
+        logger.set_console_level(Mycelium::LogLevel::WARN);
+        logger.set_file_level(Mycelium::LogLevel::TRACE);
         
-        LOG_INFO("Sharpie compiler started", "MAIN");
+        LOG_INFO("Sharpie application started", "MAIN");
         LOG_DEBUG("Logger initialized successfully", "MAIN");
     }
     
+    void set_log_level(Mycelium::LogLevel level) {
+        Logger& logger = Logger::get_instance();
+        
+        // Map ExecutionLogLevel to Logger's LogLevel  
+        // For NONE, we actually want to suppress all logging, so use ERROR level
+        Mycelium::LogLevel logger_level;
+        switch (level) {
+            case Mycelium::LogLevel::NONE:
+                logger_level = Mycelium::LogLevel::ERR;
+                break;
+            case Mycelium::LogLevel::ERR:
+                logger_level = Mycelium::LogLevel::ERR;
+                break;
+            case Mycelium::LogLevel::WARN:
+                logger_level = Mycelium::LogLevel::WARN;
+                break;
+            case Mycelium::LogLevel::INFO:
+                logger_level = Mycelium::LogLevel::INFO;
+                break;
+            case Mycelium::LogLevel::DEBUG:
+                logger_level = Mycelium::LogLevel::DEBUG;
+                break;
+            case Mycelium::LogLevel::TRACE:
+                logger_level = Mycelium::LogLevel::TRACE;
+                break;
+            default:
+                logger_level = Mycelium::LogLevel::WARN;
+                break;
+        }
+        
+        logger.set_console_level(logger_level);
+    }
+    
     ~ApplicationContext() {
-        LOG_INFO("Shutting down Sharpie compiler", "MAIN");
+        LOG_INFO("Shutting down Sharpie application", "MAIN");
         
         // Cleanup logger
         Logger& logger = Logger::get_instance();
@@ -186,34 +238,163 @@ public:
     }
 };
 
-int main()
-{
+int run_test_suite(const CommandLineArgs& args) {
+    TestSuiteConfig test_config;
+    test_config.test_patterns = args.test_patterns;
+    test_config.log_level = args.log_level;
+    test_config.verbose_output = args.verbose;
+    test_config.save_individual_results = args.save_outputs;
+    test_config.save_summary = args.save_outputs;
+    
+    if (args.silent) {
+        test_config = TestSuiteConfig::silent();
+    } else if (args.verbose) {
+        test_config.verbose_output = true;
+    }
+    
+    UnifiedTestRunner runner(test_config);
+    TestSuiteResult suite = runner.run_test_suite();
+    
+    if (!args.silent) {
+        runner.print_test_suite_results(suite);
+    }
+    
+    if (args.save_outputs) {
+        runner.save_test_suite_results(suite);
+    }
+    
+    return suite.all_passed() ? 0 : 1;
+}
+
+int execute_single_file(const std::string& file_path, const CommandLineArgs& args) {
+    ExecutionConfig config;
+    config.log_level = args.log_level;
+    config.save_ir_to_file = args.save_outputs;
+    config.capture_console_output = true;
+    
+    ScriptExecutionEngine engine(config);
+    ExecutionResult result = engine.execute_file(file_path);
+    
+    if (!args.silent) {
+        ScriptExecutionEngine::print_execution_result(result, args.verbose);
+        
+        if (!result.output.console_output.empty()) {
+            std::cout << "\nProgram Output:" << std::endl;
+            std::cout << result.output.console_output << std::endl;
+        }
+    }
+    
+    if (args.save_outputs) {
+        std::string result_file = "build/" + result.script_name + "_result.txt";
+        std::filesystem::create_directories("build");
+        ScriptExecutionEngine::save_execution_result(result, result_file);
+        
+        if (args.verbose) {
+            std::cout << "Execution result saved to: " << result_file << std::endl;
+        }
+    }
+    
+    return result.succeeded ? 0 : 1;
+}
+
+void watch_file_for_changes(const std::string& file_path, const CommandLineArgs& args) {
+    ExecutionConfig config;
+    config.log_level = args.log_level;
+    config.save_ir_to_file = args.save_outputs;
+    config.capture_console_output = true;
+    
+    ScriptExecutionEngine engine(config);
+    
+    HotReload fileReloader({file_path}, [&engine, &args](const std::string& filePath, const std::string& newContent) {
+        LOG_INFO("File reloaded: " + filePath, "HOTRELOAD");
+        
+        if (!args.silent) {
+            std::cout << "\n\033[33m--- " << filePath << " Reloaded ---\033[0m" << std::endl;
+        }
+        
+        ExecutionResult result = engine.execute_source(newContent, 
+            std::filesystem::path(filePath).stem().string());
+        
+        if (!args.silent) {
+            ScriptExecutionEngine::print_execution_result(result, args.verbose);
+            
+            if (!result.output.console_output.empty()) {
+                std::cout << "\nProgram Output:" << std::endl;
+                std::cout << result.output.console_output << std::endl;
+            }
+        }
+        
+        std::cout << std::endl; // Add spacing after execution
+    });
+
+    LOG_INFO("Starting hot reload monitoring for: " + file_path, "MAIN");
+    if (!args.silent) {
+        std::cout << "Watching " << file_path << " for changes (Ctrl+C to exit)..." << std::endl;
+    }
+    
+    fileReloader.poll_changes(); // Initial execution
+
+    // Main event loop with graceful shutdown support
+    while (!should_exit.load()) {
+        fileReloader.poll_changes();
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+int main(int argc, char* argv[]) {
     try {
         ApplicationContext app_context;
         
-        HotReload fileReloader({"tests/test.sp"}, [](const std::string &filePath, const std::string &newContent)
-        {
-            LOG_INFO("File reloaded: " + filePath, "HOTRELOAD");
-            LOG_DEBUG("File content length: " + std::to_string(newContent.length()) + " characters", "HOTRELOAD");
-            
-            // Display simple console message for user feedback
-            std::cout << "\n\033[33m--- " << filePath << " Reloaded ---\033[0m" << std::endl;
-            
-            Compile(newContent);
-            
-            std::cout << std::endl; // Add spacing after compilation
-        });
-
-        LOG_INFO("Starting hot reload monitoring", "MAIN");
-        fileReloader.poll_changes(); // Initial compile
-
-        // Main event loop with graceful shutdown support
-        while (!should_exit.load()) {
-            fileReloader.poll_changes();
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+        // Parse command line arguments
+        CommandLineArgs args = parse_args(argc, argv);
+        
+        if (args.show_help) {
+            print_usage(argv[0]);
+            return 0;
         }
         
-        LOG_INFO("Graceful shutdown initiated", "MAIN");
+        // Set logging level
+        app_context.set_log_level(args.log_level);
+        
+        switch (args.mode) {
+            case CommandLineArgs::Mode::TEST_ONLY: {
+                if (!args.silent) {
+                    std::cout << "Running Sharpie Test Suite...\n" << std::endl;
+                }
+                return run_test_suite(args);
+            }
+            
+            case CommandLineArgs::Mode::EXECUTE_FILE: {
+                if (!args.silent) {
+                    std::cout << "Executing: " << args.target_file << "\n" << std::endl;
+                }
+                return execute_single_file(args.target_file, args);
+            }
+            
+            case CommandLineArgs::Mode::WATCH_FILE: {
+                watch_file_for_changes(args.target_file, args);
+                return 0;
+            }
+            
+            case CommandLineArgs::Mode::DEFAULT: {
+                // First run test suite
+                if (!args.silent) {
+                    std::cout << "Running Sharpie Test Suite...\n" << std::endl;
+                }
+                
+                int test_result = run_test_suite(args);
+                
+                if (!args.silent) {
+                    std::cout << "\nTransitioning to hot-reload mode for " << args.target_file << "...\n" << std::endl;
+                }
+                
+                // Then start hot-reload mode
+                watch_file_for_changes(args.target_file, args);
+                
+                return test_result; // Return test results as exit code
+            }
+        }
+        
         return 0;
         
     } catch (const std::exception& e) {

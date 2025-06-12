@@ -118,33 +118,6 @@ static llvm::FunctionType* get_llvm_type_Mycelium_Object_get_ref_count(llvm::LLV
     return llvm::FunctionType::get(int32Ty, {myceliumObjectHeaderTypePtr}, false);
 }
 
-// --- LLVM Type Getter for print_int ---
-static llvm::FunctionType* get_llvm_type_print_int(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
-    (void)myceliumStringTypePtr; // Unused
-    (void)myceliumObjectHeaderTypePtr; // Unused
-    llvm::Type* voidTy = llvm::Type::getVoidTy(context);
-    llvm::Type* int32Ty = llvm::Type::getInt32Ty(context);
-    return llvm::FunctionType::get(voidTy, {int32Ty}, false);
-}
-
-// --- LLVM Type Getter for print_double ---
-static llvm::FunctionType* get_llvm_type_print_double(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
-    (void)myceliumStringTypePtr; // Unused
-    (void)myceliumObjectHeaderTypePtr; // Unused
-    llvm::Type* voidTy = llvm::Type::getVoidTy(context);
-    llvm::Type* doubleTy = llvm::Type::getDoubleTy(context);
-    return llvm::FunctionType::get(voidTy, {doubleTy}, false);
-}
-
-// --- LLVM Type Getter for print_bool ---
-static llvm::FunctionType* get_llvm_type_print_bool(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
-    (void)myceliumStringTypePtr; // Unused
-    (void)myceliumObjectHeaderTypePtr; // Unused
-    llvm::Type* voidTy = llvm::Type::getVoidTy(context);
-    llvm::Type* boolTy = llvm::Type::getInt1Ty(context); // bool is i1 in LLVM
-    return llvm::FunctionType::get(voidTy, {boolTy}, false);
-}
-
 // --- LLVM Type Getters for String primitive struct methods ---
 static llvm::FunctionType* get_llvm_type_Mycelium_String_get_length(llvm::LLVMContext& context, llvm::Type* myceliumStringTypePtr, llvm::Type* myceliumObjectHeaderTypePtr) {
     (void)myceliumObjectHeaderTypePtr; // Unused
@@ -266,24 +239,6 @@ static const std::vector<RuntimeFunctionBinding> g_runtime_function_bindings_lis
         "Mycelium_Object_get_ref_count",
         reinterpret_cast<void*>(Mycelium_Object_get_ref_count),
         get_llvm_type_Mycelium_Object_get_ref_count
-    },
-    // Binding for print_int
-    {
-        "print_int",
-        reinterpret_cast<void*>(print_int),
-        get_llvm_type_print_int
-    },
-    // Binding for print_double
-    {
-        "print_double",
-        reinterpret_cast<void*>(print_double),
-        get_llvm_type_print_double
-    },
-    // Binding for print_bool
-    {
-        "print_bool",
-        reinterpret_cast<void*>(print_bool),
-        get_llvm_type_print_bool
     },
     // Bindings for string primitive struct methods
     {

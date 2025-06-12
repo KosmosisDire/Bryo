@@ -9,16 +9,24 @@
 #include <iomanip>
 #include <sstream>
 
+namespace Mycelium
+{
+    enum class LogLevel
+    {
+        RUNTIME = 0, // Special level for runtime logs
+        TRACE = 1,
+        DEBUG = 2,
+        INFO = 3,
+        WARN = 4,
+        ERR = 5,
+        FATAL = 6,
+        NONE = 7
+    };
+}
+
 namespace Mycelium::Scripting::Common {
 
-enum class LogLevel {
-    TRACE = 0,
-    DEBUG = 1,
-    INFO = 2,
-    WARN = 3,
-    ERROR = 4,
-    FATAL = 5
-};
+
 
 class Logger {
 private:
@@ -52,6 +60,7 @@ public:
     void log(LogLevel level, const std::string& message, const std::string& category = "");
     
     // Convenience methods for different log levels
+    void runtime(const std::string& message, const std::string& category = "");
     void trace(const std::string& message, const std::string& category = "");
     void debug(const std::string& message, const std::string& category = "");
     void info(const std::string& message, const std::string& category = "");
@@ -77,6 +86,7 @@ public:
 };
 
 // Convenience macros for easier logging
+#define LOG_RUNTIME(msg, ...) Logger::get_instance().runtime(msg, ##__VA_ARGS__)
 #define LOG_TRACE(msg, ...) Logger::get_instance().trace(msg, ##__VA_ARGS__)
 #define LOG_DEBUG(msg, ...) Logger::get_instance().debug(msg, ##__VA_ARGS__)
 #define LOG_INFO(msg, ...) Logger::get_instance().info(msg, ##__VA_ARGS__)

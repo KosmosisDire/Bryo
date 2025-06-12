@@ -93,6 +93,10 @@ set(MY_SOURCE_FILES
     
     # Hot Reload
     src/hot_reload.cpp
+    
+    # Unified Execution System
+    src/script_execution_engine.cpp
+    src/test_runner.cpp
 )
 
 set(MY_RUNTIME_FILES

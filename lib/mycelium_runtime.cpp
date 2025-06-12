@@ -102,13 +102,13 @@ MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
 }
 
 void Mycelium_String_print(MyceliumString* str) {
-    if (str && str->data) {
-        std::cout << str->data;
-    } else if (str == NULL) {
+    if (str && str->data)
+    {
+        Mycelium::Scripting::Common::LOG_RUNTIME(std::string(str->data, str->length), "RUNTIME");
+    } else if (str == NULL)
+    {
         // Decide how to print a null MyceliumString*
         // std::cout << "(null string ptr)";
-    } else { // str is not NULL, but str->data is NULL (empty string)
-        // Empty string prints nothing, which is fine.
     }
 }
 
@@ -414,19 +414,6 @@ int32_t Mycelium_Object_get_ref_count(MyceliumObjectHeader* obj_header) {
         return -1;
     }
     return Mycelium_Object_atomic_load(obj_header);
-}
-
-// --- Basic Print Utilities Implementation ---
-void print_int(int val) {
-    std::cout << val; // Simple print to cout
-}
-
-void print_double(double val) {
-    std::cout << val; // Simple print to cout
-}
-
-void print_bool(bool val) {
-    std::cout << (val ? "true" : "false"); // Print "true" or "false"
 }
 
 // --- Additional String Functions for Primitive Struct Support ---

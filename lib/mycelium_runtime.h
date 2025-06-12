@@ -4,6 +4,7 @@
 #include <stddef.h> // For size_t
 #include <stdbool.h> // For bool type in C
 #include <stdint.h>  // For int32_t, uint32_t
+#include <common/logger.hpp>
 
 #ifdef __cplusplus
 #include <atomic>
@@ -108,11 +109,6 @@ MYCELIUM_API MyceliumString* Mycelium_String_substring(MyceliumString* str, int 
 
 // Get an empty MyceliumString (for string.Empty static property)
 MYCELIUM_API MyceliumString* Mycelium_String_get_empty(void);
-
-// --- Basic Print Utilities ---
-MYCELIUM_API void print_int(int val);
-MYCELIUM_API void print_double(double val);
-MYCELIUM_API void print_bool(bool val);
 
 
 #ifdef __cplusplus
