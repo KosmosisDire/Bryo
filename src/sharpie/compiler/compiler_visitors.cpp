@@ -181,6 +181,18 @@ namespace Mycelium::Scripting::Lang
             compile_all_method_bodies(class_decl, fq_class_name);
         }
 
+        // PASS 3: Populate VTables (now all method bodies are compiled)
+        for (const auto& pair : all_classes_with_context) {
+            std::shared_ptr<ClassDeclarationNode> class_decl = pair.first;
+            const std::string& namespace_context = pair.second;
+            
+            std::string fq_class_name = namespace_context.empty() 
+                                        ? class_decl->name->name 
+                                        : namespace_context + "." + class_decl->name->name;
+                                        
+            populate_vtable_for_class(fq_class_name);
+        }
+
         return nullptr;
     }
 
@@ -1927,7 +1939,26 @@ namespace Mycelium::Scripting::Lang
         // Now, build the function name and find it.
         std::string resolved_func_name;
         if (callee_class_info) {
-            resolved_func_name = callee_class_info->name + "." + method_name;
+            // Use semantic analyzer to find method in inheritance chain
+            if (symbolTable)
+            {
+                const auto* method_symbol = symbolTable->find_method_in_class(callee_class_info->name, method_name);
+                if (method_symbol)
+                {
+                    resolved_func_name = method_symbol->qualified_name;
+                    LOG_DEBUG("Found method via inheritance: " + method_name + " -> " + resolved_func_name, "COMPILER");
+                }
+                else
+                {
+                    // Fallback to old behavior
+                    resolved_func_name = callee_class_info->name + "." + method_name;
+                    LOG_DEBUG("Method not found in inheritance chain, using direct name: " + resolved_func_name, "COMPILER");
+                }
+            }
+            else
+            {
+                resolved_func_name = callee_class_info->name + "." + method_name;
+            }
         } else if (!is_primitive_call) {
             resolved_func_name = method_name; // For extern functions
         }
@@ -1937,47 +1968,146 @@ namespace Mycelium::Scripting::Lang
             return handle_primitive_method_call(node, primitive_info, instance_ptr_for_call);
         }
 
-        llvm::Function *callee = llvmModule->getFunction(resolved_func_name);
-        if (!callee)
-        {
-            log_error("Function not found: " + resolved_func_name, node->target->location);
-            return ExpressionVisitResult(nullptr);
-        }
-
-        std::vector<llvm::Value *> args_values;
-        if (instance_ptr_for_call)
-        {
-            args_values.push_back(instance_ptr_for_call);
-        }
+        // Check if this is a virtual method call that needs VTable dispatch
+        bool use_virtual_dispatch = false;
+        size_t virtual_method_index = 0;
         
-        if (node->argumentList)
+        if (callee_class_info && instance_ptr_for_call && symbolTable)
         {
-            for (const auto &arg_node : node->argumentList->arguments)
+            const auto* method_symbol = symbolTable->find_method(resolved_func_name);
+            if (method_symbol && method_symbol->is_virtual)
             {
-                ExpressionVisitResult arg_res = visit(arg_node->expression);
-                if (!arg_res.value)
+                // Find the virtual method index in the class's VTable order
+                const auto* class_symbol = symbolTable->find_class(callee_class_info->name);
+                if (class_symbol)
                 {
-                    log_error("Method call argument failed to compile.", arg_node->location);
-                    return ExpressionVisitResult(nullptr);
+                    // Search for the method by name in the VTable, checking for inherited methods
+                    for (size_t i = 0; i < class_symbol->virtual_method_order.size(); ++i)
+                    {
+                        // Extract method name from qualified name for comparison
+                        const std::string& vtable_method = class_symbol->virtual_method_order[i];
+                        size_t dot_pos = vtable_method.find_last_of('.');
+                        if (dot_pos != std::string::npos)
+                        {
+                            std::string vtable_method_name = vtable_method.substr(dot_pos + 1);
+                            if (vtable_method_name == method_name)
+                            {
+                                use_virtual_dispatch = true;
+                                virtual_method_index = i + 1; // +1 for destructor slot at index 0
+                                LOG_DEBUG("Found virtual method at VTable index " + std::to_string(i) + ": " + vtable_method, "COMPILER");
+                                break;
+                            }
+                        }
+                    }
                 }
-                args_values.push_back(arg_res.value);
             }
         }
 
-        // Verify argument count
-        if (callee->arg_size() != args_values.size()) {
-            log_error("Incorrect number of arguments for function " + resolved_func_name + ". Expected " + std::to_string(callee->arg_size()) + ", got " + std::to_string(args_values.size()), node->location);
-            return ExpressionVisitResult(nullptr);
-        }
+        std::vector<llvm::Value *> args_values;
+        llvm::Value *call_result_val = nullptr;
 
-        llvm::Value *call_result_val = llvmBuilder->CreateCall(callee, args_values, callee->getReturnType()->isVoidTy() ? "" : "calltmp");
+        if (use_virtual_dispatch)
+        {
+            // Virtual method call via VTable lookup
+            LOG_DEBUG("Using virtual dispatch for method: " + resolved_func_name, "COMPILER");
+            
+            // Get object header pointer from instance pointer (fields pointer)
+            llvm::Value* header_ptr = getHeaderPtrFromFieldsPtr(instance_ptr_for_call, callee_class_info->fieldsType);
+            
+            // Load VTable pointer from object header (offset 8 for vtable field)
+            llvm::Value* vtable_ptr_ptr = llvmBuilder->CreateConstInBoundsGEP1_64(
+                llvm::Type::getInt8Ty(*llvmContext), header_ptr, 8, "vtable_ptr_ptr");
+            llvm::Value* vtable_ptr = llvmBuilder->CreateLoad(
+                llvm::PointerType::getUnqual(*llvmContext), vtable_ptr_ptr, "vtable_ptr");
+            
+            // Get function pointer from VTable at the correct index
+            llvm::Value* method_ptr_ptr = llvmBuilder->CreateConstInBoundsGEP1_64(
+                llvm::PointerType::getUnqual(*llvmContext), vtable_ptr, virtual_method_index, "method_ptr_ptr");
+            llvm::Value* method_ptr = llvmBuilder->CreateLoad(
+                llvm::PointerType::getUnqual(*llvmContext), method_ptr_ptr, "method_ptr");
+            
+            // Prepare arguments for virtual call (header pointer + method args)
+            args_values.push_back(header_ptr); // Virtual methods take header pointer as 'this'
+            
+            if (node->argumentList)
+            {
+                for (const auto &arg_node : node->argumentList->arguments)
+                {
+                    ExpressionVisitResult arg_res = visit(arg_node->expression);
+                    if (!arg_res.value)
+                    {
+                        log_error("Method call argument failed to compile.", arg_node->location);
+                        return ExpressionVisitResult(nullptr);
+                    }
+                    args_values.push_back(arg_res.value);
+                }
+            }
+            
+            // Create indirect call through function pointer
+            llvm::Function *direct_callee = llvmModule->getFunction(resolved_func_name);
+            if (!direct_callee)
+            {
+                log_error("Function not found for virtual call signature: " + resolved_func_name, node->target->location);
+                return ExpressionVisitResult(nullptr);
+            }
+            
+            llvm::FunctionType* func_type = direct_callee->getFunctionType();
+            call_result_val = llvmBuilder->CreateCall(func_type, method_ptr, args_values, 
+                func_type->getReturnType()->isVoidTy() ? "" : "virtual_call");
+        }
+        else
+        {
+            // Direct method call (non-virtual or static)
+            llvm::Function *callee = llvmModule->getFunction(resolved_func_name);
+            if (!callee)
+            {
+                log_error("Function not found: " + resolved_func_name, node->target->location);
+                return ExpressionVisitResult(nullptr);
+            }
+
+            if (instance_ptr_for_call)
+            {
+                args_values.push_back(instance_ptr_for_call);
+            }
+        
+            if (node->argumentList)
+            {
+                for (const auto &arg_node : node->argumentList->arguments)
+                {
+                    ExpressionVisitResult arg_res = visit(arg_node->expression);
+                    if (!arg_res.value)
+                    {
+                        log_error("Method call argument failed to compile.", arg_node->location);
+                        return ExpressionVisitResult(nullptr);
+                    }
+                    args_values.push_back(arg_res.value);
+                }
+            }
+
+            // Verify argument count
+            if (callee->arg_size() != args_values.size()) {
+                log_error("Incorrect number of arguments for function " + resolved_func_name + ". Expected " + std::to_string(callee->arg_size()) + ", got " + std::to_string(args_values.size()), node->location);
+                return ExpressionVisitResult(nullptr);
+            }
+
+            call_result_val = llvmBuilder->CreateCall(callee, args_values, callee->getReturnType()->isVoidTy() ? "" : "calltmp");
+        }
 
         const ClassTypeInfo *return_static_ci = nullptr;
-        auto return_info_it = functionReturnClassInfoMap.find(callee);
-        if (return_info_it != functionReturnClassInfoMap.end())
+        if (!use_virtual_dispatch)
         {
-            return_static_ci = return_info_it->second;
+            // For direct calls, we can look up return type info
+            llvm::Function *callee = llvmModule->getFunction(resolved_func_name);
+            if (callee)
+            {
+                auto return_info_it = functionReturnClassInfoMap.find(callee);
+                if (return_info_it != functionReturnClassInfoMap.end())
+                {
+                    return_static_ci = return_info_it->second;
+                }
+            }
         }
+        // For virtual calls, return type info handling can be enhanced later
 
         return ExpressionVisitResult(call_result_val, return_static_ci);
     }
@@ -2018,8 +2148,18 @@ namespace Mycelium::Scripting::Lang
             log_error("Runtime Mycelium_Object_alloc not found.", node->location);
             return ExpressionVisitResult(nullptr);
         }
-        // TODO: For now, passing nullptr for vtable - will be properly implemented in Sweep 2.5 polymorphism support
-        llvm::Value *vtable_ptr_val = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*llvmContext));
+        // Pass the actual VTable for the class (Sweep 2.5 polymorphism support)
+        llvm::Value *vtable_ptr_val;
+        if (cti.vtable_global)
+        {
+            // Cast VTable global to generic pointer for runtime use
+            vtable_ptr_val = llvmBuilder->CreateBitCast(cti.vtable_global, llvm::PointerType::getUnqual(*llvmContext), "vtable_ptr");
+        }
+        else
+        {
+            // No VTable for this class (no virtual methods)
+            vtable_ptr_val = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*llvmContext));
+        }
         llvm::Value *header_ptr_val = llvmBuilder->CreateCall(alloc_func, {data_size_val, type_id_val, vtable_ptr_val}, "new.header");
         llvm::Value *fields_obj_opaque_ptr = getFieldsPtrFromHeaderPtr(header_ptr_val, cti.fieldsType);
         std::string ctor_name_str = class_name_str + ".%ctor";
@@ -2266,8 +2406,16 @@ namespace Mycelium::Scripting::Lang
         // Case 2: Target is a static class type or an instance
         if (target_res.classInfo)
         {
-            // Check for a field first.
+            // Check for a field first - inherited fields now accessible by original name
+            std::string actual_field_name = member_name;
+            const ClassTypeInfo* field_owner_class = target_res.classInfo;
             auto field_it = target_res.classInfo->field_indices.find(member_name);
+            
+            if (field_it != target_res.classInfo->field_indices.end())
+            {
+                LOG_DEBUG("Found field: " + member_name + " at index " + std::to_string(field_it->second), "COMPILER");
+            }
+            
             if (field_it != target_res.classInfo->field_indices.end())
             {
                 if (target_res.is_static_type)
@@ -2286,7 +2434,7 @@ namespace Mycelium::Scripting::Lang
                 // It's an instance field access.
                 unsigned field_idx = field_it->second;
                 llvm::Type *field_llvm_type = target_res.classInfo->fieldsType->getElementType(field_idx);
-                llvm::Value *field_ptr = llvmBuilder->CreateStructGEP(target_res.classInfo->fieldsType, target_res.value, field_idx, member_name + ".ptr");
+                llvm::Value *field_ptr = llvmBuilder->CreateStructGEP(target_res.classInfo->fieldsType, target_res.value, field_idx, actual_field_name + ".ptr");
                 llvm::Value *loaded_field = llvmBuilder->CreateLoad(field_llvm_type, field_ptr, member_name);
                 
                 const ClassTypeInfo *field_static_ci = nullptr;

@@ -348,7 +348,35 @@ namespace Mycelium::Scripting::Lang
             finalize_node_location(class_node->name);
         }
         // TODO: Parse generic type parameters <T>
-        // TODO: Parse base list : BaseClass, IInterface
+        
+        // Parse base list : BaseClass
+        if (check_token(TokenType::Colon))
+        {
+            class_node->baseListColonToken = create_token_node(TokenType::Colon, currentTokenInfo);
+            advance_and_lex();
+            
+            // Parse first base class
+            if (check_token(TokenType::Identifier))
+            {
+                auto base_type = parse_type_name();
+                if (base_type)
+                {
+                    class_node->baseList.push_back(base_type);
+                }
+                else
+                {
+                    record_error_at_current("Expected base class name after ':'.");
+                }
+            }
+            else
+            {
+                record_error_at_current("Expected base class name after ':'.");
+            }
+            
+            // For now, we only support single inheritance (no comma-separated list)
+            // TODO: Add support for interfaces later if needed
+        }
+        
         if (check_token(TokenType::OpenBrace))
         {
             class_node->openBraceToken = create_token_node(TokenType::OpenBrace, currentTokenInfo);
@@ -411,6 +439,10 @@ namespace Mycelium::Scripting::Lang
             else if (check_token(TokenType::Readonly))
             {
                 kind = ModifierKind::Readonly;
+            }
+            else if (check_token(TokenType::Virtual))
+            {
+                kind = ModifierKind::Virtual;
             }
             // Add Protected, Internal etc.
             else

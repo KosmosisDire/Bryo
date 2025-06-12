@@ -93,6 +93,32 @@ namespace Mycelium::Scripting::Lang
         class_symbol.declaration_location = node->location.value_or(SourceLocation{});
         class_symbol.is_defined = true;
 
+        // Process base class inheritance
+        if (!node->baseList.empty())
+        {
+            if (node->baseList.size() > 1)
+            {
+                add_error("Multiple inheritance not supported", node->location);
+            }
+            else
+            {
+                auto base_type = node->baseList[0];
+                if (auto base_identifier = std::get_if<std::shared_ptr<IdentifierNode>>(&base_type->name_segment))
+                {
+                    std::string base_class_name = (*base_identifier)->name;
+                    
+                    // For now, assume simple names (no namespace resolution)
+                    class_symbol.base_class = base_class_name;
+                    
+                    LOG_DEBUG("Class " + class_name + " inherits from " + base_class_name, "SEMANTIC");
+                }
+                else
+                {
+                    add_error("Complex base class names not yet supported", base_type->location);
+                }
+            }
+        }
+
         // Process fields (basic structure only)
         for (const auto &member : node->members)
         {
@@ -172,6 +198,9 @@ namespace Mycelium::Scripting::Lang
                 collect_class_signatures(class_decl);
             }
         }
+        
+        // After all method signatures are collected, inherit virtual methods from base classes
+        inherit_virtual_methods_from_base_classes();
     }
 
     void SemanticAnalyzer::collect_class_signatures(std::shared_ptr<ClassDeclarationNode> node)
@@ -236,7 +265,10 @@ namespace Mycelium::Scripting::Lang
             if (modifier.first == ModifierKind::Static)
             {
                 method_symbol.is_static = true;
-                break;
+            }
+            else if (modifier.first == ModifierKind::Virtual)
+            {
+                method_symbol.is_virtual = true;
             }
         }
 
@@ -246,6 +278,12 @@ namespace Mycelium::Scripting::Lang
         if (class_symbol)
         {
             class_symbol->method_registry[node->name->name] = method_symbol;
+            
+            // Add virtual methods to VTable order
+            if (method_symbol.is_virtual)
+            {
+                class_symbol->virtual_method_order.push_back(method_symbol.qualified_name);
+            }
         }
 
         LOG_DEBUG("Collected method signature: " + method_symbol.qualified_name, "SEMANTIC");
@@ -350,6 +388,108 @@ namespace Mycelium::Scripting::Lang
         LOG_INFO("Registered external method: " + extern_symbol.qualified_name +
                      " with " + std::to_string(extern_symbol.parameter_names.size()) + " parameters",
                  "SEMANTIC");
+    }
+
+    // ============================================================================
+    // VTable Inheritance Support
+    // ============================================================================
+
+    void SemanticAnalyzer::inherit_virtual_methods_from_base_classes()
+    {
+        LOG_INFO("Inheriting virtual methods from base classes for VTable construction", "SEMANTIC");
+        
+        // Get all classes
+        auto& classes = ir->symbol_table.get_classes();
+        
+        // Process classes in dependency order (base classes first)
+        std::set<std::string> processed;
+        for (auto& class_pair : classes)
+        {
+            if (processed.find(class_pair.first) == processed.end())
+            {
+                inherit_virtual_methods_recursive(class_pair.first, processed);
+            }
+        }
+    }
+
+    void SemanticAnalyzer::inherit_virtual_methods_recursive(const std::string& class_name, std::set<std::string>& processed)
+    {
+        // Skip if already processed
+        if (processed.find(class_name) != processed.end())
+            return;
+            
+        auto* class_symbol = ir->symbol_table.find_class(class_name);
+        if (!class_symbol)
+            return;
+            
+        // If this class has a base class, process the base class first
+        if (!class_symbol->base_class.empty())
+        {
+            inherit_virtual_methods_recursive(class_symbol->base_class, processed);
+            
+            // Now inherit virtual methods from base class
+            auto* base_class_symbol = ir->symbol_table.find_class(class_symbol->base_class);
+            if (base_class_symbol)
+            {
+                // Start with base class virtual method order
+                std::vector<std::string> inherited_virtual_methods = base_class_symbol->virtual_method_order;
+                
+                // For each virtual method in the current class, check if it overrides a base method
+                for (const std::string& current_virtual_method : class_symbol->virtual_method_order)
+                {
+                    // Extract method name from qualified name (ClassName.MethodName)
+                    size_t dot_pos = current_virtual_method.find_last_of('.');
+                    if (dot_pos == std::string::npos)
+                        continue;
+                    std::string method_name = current_virtual_method.substr(dot_pos + 1);
+                    
+                    // Check if this method overrides a base method
+                    bool overrides_base_method = false;
+                    for (size_t i = 0; i < inherited_virtual_methods.size(); ++i)
+                    {
+                        // Extract method name from base class qualified name
+                        size_t base_dot_pos = inherited_virtual_methods[i].find_last_of('.');
+                        if (base_dot_pos == std::string::npos)
+                            continue;
+                        std::string base_method_name = inherited_virtual_methods[i].substr(base_dot_pos + 1);
+                        
+                        if (method_name == base_method_name)
+                        {
+                            // Override: replace base method with derived method in same slot
+                            inherited_virtual_methods[i] = current_virtual_method;
+                            overrides_base_method = true;
+                            LOG_DEBUG("Method " + current_virtual_method + " overrides " + inherited_virtual_methods[i], "SEMANTIC");
+                            break;
+                        }
+                    }
+                    
+                    // If not an override, add as new virtual method
+                    if (!overrides_base_method)
+                    {
+                        inherited_virtual_methods.push_back(current_virtual_method);
+                        LOG_DEBUG("Method " + current_virtual_method + " added as new virtual method", "SEMANTIC");
+                    }
+                }
+                
+                // Update the class's virtual method order with inherited + own methods
+                class_symbol->virtual_method_order = inherited_virtual_methods;
+                
+                LOG_INFO("Class " + class_name + " inherited " + 
+                        std::to_string(base_class_symbol->virtual_method_order.size()) + 
+                        " virtual methods from " + class_symbol->base_class + 
+                        ", total virtual methods: " + std::to_string(class_symbol->virtual_method_order.size()), 
+                        "SEMANTIC");
+                        
+                // Log detailed VTable layout
+                LOG_DEBUG("Final VTable layout for " + class_name + ":", "SEMANTIC");
+                for (size_t i = 0; i < class_symbol->virtual_method_order.size(); ++i)
+                {
+                    LOG_DEBUG("  [" + std::to_string(i) + "] " + class_symbol->virtual_method_order[i], "SEMANTIC");
+                }
+            }
+        }
+        
+        processed.insert(class_name);
     }
 
 } // namespace Mycelium::Scripting::Lang

@@ -17,7 +17,8 @@ namespace Mycelium::Scripting::Lang
         Protected,
         Internal,
         Static,
-        Readonly
+        Readonly,
+        Virtual
     };
     enum class LiteralKind
     {
@@ -76,6 +77,7 @@ namespace Mycelium::Scripting::Lang
         case ModifierKind::Internal: return "internal";
         case ModifierKind::Static: return "static";
         case ModifierKind::Readonly: return "readonly";
+        case ModifierKind::Virtual: return "virtual";
         default: return "unknown";
         }
     }

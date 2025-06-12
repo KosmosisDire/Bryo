@@ -178,8 +178,18 @@ namespace Mycelium::Scripting::Lang
         if (!class_symbol)
             return nullptr;
 
+        // First, look in the current class
         auto it = class_symbol->method_registry.find(method_name);
-        return (it != class_symbol->method_registry.end()) ? &it->second : nullptr;
+        if (it != class_symbol->method_registry.end())
+            return &it->second;
+        
+        // If not found and there's a base class, search recursively
+        if (!class_symbol->base_class.empty())
+        {
+            return find_method_in_class(class_symbol->base_class, method_name);
+        }
+        
+        return nullptr;
     }
 
     const SymbolTable::MethodSymbol *SymbolTable::find_method_in_class(const std::string &class_name, const std::string &method_name) const
@@ -188,8 +198,18 @@ namespace Mycelium::Scripting::Lang
         if (!class_symbol)
             return nullptr;
 
+        // First, look in the current class
         auto it = class_symbol->method_registry.find(method_name);
-        return (it != class_symbol->method_registry.end()) ? &it->second : nullptr;
+        if (it != class_symbol->method_registry.end())
+            return &it->second;
+        
+        // If not found and there's a base class, search recursively
+        if (!class_symbol->base_class.empty())
+        {
+            return find_method_in_class(class_symbol->base_class, method_name);
+        }
+        
+        return nullptr;
     }
 
     SymbolTable::VariableSymbol *SymbolTable::find_field_in_class(const std::string &class_name, const std::string &field_name)
@@ -198,8 +218,18 @@ namespace Mycelium::Scripting::Lang
         if (!class_symbol)
             return nullptr;
 
+        // First, look in the current class
         auto it = class_symbol->field_registry.find(field_name);
-        return (it != class_symbol->field_registry.end()) ? &it->second : nullptr;
+        if (it != class_symbol->field_registry.end())
+            return &it->second;
+        
+        // If not found and there's a base class, search recursively
+        if (!class_symbol->base_class.empty())
+        {
+            return find_field_in_class(class_symbol->base_class, field_name);
+        }
+        
+        return nullptr;
     }
 
     std::vector<SymbolTable::MethodSymbol *> SymbolTable::get_constructors_for_class(const std::string &class_name)

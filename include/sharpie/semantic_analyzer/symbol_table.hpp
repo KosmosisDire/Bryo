@@ -54,6 +54,7 @@ public:
         bool is_constructor = false;
         bool is_destructor = false;
         bool is_external = false; // extern functions
+        bool is_virtual = false; // virtual methods for polymorphism
     };
     
     // Enhanced class symbol with inheritance and comprehensive member tracking
@@ -74,6 +75,7 @@ public:
         bool is_defined = false; // Has full definition
         std::vector<std::string> constructors; // Constructor qualified names
         std::string destructor; // Destructor qualified name (if any)
+        std::vector<std::string> virtual_method_order; // Order of virtual methods for VTable layout
     };
     
 private:

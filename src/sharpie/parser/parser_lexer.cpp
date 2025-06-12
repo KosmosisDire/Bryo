@@ -584,6 +584,9 @@ namespace Mycelium::Scripting::Lang
         case '~':
             token_info.type = TokenType::Tilde;
             break;
+        case ':':
+            token_info.type = TokenType::Colon;
+            break;
         default:
             SourceLocation error_loc = token_info.location;
             error_loc.columnEnd = error_loc.columnStart;

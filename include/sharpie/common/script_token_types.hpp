@@ -27,12 +27,13 @@ namespace Mycelium::Scripting::Lang
         Comma,                         // ,
         Dot,                           // .
         Tilde,                         // ~
-        // Colon, QuestionMark, etc.
+        Colon,                         // :
+        // QuestionMark, etc.
 
         // Keywords (as before)
         Var, If, Else, While, For, ForEach, Return, New, This,
         Class, Struct, Namespace, Using, Extern,
-        Public, Private, Static, Readonly,
+        Public, Private, Static, Readonly, Virtual,
         
         // Primitive Type Name Keywords
         Bool, Int, String, Long, Double, Char, Void, Float, // Added Float here
@@ -81,6 +82,7 @@ namespace Mycelium::Scripting::Lang
         {"private", TokenType::Private},
         {"static", TokenType::Static},
         {"readonly", TokenType::Readonly},
+        {"virtual", TokenType::Virtual},
         // Add other modifiers like protected, internal, readonly if they become keywords
 
         // Literal Keywords
@@ -130,6 +132,7 @@ namespace Mycelium::Scripting::Lang
             case TokenType::Comma: return "Comma";
             case TokenType::Dot: return "Dot";
             case TokenType::Tilde: return "Tilde";
+            case TokenType::Colon: return "Colon";
 
             // Keywords (General Purpose & Control Flow)
             case TokenType::Var: return "Var";
@@ -154,6 +157,7 @@ namespace Mycelium::Scripting::Lang
             case TokenType::Private: return "Private";
             case TokenType::Static: return "Static";
             case TokenType::Readonly: return "Readonly";
+            case TokenType::Virtual: return "Virtual";
 
             // Keywords (Primitive Type Aliases)
             case TokenType::Bool: return "Bool";

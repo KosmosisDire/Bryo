@@ -173,7 +173,9 @@ private:
     // --- Helper Methods (snake_case) ---
     void populate_class_registry_from_semantic_ir();
     void declare_class_structure_and_signatures(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
+    void generate_vtable_for_class(ClassTypeInfo& cti, const SymbolTable::ClassSymbol* class_symbol, const std::string& fq_class_name);
     void compile_all_method_bodies(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
+    void populate_vtable_for_class(const std::string& fq_class_name);
     llvm::Value* getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMType);
     llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType);
     llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);

@@ -48,6 +48,10 @@ namespace Mycelium::Scripting::Lang
         void collect_constructor_signature(std::shared_ptr<ConstructorDeclarationNode> node, const std::string &class_name);
         void collect_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string &class_name);
         void collect_class_structure(std::shared_ptr<ClassDeclarationNode> node);
+        
+        // VTable inheritance support (in declaration_pass.cpp)
+        void inherit_virtual_methods_from_base_classes();  
+        void inherit_virtual_methods_recursive(const std::string& class_name, std::set<std::string>& processed);
 
         // Legacy declaration analysis (in declaration_pass.cpp)
         void analyze_declarations(std::shared_ptr<AstNode> node);

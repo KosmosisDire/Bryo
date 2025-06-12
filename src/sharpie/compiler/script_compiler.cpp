@@ -854,9 +854,58 @@ namespace Mycelium::Scripting::Lang
             cti.type_id = next_type_id++;
         }
 
-        // Create LLVM struct type for fields
+        // Create LLVM struct type for fields with inheritance support
         std::vector<llvm::Type *> field_llvm_types_for_struct;
         unsigned field_idx_counter = 0;
+        
+        // First, add base class fields if there's inheritance
+        if (symbolTable)
+        {
+            const auto *class_symbol = symbolTable->find_class(fq_class_name);
+            if (class_symbol && !class_symbol->base_class.empty())
+            {
+                // Find the base class in our registry
+                auto base_class_it = classTypeRegistry.find(class_symbol->base_class);
+                if (base_class_it != classTypeRegistry.end())
+                {
+                    const ClassTypeInfo& base_cti = base_class_it->second;
+                    
+                    // Flatten base class fields directly into derived class (no nesting)
+                    if (base_cti.fieldsType)
+                    {
+                        // Add each base class field type individually (flattened approach)
+                        for (size_t i = 0; i < base_cti.field_names_in_order.size(); ++i)
+                        {
+                            const std::string& base_field_name = base_cti.field_names_in_order[i];
+                            llvm::Type* base_field_type = base_cti.fieldsType->getElementType(i);
+                            
+                            // Add the field type to the derived class struct
+                            field_llvm_types_for_struct.push_back(base_field_type);
+                            
+                            // Add field with both original name (for direct access) and qualified name
+                            cti.field_names_in_order.push_back(base_field_name);
+                            cti.field_indices[base_field_name] = field_idx_counter;  // Direct access
+                            cti.field_indices["base." + base_field_name] = field_idx_counter;  // Qualified access
+                            field_idx_counter++;
+                        }
+                        
+                        // Copy base class field AST types
+                        for (const auto& base_field_ast_type : base_cti.field_ast_types)
+                        {
+                            cti.field_ast_types.push_back(base_field_ast_type);
+                        }
+                        
+                        LOG_DEBUG("Added flattened base class fields from " + class_symbol->base_class + " to " + fq_class_name, "COMPILER");
+                    }
+                }
+                else
+                {
+                    log_error("Base class not found in registry: " + class_symbol->base_class + " for class " + fq_class_name, node->location);
+                }
+            }
+        }
+        
+        // Then, add derived class's own fields
         for (const auto &member : node->members)
         {
             if (auto fieldDecl = std::dynamic_pointer_cast<FieldDeclarationNode>(member))
@@ -888,6 +937,17 @@ namespace Mycelium::Scripting::Lang
             log_error("Failed to create fields struct for " + fq_class_name, node->location);
             return;
         }
+
+        // Generate VTable for classes with virtual methods
+        if (symbolTable)
+        {
+            const auto *class_symbol = symbolTable->find_class(fq_class_name);
+            if (class_symbol && !class_symbol->virtual_method_order.empty())
+            {
+                generate_vtable_for_class(cti, class_symbol, fq_class_name);
+            }
+        }
+
         classTypeRegistry[fq_class_name] = cti;
 
         // Declare all method signatures for this class
@@ -906,6 +966,143 @@ namespace Mycelium::Scripting::Lang
                 declare_destructor_signature(dtorDecl, fq_class_name);
             }
         }
+    }
+
+    void ScriptCompiler::generate_vtable_for_class(ClassTypeInfo& cti, const SymbolTable::ClassSymbol* class_symbol, const std::string& fq_class_name)
+    {
+        LOG_DEBUG("Generating VTable for class: " + fq_class_name, "COMPILER");
+        
+        // Create VTable type - first slot is destructor, then virtual methods
+        std::vector<llvm::Type*> vtable_slot_types;
+        
+        // Slot 0: Destructor function pointer (always present for ARC cleanup)
+        // Signature: void(ptr) - takes object header pointer
+        llvm::Type* void_type = llvm::Type::getVoidTy(*llvmContext);
+        llvm::Type* ptr_type = llvm::PointerType::get(*llvmContext, 0);
+        llvm::FunctionType* destructor_type = llvm::FunctionType::get(void_type, {ptr_type}, false);
+        vtable_slot_types.push_back(llvm::PointerType::get(destructor_type, 0));
+        
+        // Add slots for each virtual method in order
+        for (const std::string& virtual_method_qualified_name : class_symbol->virtual_method_order)
+        {
+            // Find the method in the global method registry
+            const auto* method_symbol = symbolTable->find_method(virtual_method_qualified_name);
+            if (!method_symbol)
+            {
+                log_error("Virtual method not found in symbol table: " + virtual_method_qualified_name, std::nullopt);
+                continue;
+            }
+            
+            // Generate LLVM function signature for this virtual method
+            std::vector<llvm::Type*> param_types;
+            
+            // First parameter is always 'this' pointer (object header ptr)
+            param_types.push_back(ptr_type);
+            
+            // Add method parameters
+            for (const auto& param_type_node : method_symbol->parameter_types)
+            {
+                llvm::Type* param_llvm_type = get_llvm_type(param_type_node);
+                if (param_llvm_type)
+                {
+                    param_types.push_back(param_llvm_type);
+                }
+            }
+            
+            // Get return type
+            llvm::Type* return_type = get_llvm_type(method_symbol->return_type);
+            if (!return_type)
+            {
+                return_type = void_type; // Default to void if type not found
+            }
+            
+            // Create function type and add pointer to VTable
+            llvm::FunctionType* method_func_type = llvm::FunctionType::get(return_type, param_types, false);
+            vtable_slot_types.push_back(llvm::PointerType::get(method_func_type, 0));
+        }
+        
+        // Create the VTable struct type
+        std::string vtable_type_name = fq_class_name + "_VTable";
+        cti.vtable_type = llvm::StructType::create(*llvmContext, vtable_slot_types, vtable_type_name);
+        
+        // Create global VTable constant (will be populated later with actual function pointers)
+        std::string vtable_global_name = fq_class_name + "_vtable_global";
+        cti.vtable_global = new llvm::GlobalVariable(
+            *llvmModule,
+            cti.vtable_type,
+            true, // isConstant
+            llvm::GlobalValue::ExternalLinkage,
+            nullptr, // initializer will be set later
+            vtable_global_name
+        );
+        
+        LOG_INFO("Generated VTable for " + fq_class_name + " with " + 
+                 std::to_string(class_symbol->virtual_method_order.size()) + " virtual methods", "COMPILER");
+    }
+
+    void ScriptCompiler::populate_vtable_for_class(const std::string& fq_class_name)
+    {
+        // Find the class in our registry
+        auto class_it = classTypeRegistry.find(fq_class_name);
+        if (class_it == classTypeRegistry.end())
+        {
+            return; // Class not found or not processed
+        }
+        
+        ClassTypeInfo& cti = class_it->second;
+        if (!cti.vtable_global || !cti.vtable_type)
+        {
+            return; // No VTable for this class
+        }
+        
+        const auto* class_symbol = symbolTable->find_class(fq_class_name);
+        if (!class_symbol)
+        {
+            log_error("Class symbol not found when populating VTable: " + fq_class_name, std::nullopt);
+            return;
+        }
+        
+        LOG_DEBUG("Populating VTable for class: " + fq_class_name, "COMPILER");
+        
+        std::vector<llvm::Constant*> vtable_initializers;
+        
+        // Slot 0: Destructor function pointer
+        // For now, use a null pointer placeholder - destructor handling will be enhanced later
+        llvm::Type* destructor_ptr_type = cti.vtable_type->getElementType(0);
+        vtable_initializers.push_back(llvm::ConstantPointerNull::get(
+            llvm::cast<llvm::PointerType>(destructor_ptr_type)
+        ));
+        
+        // Populate virtual method slots
+        for (size_t i = 0; i < class_symbol->virtual_method_order.size(); ++i)
+        {
+            const std::string& virtual_method_qualified_name = class_symbol->virtual_method_order[i];
+            
+            // Find the actual LLVM function for this method
+            llvm::Function* method_func = llvmModule->getFunction(virtual_method_qualified_name);
+            if (!method_func)
+            {
+                log_error("Virtual method function not found: " + virtual_method_qualified_name, std::nullopt);
+                // Use null pointer as fallback
+                llvm::Type* method_ptr_type = cti.vtable_type->getElementType(i + 1); // +1 for destructor slot
+                vtable_initializers.push_back(llvm::ConstantPointerNull::get(
+                    llvm::cast<llvm::PointerType>(method_ptr_type)
+                ));
+                continue;
+            }
+            
+            // Add function pointer to VTable
+            vtable_initializers.push_back(method_func);
+        }
+        
+        // Create the VTable initializer
+        llvm::Constant* vtable_initializer = llvm::ConstantStruct::get(cti.vtable_type, vtable_initializers);
+        
+        // Set the initializer for the global VTable
+        cti.vtable_global->setInitializer(vtable_initializer);
+        
+        LOG_INFO("Populated VTable for " + fq_class_name + " with " + 
+                 std::to_string(class_symbol->virtual_method_order.size()) + " virtual methods", "COMPILER");
     }
 
     void ScriptCompiler::compile_all_method_bodies(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name)
