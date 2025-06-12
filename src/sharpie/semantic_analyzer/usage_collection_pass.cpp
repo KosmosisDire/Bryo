@@ -1122,6 +1122,36 @@ namespace Mycelium::Scripting::Lang
         if ((left_name == "string" || ir->symbol_table.find_class(left_name)) && right_name == "null")
             return true;
 
+        // Check for inheritance-based compatibility (upcast: derived -> base)
+        auto *left_class = ir->symbol_table.find_class(left_name);
+        auto *right_class = ir->symbol_table.find_class(right_name);
+        
+        if (left_class && right_class)
+        {
+            // Traverse the inheritance hierarchy of the right type (derived class)
+            // to see if the left type (base class) is one of its ancestors
+            auto *current_class = right_class;
+            while (current_class)
+            {
+                if (current_class->name == left_name)
+                {
+                    return true; // Found the left type in the inheritance chain
+                }
+                
+                // Move to the base class
+                if (current_class->base_class.empty())
+                {
+                    break; // Reached the top of the hierarchy
+                }
+                
+                current_class = ir->symbol_table.find_class(current_class->base_class);
+                if (!current_class)
+                {
+                    break; // Base class not found (should not happen in valid code)
+                }
+            }
+        }
+
         const std::vector<std::string> numeric_types = {"int", "long", "float", "double"};
         auto left_it = std::find(numeric_types.begin(), numeric_types.end(), left_name);
         auto right_it = std::find(numeric_types.begin(), numeric_types.end(), right_name);

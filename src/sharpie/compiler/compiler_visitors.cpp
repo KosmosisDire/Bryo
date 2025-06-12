@@ -17,50 +17,6 @@ using namespace Mycelium::Scripting::Common; // For Logger macros
 
 namespace Mycelium::Scripting::Lang
 {
-
-    // =============================================================================
-    // SHARPIE DESTRUCTOR SEQUENCE EXPLANATION
-    // =============================================================================
-    //
-    // Sharpie implements a dual-layer destructor approach for maximum efficiency
-    // and polymorphism support:
-    //
-    // LAYER 1: COMPILE-TIME DESTRUCTOR CALLS (Current Default)
-    // --------------------------------------------------------
-    // When the compiler knows the exact type at compile-time (monomorphic scenarios):
-    //
-    // 1. The compiler inserts DIRECT destructor calls before ARC release calls
-    // 2. Pattern: destructor_function(obj_fields_ptr) -> Mycelium_Object_release(header_ptr)
-    // 3. This happens in:
-    //    - Local variable cleanup (function end, early returns)
-    //    - Variable reassignment (before storing new value)
-    //    - Manual destructor calls (if implemented)
-    //
-    // Benefits:
-    // - Zero runtime overhead
-    // - Deterministic cleanup order
-    // - Optimal for statically-typed scenarios
-    //
-    // LAYER 2: RUNTIME DESTRUCTOR DISPATCH (Vtable-based, for polymorphism)
-    // --------------------------------------------------------------------
-    // When the actual object type is unknown at compile-time (polymorphic scenarios):
-    //
-    // 1. Objects store a vtable pointer in their header
-    // 2. The vtable contains a destructor function pointer
-    // 3. Mycelium_Object_release performs vtable lookup and calls destructor
-    // 4. Pattern: Mycelium_Object_release(header_ptr) -> vtable->destructor(obj_fields_ptr) -> free()
-    //
-    // Benefits:
-    // - Supports inheritance and virtual method dispatch
-    // - Required for interface and base class scenarios
-    // - Maintains type safety in polymorphic contexts
-    //
-    // CURRENT IMPLEMENTATION STATUS:
-    // - Layer 1 (compile-time): ✅ COMPLETE and working perfectly
-    // - Layer 2 (runtime): 🚧 Infrastructure added, full implementation in Sweep 2.5
-    //
-    // =============================================================================
-
     // --- Visitor Methods (snake_case) ---
     llvm::Value *ScriptCompiler::visit(std::shared_ptr<AstNode> node)
     {
@@ -737,7 +693,45 @@ namespace Mycelium::Scripting::Lang
                 }
                 if (var_static_class_info && init_val_class_info && var_static_class_info != init_val_class_info)
                 {
-                    log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location);
+                    // Check for inheritance-based compatibility (upcast: derived -> base)
+                    bool is_compatible = false;
+                    if (symbolTable)
+                    {
+                        auto *left_class = symbolTable->find_class(var_static_class_info->name);
+                        auto *right_class = symbolTable->find_class(init_val_class_info->name);
+                        
+                        if (left_class && right_class)
+                        {
+                            // Traverse the inheritance hierarchy of the right type (derived class)
+                            // to see if the left type (base class) is one of its ancestors
+                            auto *current_class = right_class;
+                            while (current_class)
+                            {
+                                if (current_class->name == var_static_class_info->name)
+                                {
+                                    is_compatible = true;
+                                    break;
+                                }
+                                
+                                // Move to the base class
+                                if (current_class->base_class.empty())
+                                {
+                                    break;
+                                }
+                                
+                                current_class = symbolTable->find_class(current_class->base_class);
+                                if (!current_class)
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!is_compatible)
+                    {
+                        log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location);
+                    }
                 }
                 // CRITICAL ARC FIX: Add proper retain logic for variable initialization
                 // This ensures that `TestObject copy = original;` properly retains the source object
@@ -1468,6 +1462,63 @@ namespace Mycelium::Scripting::Lang
                 llvm::Value *result_str_ptr = llvmBuilder->CreateCall(concatFunc, {L, r_as_str}, "concat_str_int");
                 return ExpressionVisitResult(result_str_ptr, nullptr);
             }
+            else if (LType == getMyceliumStringPtrTy() && RType->isIntegerTy(1))
+            {
+                // Case: string + bool
+                llvm::Function *fromBoolFunc = llvmModule->getFunction("Mycelium_String_from_bool");
+                if (!fromBoolFunc)
+                {
+                    log_error("Mycelium_String_from_bool not found", node->right->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *r_as_str = llvmBuilder->CreateCall(fromBoolFunc, {R}, "bool_to_str_tmp");
+                llvm::Function *concatFunc = llvmModule->getFunction("Mycelium_String_concat");
+                if (!concatFunc)
+                {
+                    log_error("Mycelium_String_concat not found", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *result_str_ptr = llvmBuilder->CreateCall(concatFunc, {L, r_as_str}, "concat_str_bool");
+                return ExpressionVisitResult(result_str_ptr, nullptr);
+            }
+            else if (LType->isIntegerTy(1) && RType == getMyceliumStringPtrTy())
+            {
+                // Case: bool + string
+                llvm::Function *fromBoolFunc = llvmModule->getFunction("Mycelium_String_from_bool");
+                if (!fromBoolFunc)
+                {
+                    log_error("Mycelium_String_from_bool not found", node->left->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *l_as_str = llvmBuilder->CreateCall(fromBoolFunc, {L}, "bool_to_str_tmp");
+                llvm::Function *concatFunc = llvmModule->getFunction("Mycelium_String_concat");
+                if (!concatFunc)
+                {
+                    log_error("Mycelium_String_concat not found", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *result_str_ptr = llvmBuilder->CreateCall(concatFunc, {l_as_str, R}, "concat_bool_str");
+                return ExpressionVisitResult(result_str_ptr, nullptr);
+            }
+            else if (LType->isIntegerTy(32) && RType == getMyceliumStringPtrTy())
+            {
+                // Case: int + string (symmetric to string + int)
+                llvm::Function *fromIntFunc = llvmModule->getFunction("Mycelium_String_from_int");
+                if (!fromIntFunc)
+                {
+                    log_error("Mycelium_String_from_int not found", node->left->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *l_as_str = llvmBuilder->CreateCall(fromIntFunc, {L}, "int_to_str_tmp");
+                llvm::Function *concatFunc = llvmModule->getFunction("Mycelium_String_concat");
+                if (!concatFunc)
+                {
+                    log_error("Mycelium_String_concat not found", node->location);
+                    return ExpressionVisitResult(nullptr);
+                }
+                llvm::Value *result_str_ptr = llvmBuilder->CreateCall(concatFunc, {l_as_str, R}, "concat_int_str");
+                return ExpressionVisitResult(result_str_ptr, nullptr);
+            }
         }
         if (LType != RType)
         {
@@ -2027,7 +2078,7 @@ namespace Mycelium::Scripting::Lang
                 llvm::PointerType::getUnqual(*llvmContext), method_ptr_ptr, "method_ptr");
             
             // Prepare arguments for virtual call (header pointer + method args)
-            args_values.push_back(header_ptr); // Virtual methods take header pointer as 'this'
+            args_values.push_back(instance_ptr_for_call);
             
             if (node->argumentList)
             {

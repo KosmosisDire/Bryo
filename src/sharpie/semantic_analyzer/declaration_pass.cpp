@@ -456,9 +456,10 @@ namespace Mycelium::Scripting::Lang
                         if (method_name == base_method_name)
                         {
                             // Override: replace base method with derived method in same slot
+                            std::string old_method_name = inherited_virtual_methods[i]; // Store before overwriting
                             inherited_virtual_methods[i] = current_virtual_method;
                             overrides_base_method = true;
-                            LOG_DEBUG("Method " + current_virtual_method + " overrides " + inherited_virtual_methods[i], "SEMANTIC");
+                            LOG_DEBUG("Method " + current_virtual_method + " overrides " + old_method_name, "SEMANTIC"); // Use stored name
                             break;
                         }
                     }
