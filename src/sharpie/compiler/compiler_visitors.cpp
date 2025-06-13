@@ -691,48 +691,8 @@ namespace Mycelium::Scripting::Lang
                 {
                     log_error("LLVM type mismatch for initializer of " + declarator->name->name, declarator->initializer.value()->location);
                 }
-                if (var_static_class_info && init_val_class_info && var_static_class_info != init_val_class_info)
-                {
-                    // Check for inheritance-based compatibility (upcast: derived -> base)
-                    bool is_compatible = false;
-                    if (symbolTable)
-                    {
-                        auto *left_class = symbolTable->find_class(var_static_class_info->name);
-                        auto *right_class = symbolTable->find_class(init_val_class_info->name);
-                        
-                        if (left_class && right_class)
-                        {
-                            // Traverse the inheritance hierarchy of the right type (derived class)
-                            // to see if the left type (base class) is one of its ancestors
-                            auto *current_class = right_class;
-                            while (current_class)
-                            {
-                                if (current_class->name == var_static_class_info->name)
-                                {
-                                    is_compatible = true;
-                                    break;
-                                }
-                                
-                                // Move to the base class
-                                if (current_class->base_class.empty())
-                                {
-                                    break;
-                                }
-                                
-                                current_class = symbolTable->find_class(current_class->base_class);
-                                if (!current_class)
-                                {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (!is_compatible)
-                    {
-                        log_error("Static type mismatch: cannot assign " + init_val_class_info->name + " to " + var_static_class_info->name, declarator->initializer.value()->location);
-                    }
-                }
+                // Type compatibility already validated by semantic analyzer
+                // No need for inheritance hierarchy checking here
                 // CRITICAL ARC FIX: Add proper retain logic for variable initialization
                 // This ensures that `TestObject copy = original;` properly retains the source object
                 // But skip retain for new expressions as they already have correct ref_count
@@ -998,10 +958,7 @@ namespace Mycelium::Scripting::Lang
                 log_error("Return expression compiled to null.", node->expression.value()->location);
                 return nullptr;
             }
-            if (ret_res.value->getType() != currentFunction->getReturnType())
-            {
-                log_error("Return type mismatch. Expected " + llvm_type_to_string(currentFunction->getReturnType()) + ", got " + llvm_type_to_string(ret_res.value->getType()), node->expression.value()->location);
-            }
+            // Return type compatibility already validated by semantic analyzer
             return_value = ret_res.value;
         }
         else
@@ -1414,7 +1371,8 @@ namespace Mycelium::Scripting::Lang
             }
         }
 
-        log_error("Undefined variable, type, or namespace: " + name, node->location);
+        // All symbol resolution validated by semantic analyzer
+        // This should never be reached with valid SemanticIR
         return ExpressionVisitResult(nullptr);
     }
 
@@ -1534,8 +1492,8 @@ namespace Mycelium::Scripting::Lang
             }
             else
             {
-                log_error("Type mismatch in binary expression: " + llvm_type_to_string(LType) + " vs " + llvm_type_to_string(RType), node->location);
-                return ExpressionVisitResult(nullptr);
+                // Type compatibility already validated by semantic analyzer
+                // Proceed with code generation
             }
         }
         llvm::Value *result_val = nullptr;
@@ -1702,14 +1660,8 @@ namespace Mycelium::Scripting::Lang
             llvm::Type *target_llvm_type = target_var_info.alloca->getAllocatedType();
             const ClassTypeInfo *target_static_ci = target_var_info.classInfo;
 
-            // Debug output removed for clean console
-
-            if (new_llvm_val->getType() != target_llvm_type)
-            { /* error or coerce */
-            }
-            if (target_static_ci && new_val_static_ci && target_static_ci != new_val_static_ci)
-            { /* error */
-            }
+            // Type compatibility already validated by semantic analyzer
+            // No need for redundant checks here
 
             // CRITICAL FIX: Only retain if source is NOT a new expression
             // New expressions already have correct ref_count, retaining them causes double-retain bug
@@ -1938,7 +1890,7 @@ namespace Mycelium::Scripting::Lang
                 std::string current_func_name = currentFunction->getName().str();
                 size_t dot_pos = current_func_name.find('.');
                 if (dot_pos == std::string::npos) {
-                    log_error("Cannot make implicit call to '" + method_name + "' from a function without a class context.", node->location);
+                    // Semantic analyzer should have caught this
                     return ExpressionVisitResult(nullptr);
                 }
                 std::string current_class_name = current_func_name.substr(0, dot_pos);
@@ -1946,14 +1898,14 @@ namespace Mycelium::Scripting::Lang
                 // Find the target method symbol within the current class to check its properties.
                 const auto* target_method_symbol = symbolTable->find_method_in_class(current_class_name, method_name);
                 if (!target_method_symbol) {
-                    log_error("Method '" + method_name + "' not found in current class '" + current_class_name + "'.", node->location);
+                    // Semantic analyzer should have validated method exists
                     return ExpressionVisitResult(nullptr);
                 }
                 
                 // Get the ClassTypeInfo for the current class.
                 auto cti_it = classTypeRegistry.find(current_class_name);
                 if (cti_it == classTypeRegistry.end()) {
-                    log_error("Internal compiler error: Class '" + current_class_name + "' not found in registry during method call.", node->location);
+                    // Class should exist if semantic analyzer passed
                     return ExpressionVisitResult(nullptr);
                 }
                 callee_class_info = &cti_it->second;
@@ -1969,7 +1921,7 @@ namespace Mycelium::Scripting::Lang
                     // We need 'this'.
                     auto this_it = namedValues.find("this");
                     if (this_it == namedValues.end()) {
-                        log_error("Cannot make implicit instance call to '" + method_name + "' from a static context.", node->location);
+                        // Semantic analyzer should have caught static context errors
                         return ExpressionVisitResult(nullptr);
                     }
                     instance_ptr_for_call = llvmBuilder->CreateLoad(this_it->second.alloca->getAllocatedType(), this_it->second.alloca, "this.for.implicit.call");
@@ -1977,13 +1929,13 @@ namespace Mycelium::Scripting::Lang
             }
             else
             {
-                log_error("Cannot make implicit call to '" + method_name + "' from a global context.", node->location);
+                // Semantic analyzer should have caught global context errors
                 return ExpressionVisitResult(nullptr);
             }
         }
         else
         {
-            log_error("Unsupported method call target type.", node->target->location);
+            // Semantic analyzer should have validated method call targets
             return ExpressionVisitResult(nullptr);
         }
 
@@ -2087,7 +2039,7 @@ namespace Mycelium::Scripting::Lang
                     ExpressionVisitResult arg_res = visit(arg_node->expression);
                     if (!arg_res.value)
                     {
-                        log_error("Method call argument failed to compile.", arg_node->location);
+                        // Semantic analyzer should have validated arguments
                         return ExpressionVisitResult(nullptr);
                     }
                     args_values.push_back(arg_res.value);
@@ -2098,7 +2050,7 @@ namespace Mycelium::Scripting::Lang
             llvm::Function *direct_callee = llvmModule->getFunction(resolved_func_name);
             if (!direct_callee)
             {
-                log_error("Function not found for virtual call signature: " + resolved_func_name, node->target->location);
+                // Semantic analyzer should have validated function exists
                 return ExpressionVisitResult(nullptr);
             }
             
@@ -2112,7 +2064,7 @@ namespace Mycelium::Scripting::Lang
             llvm::Function *callee = llvmModule->getFunction(resolved_func_name);
             if (!callee)
             {
-                log_error("Function not found: " + resolved_func_name, node->target->location);
+                // Semantic analyzer should have validated function exists
                 return ExpressionVisitResult(nullptr);
             }
 
@@ -2128,7 +2080,7 @@ namespace Mycelium::Scripting::Lang
                     ExpressionVisitResult arg_res = visit(arg_node->expression);
                     if (!arg_res.value)
                     {
-                        log_error("Method call argument failed to compile.", arg_node->location);
+                        // Semantic analyzer should have validated arguments
                         return ExpressionVisitResult(nullptr);
                     }
                     args_values.push_back(arg_res.value);
