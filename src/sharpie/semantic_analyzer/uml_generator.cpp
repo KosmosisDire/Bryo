@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-using namespace Mycelium::Scripting::Common;
+
 
 namespace Mycelium::Scripting::Lang
 {

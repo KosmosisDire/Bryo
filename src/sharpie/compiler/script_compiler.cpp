@@ -21,7 +21,7 @@
 #include <iostream>
 #include <sstream>
 
-using namespace Mycelium::Scripting::Common;
+
 using namespace Mycelium::Scripting::Lang::CodeGen;
 
 namespace Mycelium::Scripting::Lang

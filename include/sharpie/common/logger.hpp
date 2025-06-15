@@ -68,13 +68,6 @@ public:
     void error(const std::string& message, const std::string& category = "");
     void fatal(const std::string& message, const std::string& category = "");
     
-    // Special method for JIT output that goes to both console and log file
-    void jit_output(const std::string& message);
-    
-    // Method to log compilation phases with clear separators
-    void phase_begin(const std::string& phase_name);
-    void phase_end(const std::string& phase_name, bool success = true);
-    
     // Flush all outputs
     void flush();
     
@@ -86,16 +79,12 @@ public:
 };
 
 // Convenience macros for easier logging
-#define LOG_RUNTIME(msg, ...) Logger::get_instance().runtime(msg, ##__VA_ARGS__)
-#define LOG_TRACE(msg, ...) Logger::get_instance().trace(msg, ##__VA_ARGS__)
-#define LOG_DEBUG(msg, ...) Logger::get_instance().debug(msg, ##__VA_ARGS__)
-#define LOG_INFO(msg, ...) Logger::get_instance().info(msg, ##__VA_ARGS__)
-#define LOG_WARN(msg, ...) Logger::get_instance().warn(msg, ##__VA_ARGS__)
-#define LOG_ERROR(msg, ...) Logger::get_instance().error(msg, ##__VA_ARGS__)
-#define LOG_FATAL(msg, ...) Logger::get_instance().fatal(msg, ##__VA_ARGS__)
-
-#define LOG_JIT_OUTPUT(msg) Logger::get_instance().jit_output(msg)
-#define LOG_PHASE_BEGIN(phase) Logger::get_instance().phase_begin(phase)
-#define LOG_PHASE_END(phase, success) Logger::get_instance().phase_end(phase, success)
+#define LOG_RUNTIME(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().runtime(msg, ##__VA_ARGS__)
+#define LOG_TRACE(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().trace(msg, ##__VA_ARGS__)
+#define LOG_DEBUG(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().debug(msg, ##__VA_ARGS__)
+#define LOG_INFO(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().info(msg, ##__VA_ARGS__)
+#define LOG_WARN(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().warn(msg, ##__VA_ARGS__)
+#define LOG_ERROR(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().error(msg, ##__VA_ARGS__)
+#define LOG_FATAL(msg, ...) Mycelium::Scripting::Common::Logger::get_instance().fatal(msg, ##__VA_ARGS__)
 
 } // namespace Mycelium::Scripting::Common

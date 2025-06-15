@@ -104,7 +104,7 @@ MyceliumString* Mycelium_String_concat(MyceliumString* s1, MyceliumString* s2) {
 void Mycelium_String_print(MyceliumString* str) {
     if (str && str->data)
     {
-        Mycelium::Scripting::Common::LOG_RUNTIME(std::string(str->data, str->length), "");
+        LOG_RUNTIME(std::string(str->data, str->length), "");
     } else if (str == NULL)
     {
         // Decide how to print a null MyceliumString*

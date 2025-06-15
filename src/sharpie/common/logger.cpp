@@ -149,59 +149,6 @@ void Logger::fatal(const std::string& message, const std::string& category) {
     log(LogLevel::FATAL, message, category);
 }
 
-void Logger::jit_output(const std::string& message) {
-    std::lock_guard<std::mutex> lock(log_mutex_);
-    
-    std::string timestamp = get_timestamp();
-    
-    // Always log JIT output to file with special marker
-    if (initialized_) {
-        log_file_ << timestamp << " [JIT OUTPUT]: " << message << "\n";
-        log_file_.flush();
-    }
-    
-    // Always show JIT output on console without timestamp/formatting
-    std::cout << message << std::endl;
-}
-
-void Logger::phase_begin(const std::string& phase_name) {
-    std::lock_guard<std::mutex> lock(log_mutex_);
-    
-    std::string separator = std::string(60, '-');
-    std::string header = "--- " + phase_name + " ---";
-    
-    // Log to file
-    if (initialized_) {
-        log_file_ << "\n" << separator << "\n";
-        log_file_ << header << "\n";
-        log_file_ << separator << "\n";
-        log_file_.flush();
-    }
-    
-    // Log to console with colors
-    std::cout << "\n\033[34m" << header << "\033[0m" << std::endl;
-}
-
-void Logger::phase_end(const std::string& phase_name, bool success) {
-    std::lock_guard<std::mutex> lock(log_mutex_);
-    
-    std::string status = success ? "SUCCESSFUL" : "FAILED";
-    std::string footer = phase_name + " " + status + "!";
-    std::string separator = std::string(footer.length() + 4, '-');
-    
-    // Log to file
-    if (initialized_) {
-        log_file_ << footer << "\n";
-        log_file_ << separator << "\n\n";
-        log_file_.flush();
-    }
-    
-    // Log to console with colors
-    std::string color = success ? "\033[32m" : "\033[31m"; // Green for success, red for failure
-    std::cout << color << footer << "\033[0m" << std::endl;
-    std::cout << separator << std::endl;
-}
-
 void Logger::flush() {
     std::lock_guard<std::mutex> lock(log_mutex_);
     if (initialized_) {

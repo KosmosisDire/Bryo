@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 
-using namespace Mycelium::Scripting::Common; // For Logger macros
+
 
 namespace Mycelium::Scripting::Lang
 {

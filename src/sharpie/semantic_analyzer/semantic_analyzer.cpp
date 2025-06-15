@@ -5,7 +5,7 @@
 #include <fstream>
 #include <sstream>
 
-using namespace Mycelium::Scripting::Common;
+
 
 namespace Mycelium::Scripting::Lang
 {

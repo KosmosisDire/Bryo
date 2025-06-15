@@ -4,7 +4,7 @@
 #include <common/logger.hpp>
 #include <typeinfo>
 
-using namespace Mycelium::Scripting::Common; // For Logger macros
+
 
 namespace Mycelium::Scripting::Lang::CodeGen {
 

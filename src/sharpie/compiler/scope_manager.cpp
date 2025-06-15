@@ -15,7 +15,7 @@ namespace Mycelium::Scripting::Lang
         this->builder = ir_builder;
         this->module = llvm_module;
         this->scope_stack.clear();
-        Mycelium::Scripting::Common::LOG_DEBUG("ScopeManager has been reset for a new compilation run.", "SCOPE");
+        LOG_DEBUG("ScopeManager has been reset for a new compilation run.", "SCOPE");
     }
 
     void ScopeManager::push_scope(ScopeType type, const std::string &debug_name)
@@ -25,10 +25,8 @@ namespace Mycelium::Scripting::Lang
         auto scope = std::make_unique<Scope>(type, name);
         scope_stack.push_back(std::move(scope));
 
-#ifdef DEBUG_SCOPE_MANAGEMENT
         std::cout << "[ScopeManager] Pushed scope: " << name
                   << " (depth: " << scope_stack.size() << ")" << std::endl;
-#endif
     }
 
     void ScopeManager::pop_scope()
@@ -42,10 +40,8 @@ namespace Mycelium::Scripting::Lang
 
         Scope *current = scope_stack.back().get();
 
-#ifdef DEBUG_SCOPE_MANAGEMENT
         std::cout << "[ScopeManager] Popping scope: " << current->debug_name
                   << " with " << current->managed_objects.size() << " managed objects" << std::endl;
-#endif
 
         // Generate cleanup for objects in this scope
         if (current->has_managed_objects())
@@ -85,7 +81,7 @@ namespace Mycelium::Scripting::Lang
         {
             if (existing_obj.header_ptr == header_ptr)
             {
-                Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Object with header_ptr=" + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) +
+                LOG_DEBUG("[ScopeManager] Object with header_ptr=" + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) +
                                                            " already registered - skipping duplicate registration for '" + debug_name + "'",
                                                        "SCOPE");
                 return; // Object already tracked, don't register again
@@ -96,7 +92,7 @@ namespace Mycelium::Scripting::Lang
         current->add_managed_object(obj);
 
         // Log registration for debugging double-free issues
-        Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Registered object '" + debug_name +
+        LOG_DEBUG("[ScopeManager] Registered object '" + debug_name +
                                                    "' in scope '" + current->debug_name +
                                                    "' header_ptr=" + std::to_string(reinterpret_cast<uintptr_t>(header_ptr)) +
                                                    " alloca=" + std::to_string(reinterpret_cast<uintptr_t>(variable_alloca)),
@@ -119,7 +115,7 @@ namespace Mycelium::Scripting::Lang
         ManagedObject obj(variable_alloca, nullptr, class_info, debug_name);
         current->add_managed_object(obj);
 
-        Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Registered ARC object '" + debug_name +
+        LOG_DEBUG("[ScopeManager] Registered ARC object '" + debug_name +
                                                    "' in scope '" + current->debug_name +
                                                    "' alloca=" + std::to_string(reinterpret_cast<uintptr_t>(variable_alloca)) + " (header computed dynamically)",
                                                "SCOPE");
@@ -200,14 +196,14 @@ namespace Mycelium::Scripting::Lang
     {
         if (!obj.class_info)
         {
-            Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Skipping cleanup for '" + obj.debug_name +
+            LOG_DEBUG("[ScopeManager] Skipping cleanup for '" + obj.debug_name +
                                                        "' - missing class_info",
                                                    "SCOPE");
             return;
         }
 
         // For ARC objects, header_ptr is nullptr and will be computed dynamically
-        Mycelium::Scripting::Common::LOG_DEBUG("[ScopeManager] Generating cleanup for ARC object '" + obj.debug_name +
+        LOG_DEBUG("[ScopeManager] Generating cleanup for ARC object '" + obj.debug_name +
                                                    "' (header computed dynamically)",
                                                "SCOPE");
 

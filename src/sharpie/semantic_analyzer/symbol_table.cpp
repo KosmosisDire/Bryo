@@ -1,7 +1,7 @@
 #include "sharpie/semantic_analyzer/symbol_table.hpp"
 #include "sharpie/common/logger.hpp"
 
-using namespace Mycelium::Scripting::Common; // For Logger macros
+
 
 namespace Mycelium::Scripting::Lang
 {

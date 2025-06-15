@@ -2,7 +2,7 @@
 #include "sharpie/common/logger.hpp"
 #include <algorithm>
 
-using namespace Mycelium::Scripting::Common; // For Logger macros
+
 
 namespace Mycelium::Scripting::Lang
 {
