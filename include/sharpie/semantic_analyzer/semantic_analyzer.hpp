@@ -49,6 +49,10 @@ namespace Mycelium::Scripting::Lang
         void collect_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string &class_name);
         void collect_class_structure(std::shared_ptr<ClassDeclarationNode> node);
         
+        // Field inheritance support (in declaration_pass.cpp)
+        void inherit_fields_for_all_classes();
+        void inherit_fields_recursive(const std::string& class_name, std::set<std::string>& processed);
+        
         // VTable inheritance support (in declaration_pass.cpp)
         void inherit_virtual_methods_from_base_classes();  
         void inherit_virtual_methods_recursive(const std::string& class_name, std::set<std::string>& processed);
@@ -85,14 +89,14 @@ namespace Mycelium::Scripting::Lang
         struct ExpressionTypeInfo
         {
             std::shared_ptr<TypeNameNode> type;
-            const ClassTypeInfo *class_info = nullptr;
+            const SymbolTable::ClassSymbol *class_info = nullptr;
             bool is_lvalue = false;
             std::string namespace_path; // Used to track namespace resolution
 
             ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t = nullptr) : type(t) {}
-            ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t, const ClassTypeInfo *ci) : type(t), class_info(ci) {}
+            ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t, const SymbolTable::ClassSymbol *ci) : type(t), class_info(ci) {}
 
-            ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t, const ClassTypeInfo *ci, bool lval)
+            ExpressionTypeInfo(std::shared_ptr<TypeNameNode> t, const SymbolTable::ClassSymbol *ci, bool lval)
                 : type(t), class_info(ci), is_lvalue(lval) {}
         };
 

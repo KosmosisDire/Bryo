@@ -19,6 +19,7 @@
 
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ManagedStatic.h"
 
 using namespace Mycelium::Scripting::Common;
 using namespace Mycelium::Execution;

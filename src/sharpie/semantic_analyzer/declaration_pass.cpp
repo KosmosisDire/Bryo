@@ -89,7 +89,7 @@ namespace Mycelium::Scripting::Lang
         // Create class symbol
         SymbolTable::ClassSymbol class_symbol;
         class_symbol.name = class_name;
-        class_symbol.type_info.name = class_name; // Ensure type_info is populated
+        // type_info is now integrated into ClassSymbol - name field already set above
         class_symbol.declaration_location = node->location.value_or(SourceLocation{});
         class_symbol.is_defined = true;
 
@@ -141,7 +141,10 @@ namespace Mycelium::Scripting::Lang
                     field_symbol.is_field = true;
                     field_symbol.owning_scope = class_name;
 
+                    // Store in both registry (for fast lookup) and vectors (for code generation)
                     class_symbol.field_registry[field_name] = field_symbol;
+                    class_symbol.field_names.push_back(field_name);
+                    class_symbol.field_types.push_back(field_decl->type.value());
                 }
             }
         }
@@ -150,8 +153,90 @@ namespace Mycelium::Scripting::Lang
         ir->symbol_table.declare_class(class_symbol);
 
         LOG_INFO("Collected class structure: " + class_name + " with " +
-                     std::to_string(class_symbol.field_registry.size()) + " fields",
+                     std::to_string(class_symbol.field_names.size()) + " fields",
                  "SEMANTIC");
+    }
+
+    void SemanticAnalyzer::inherit_fields_for_all_classes()
+    {
+        LOG_INFO("Inheriting fields from base classes for all classes", "SEMANTIC");
+        
+        // Get all classes
+        auto& classes = ir->symbol_table.get_classes();
+        
+        // Process classes in dependency order (base classes first)
+        std::set<std::string> processed;
+        for (auto& class_pair : classes)
+        {
+            if (processed.find(class_pair.first) == processed.end())
+            {
+                inherit_fields_recursive(class_pair.first, processed);
+            }
+        }
+    }
+
+    void SemanticAnalyzer::inherit_fields_recursive(const std::string& class_name, std::set<std::string>& processed)
+    {
+        // Skip if already processed
+        if (processed.find(class_name) != processed.end())
+            return;
+            
+        auto* class_symbol = ir->symbol_table.find_class(class_name);
+        if (!class_symbol)
+            return;
+            
+        // If this class has a base class, process the base class first
+        if (!class_symbol->base_class.empty())
+        {
+            inherit_fields_recursive(class_symbol->base_class, processed);
+            
+            // Now inherit fields from base class
+            auto* base_class_symbol = ir->symbol_table.find_class(class_symbol->base_class);
+            if (base_class_symbol)
+            {
+                // Store current own fields
+                std::vector<std::string> own_field_names = class_symbol->field_names;
+                std::vector<std::shared_ptr<TypeNameNode>> own_field_types = class_symbol->field_types;
+                auto own_field_registry = class_symbol->field_registry; // Store own field registry
+                
+                // Start with base class fields (inherited fields come first in memory layout)
+                class_symbol->field_names = base_class_symbol->field_names;
+                class_symbol->field_types = base_class_symbol->field_types;
+                class_symbol->field_registry = base_class_symbol->field_registry; // Copy inherited field registry
+                
+                // Add own fields after inherited ones
+                for (const auto& own_field_name : own_field_names)
+                {
+                    class_symbol->field_names.push_back(own_field_name);
+                }
+                for (const auto& own_field_type : own_field_types)
+                {
+                    class_symbol->field_types.push_back(own_field_type);
+                }
+                // Add own field registry entries (these will override any inherited entries with same name)
+                for (const auto& [field_name, field_symbol] : own_field_registry)
+                {
+                    class_symbol->field_registry[field_name] = field_symbol;
+                }
+                
+                LOG_INFO("Class " + class_name + " inherited " + 
+                        std::to_string(base_class_symbol->field_names.size()) + 
+                        " fields from " + class_symbol->base_class + 
+                        ", total fields: " + std::to_string(class_symbol->field_names.size()), 
+                        "SEMANTIC");
+                        
+                // Log detailed field layout
+                LOG_DEBUG("Final field layout for " + class_name + ":", "SEMANTIC");
+                for (size_t i = 0; i < class_symbol->field_names.size(); ++i)
+                {
+                    bool is_inherited = (i < base_class_symbol->field_names.size());
+                    LOG_DEBUG("  [" + std::to_string(i) + "] " + class_symbol->field_names[i] + 
+                             (is_inherited ? " (inherited)" : " (own)"), "SEMANTIC");
+                }
+            }
+        }
+        
+        processed.insert(class_name);
     }
 
     // ============================================================================

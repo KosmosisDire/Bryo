@@ -68,7 +68,7 @@ namespace Mycelium::Scripting::Lang
 
     void ScopeManager::register_managed_object(llvm::AllocaInst *variable_alloca,
                                                llvm::Value *header_ptr,
-                                               const ClassTypeInfo *class_info,
+                                               const SymbolTable::ClassSymbol *class_info,
                                                const std::string &debug_name)
     {
         Scope *current = get_current_scope();
@@ -104,7 +104,7 @@ namespace Mycelium::Scripting::Lang
     }
 
     void ScopeManager::register_arc_managed_object(llvm::AllocaInst *variable_alloca,
-                                                   const ClassTypeInfo *class_info,
+                                                   const SymbolTable::ClassSymbol *class_info,
                                                    const std::string &debug_name)
     {
         Scope *current = get_current_scope();

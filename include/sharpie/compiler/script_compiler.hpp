@@ -1,59 +1,54 @@
 #pragma once
 
-#include "class_type_info.hpp"
-#include "scope_manager.hpp"
-#include "sharpie/script_ast.hpp" // Updated path
-#include "sharpie/semantic_analyzer/semantic_analyzer.hpp" // Has the needed headers now
-#include "sharpie/semantic_analyzer/semantic_ir.hpp"       // Include the new IR header
+#include "sharpie/script_ast.hpp"
+#include "sharpie/semantic_analyzer/semantic_analyzer.hpp"
+#include "sharpie/compiler/scope_manager.hpp"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Value.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/ExecutionEngine/GenericValue.h" // For JIT return value
+#include "llvm/ExecutionEngine/GenericValue.h"
 
 #include <string>
 #include <memory>
 #include <map>
-#include <stdexcept>
 #include <vector>
 #include <optional>
 
 namespace llvm {
-    class LLVMContext;
-    class Module;
-    template <typename FolderTy, typename InserterTy> class IRBuilder;
     class Function;
-    class AllocaInst;
-    class Value;
-    class Type;
-    class BasicBlock;
-    class StructType;
 }
 
 namespace Mycelium::Scripting::Lang
 {
 
+/**
+ * @class ScriptCompiler
+ * @brief Orchestrates the entire compilation pipeline from AST to executable code.
+ *
+ * SIMPLIFIED ARCHITECTURE:
+ * - Single source of truth: SymbolTable with unified ClassSymbol
+ * - No duplicate class registries
+ * - Direct access to semantic information during code generation
+ */
 class ScriptCompiler
 {
 public:
     ScriptCompiler();
     ~ScriptCompiler();
 
+    // --- Main Compilation Pipeline ---
     void compile_ast(std::shared_ptr<CompilationUnitNode> ast_root, const std::string& module_name = "MyceliumModule");
+    
+    // --- Post-Compilation Actions ---
     std::string get_ir_string() const;
     void dump_ir() const;
     
     // --- Semantic Analysis Interface ---
-    void run_semantic_analysis(std::shared_ptr<CompilationUnitNode> ast_root);
-    const SemanticIR* getSemanticIR() const;
+    const SemanticIR* get_semantic_ir() const;
     bool has_semantic_errors() const;
 
+    // --- JIT / AOT Execution ---
     static void initialize_jit_engine_dependencies();
     llvm::GenericValue jit_execute_function(const std::string& function_name,
                                             const std::vector<llvm::GenericValue>& args = {});
@@ -62,133 +57,29 @@ public:
     void compile_to_object_file(const std::string& output_filename);
 
 private:
-    // Forward declaration for internal structs
-    struct ExpressionVisitResult;
-    struct VariableInfo;
+    // --- Core LLVM & Compiler Objects ---
+    std::unique_ptr<llvm::LLVMContext> llvm_context;
+    std::unique_ptr<llvm::Module> llvm_module;
+    std::unique_ptr<llvm::IRBuilder<>> builder;
+    std::unique_ptr<ScopeManager> scope_manager;
 
-    std::unique_ptr<llvm::LLVMContext> llvmContext;
-    std::unique_ptr<llvm::Module> llvmModule;
-    std::unique_ptr<llvm::IRBuilder<>> llvmBuilder;
-
+    // --- Semantic Analysis (SINGLE SOURCE OF TRUTH) ---
+    std::unique_ptr<SemanticAnalyzer> semantic_analyzer;
+    std::unique_ptr<SemanticIR> semantic_ir;
+    
+    // --- Type Registries & Info ---
+    PrimitiveStructRegistry primitive_registry;
+    uint32_t next_type_id = 0;
+    
+    // --- JIT / AOT State ---
     static bool jit_initialized;
     static bool aot_initialized;
 
-    std::map<std::string, VariableInfo> namedValues;
-    llvm::Function* currentFunction = nullptr;
-
-    llvm::StructType *myceliumStringType = nullptr;
-    llvm::StructType *myceliumObjectHeaderType = nullptr;
-    
-    std::unique_ptr<ScopeManager> scope_manager;
-    
-    // --- Semantic Analysis Members (Corrected) ---
-    std::unique_ptr<SemanticAnalyzer> semantic_analyzer;
-    std::unique_ptr<SemanticIR> lastSemanticIR; // This will hold the result
-    const SymbolTable* symbolTable = nullptr;   // A pointer to the table inside lastSemanticIR
-
-    std::map<std::string, ClassTypeInfo> classTypeRegistry;
-    uint32_t next_type_id = 0;
-    std::map<llvm::Function*, const ClassTypeInfo*> functionReturnClassInfoMap; // Map LLVM function to its return ClassTypeInfo if object
-    
-    PrimitiveStructRegistry primitive_registry;
-
-     struct ExpressionVisitResult {
-        llvm::Value* value = nullptr; // Primary value, e.g., result of an operation, or fields_ptr for an object
-        const ClassTypeInfo* classInfo = nullptr; // Static type info if 'value' is an object
-        llvm::Value* header_ptr = nullptr; // Direct pointer to the object's header (for ARC), if applicable
-        PrimitiveStructInfo* primitive_info = nullptr; // Primitive type info for method chaining on primitive values
-        
-        std::string resolved_path;    // e.g. "MyCompany" or "MyCompany.Services"
-        bool is_static_type = false; // True if this result represents a type, not an instance.
-
-        ExpressionVisitResult(llvm::Value* v = nullptr, const ClassTypeInfo* ci = nullptr, llvm::Value* hp = nullptr)
-            : value(v), classInfo(ci), header_ptr(hp), primitive_info(nullptr), is_static_type(false) {}
-    };
-
-    struct VariableInfo {
-        llvm::AllocaInst* alloca = nullptr;
-        const ClassTypeInfo* classInfo = nullptr; 
-        std::shared_ptr<TypeNameNode> declaredTypeNode = nullptr;
-    };
-
-
-    // Loop context tracking for break/continue statements
-    struct LoopContext {
-        llvm::BasicBlock* exit_block;     // Where 'break' should jump
-        llvm::BasicBlock* continue_block; // Where 'continue' should jump
-        
-        LoopContext(llvm::BasicBlock* exit, llvm::BasicBlock* cont)
-            : exit_block(exit), continue_block(cont) {}
-    };
-    std::vector<LoopContext> loop_context_stack;
-
-    // --- Private Methods ---
-    llvm::Type* getMyceliumStringPtrTy(); // Returns opaque ptr (llvm::Type*)
-    llvm::Type* getMyceliumObjectHeaderPtrTy(); // Returns opaque ptr (llvm::Type*)
+    // --- Private Helper Methods ---
+    void initialize_for_new_compilation(const std::string& module_name);
     void declare_all_runtime_functions();
-    std::unique_ptr<llvm::Module> take_module();
-
-    // --- Visitor Methods (snake_case) ---
-    llvm::Value* visit(std::shared_ptr<AstNode> node); 
-
-    llvm::Value* visit(std::shared_ptr<CompilationUnitNode> node);
-    llvm::Value* visit(std::shared_ptr<ClassDeclarationNode> node);
-    llvm::Value* visit(std::shared_ptr<NamespaceDeclarationNode> node);
-    void visit(std::shared_ptr<ExternalMethodDeclarationNode> node);
-    llvm::Function* visit_method_declaration(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
-    
-    // Two-pass method compilation support
-    llvm::Function* declare_method_signature(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
-    void compile_method_body(std::shared_ptr<MethodDeclarationNode> node, const std::string& class_name);
-    llvm::Function* declare_constructor_signature(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
-    void compile_constructor_body(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
-    llvm::Function* declare_destructor_signature(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
-    llvm::Function* compile_destructor_body(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
-    llvm::Value* visit(std::shared_ptr<StatementNode> node);
-    llvm::Value* visit(std::shared_ptr<BlockStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<LocalVariableDeclarationStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<ExpressionStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<IfStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<WhileStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<ForStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<ReturnStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<BreakStatementNode> node);
-    llvm::Value* visit(std::shared_ptr<ContinueStatementNode> node);
-    llvm::Function* visit(std::shared_ptr<ConstructorDeclarationNode> node, const std::string& class_name);
-    llvm::Function* visit(std::shared_ptr<DestructorDeclarationNode> node, const std::string& class_name);
-
-    ExpressionVisitResult visit(std::shared_ptr<ExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<LiteralExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<IdentifierExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<BinaryExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<AssignmentExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<UnaryExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<MethodCallExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<ObjectCreationExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<ThisExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<CastExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<MemberAccessExpressionNode> node);
-    ExpressionVisitResult visit(std::shared_ptr<ParenthesizedExpressionNode> node);
-
-    // --- Helper Methods (snake_case) ---
-    void populate_class_registry_from_semantic_ir();
-    void declare_class_structure_and_signatures(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
-    void generate_vtable_for_class(ClassTypeInfo& cti, const SymbolTable::ClassSymbol* class_symbol, const std::string& fq_class_name);
-    void compile_all_method_bodies(std::shared_ptr<ClassDeclarationNode> node, const std::string& fq_class_name);
-    void populate_vtable_for_class(const std::string& fq_class_name);
-    llvm::Value* getHeaderPtrFromFieldsPtr(llvm::Value* fieldsPtr, llvm::StructType* fieldsLLVMType);
-    llvm::Value* getFieldsPtrFromHeaderPtr(llvm::Value* headerPtr, llvm::StructType* fieldsLLVMType);
-    llvm::Type* get_llvm_type(std::shared_ptr<TypeNameNode> type_node);
-    llvm::Type* get_llvm_type_from_string(const std::string& type_name, std::optional<SourceLocation> loc = std::nullopt);
-    std::string llvm_type_to_string(llvm::Type* type) const;
-
-    llvm::AllocaInst* create_entry_block_alloca(llvm::Function* function, const std::string& var_name, llvm::Type* type);
-
-    // --- Primitive struct helper methods ---
-    std::string get_primitive_name_from_llvm_type(llvm::Type* type);
-    ExpressionVisitResult handle_primitive_method_call(std::shared_ptr<MethodCallExpressionNode> node, PrimitiveStructInfo* primitive_info, llvm::Value* instance_ptr);
-
-    [[noreturn]] void log_error(const std::string& message, std::optional<SourceLocation> loc = std::nullopt);
+    void assign_type_ids_to_classes();
+    std::unique_ptr<llvm::Module> take_module(); // For passing ownership to JIT/AOT
 };
 
 } // namespace Mycelium::Scripting::Lang

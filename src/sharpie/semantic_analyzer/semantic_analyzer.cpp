@@ -39,6 +39,9 @@ namespace Mycelium::Scripting::Lang
         LOG_INFO("Pass 1: Declaration Collection", "SEMANTIC");
         collect_class_declarations(ast_root);
         collect_external_declarations(ast_root);
+        
+        // Pass 1.5: Inherit fields from base classes (must be done after all classes are collected)
+        inherit_fields_for_all_classes();
 
         // Pass 2: Collect all method/constructor/destructor signatures within classes (populates ir->symbol_table)
         LOG_INFO("Pass 2: Method Signature Collection", "SEMANTIC");

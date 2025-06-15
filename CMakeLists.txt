@@ -56,9 +56,9 @@ set(LLVM_LINK_COMPONENTS
 )
 
 
-llvm_map_components_to_libnames(MY_LLVM_LIBS ${LLVM_LINK_COMPONENTS})
+llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
 
-set(MY_SOURCE_FILES
+set(SOURCE_FILES
     # AST Implementation
     src/sharpie/ast/ast_base.cpp
     src/sharpie/ast/primitive_structs.cpp
@@ -70,9 +70,12 @@ set(MY_SOURCE_FILES
     src/sharpie/parser/script_parser.cpp
     
     # Compiler System
-    src/sharpie/compiler/compiler_visitors.cpp
     src/sharpie/compiler/scope_manager.cpp
     src/sharpie/compiler/script_compiler.cpp
+    src/sharpie/compiler/codegen/declaration_codegen.cpp
+    src/sharpie/compiler/codegen/expression_codegen.cpp
+    src/sharpie/compiler/codegen/statement_codegen.cpp
+    src/sharpie/compiler/codegen/codegen_util.cpp
     
     # Semantic Analyzer
     src/sharpie/semantic_analyzer/declaration_pass.cpp
@@ -99,13 +102,13 @@ set(MY_SOURCE_FILES
     src/test_runner.cpp
 )
 
-set(MY_RUNTIME_FILES
+set(RUNTIME_FILES
     lib/mycelium_runtime.cpp
     lib/runtime_binding.cpp
 )
 
-add_executable(MyceliumUI ${MY_SOURCE_FILES} ${MY_RUNTIME_FILES} main.cpp)
+add_executable(MyceliumUI ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
 
-target_link_libraries(MyceliumUI PRIVATE ${MY_LLVM_LIBS})
+target_link_libraries(MyceliumUI PRIVATE ${LLVM_LIBS})
 
 target_include_directories(MyceliumUI PRIVATE "include/sharpie" "include/ui" "lib")

@@ -314,7 +314,7 @@ namespace Mycelium::Scripting::Lang
             {
                 if (auto *class_symbol = ir->symbol_table.find_class((*ident)->name))
                 {
-                    var_symbol.class_info = &class_symbol->type_info;
+                    var_symbol.class_info = class_symbol;
                 }
             }
 
@@ -552,7 +552,7 @@ namespace Mycelium::Scripting::Lang
             record_usage(name, UsageKind::TypeReference, node->location);
             auto type_node = std::make_shared<TypeNameNode>();
             type_node->name_segment = node->identifier;
-            return {type_node, &class_sym->type_info, false};
+            return {type_node, class_sym, false};
         }
 
         // Check for extern functions
@@ -928,7 +928,7 @@ namespace Mycelium::Scripting::Lang
             record_usage(ctor_symbol->qualified_name, UsageKind::Call, node->location);
         }
 
-        return {node->type, &class_symbol->type_info};
+        return {node->type, class_symbol};
     }
 
     SemanticAnalyzer::ExpressionTypeInfo SemanticAnalyzer::analyze_expression(std::shared_ptr<ThisExpressionNode> node)
@@ -953,7 +953,7 @@ namespace Mycelium::Scripting::Lang
 
         // FIX: 'this' is an r-value that refers to an instance. We mark it as an l-value
         // as a proxy for "is an instance" to distinguish it from a raw type name.
-        return {create_primitive_type(context->currentClassName), &class_symbol->type_info, true};
+        return {create_primitive_type(context->currentClassName), class_symbol, true};
     }
 
     SemanticAnalyzer::ExpressionTypeInfo SemanticAnalyzer::analyze_expression(std::shared_ptr<CastExpressionNode> node)
@@ -1024,7 +1024,7 @@ namespace Mycelium::Scripting::Lang
             // or if `target_class` is a base of `source_class`. For now, we permit any cast
             // between two class types, which is a common (though potentially unsafe) starting point.
             LOG_WARN("Casting between class types ('" + source_type_name + "' to '" + target_type_name + "'). This is currently unchecked for inheritance validity.", "CAST_VALIDATION");
-            return {node->targetType, &target_class->type_info, false};
+            return {node->targetType, target_class, false};
         }
 
         // If none of the above rules match, the cast is invalid.
@@ -1050,7 +1050,7 @@ namespace Mycelium::Scripting::Lang
             {
                 record_usage(new_ns_path, UsageKind::TypeReference, node->location);
                 auto type_node = create_primitive_type(new_ns_path); // Use string name for type
-                return {type_node, &class_symbol->type_info, false};
+                return {type_node, class_symbol, false};
             }
 
             // Is it still a namespace prefix?

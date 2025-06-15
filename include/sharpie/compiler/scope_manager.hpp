@@ -3,7 +3,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
-#include "class_type_info.hpp"
+#include "sharpie/semantic_analyzer/symbol_table.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -21,13 +21,13 @@ namespace Mycelium::Scripting::Lang
  * Represents an object that needs ARC management and destruction
  */
 struct ManagedObject {
-    llvm::AllocaInst* variable_alloca;       // The variable holding the object
-    llvm::Value* header_ptr;                 // Pointer to object header for ARC
-    const ClassTypeInfo* class_info;        // Class type information
-    std::string debug_name;                  // For debugging/error messages
+    llvm::AllocaInst* variable_alloca;              // The variable holding the object
+    llvm::Value* header_ptr;                        // Pointer to object header for ARC
+    const SymbolTable::ClassSymbol* class_info;    // Class symbol information
+    std::string debug_name;                         // For debugging/error messages
     
     ManagedObject(llvm::AllocaInst* alloca, llvm::Value* header, 
-                  const ClassTypeInfo* class_info, const std::string& name)
+                  const SymbolTable::ClassSymbol* class_info, const std::string& name)
         : variable_alloca(alloca), header_ptr(header), class_info(class_info), debug_name(name) {}
 };
 
@@ -94,12 +94,12 @@ public:
     // Object lifecycle management
     void register_managed_object(llvm::AllocaInst* variable_alloca, 
                                   llvm::Value* header_ptr,
-                                  const ClassTypeInfo* class_info,
+                                  const SymbolTable::ClassSymbol* class_info,
                                   const std::string& debug_name = "");
     
     // ARC-specific registration (header_ptr computed dynamically at cleanup time)
     void register_arc_managed_object(llvm::AllocaInst* variable_alloca,
-                                      const ClassTypeInfo* class_info,
+                                      const SymbolTable::ClassSymbol* class_info,
                                       const std::string& debug_name = "");
     
     void unregister_managed_object(llvm::AllocaInst* variable_alloca);

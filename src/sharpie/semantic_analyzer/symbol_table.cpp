@@ -212,22 +212,17 @@ namespace Mycelium::Scripting::Lang
         return nullptr;
     }
 
-    SymbolTable::VariableSymbol *SymbolTable::find_field_in_class(const std::string &class_name, const std::string &field_name)
+    const SymbolTable::VariableSymbol *SymbolTable::find_field_in_class(const std::string &class_name, const std::string &field_name) const
     {
         auto *class_symbol = find_class(class_name);
         if (!class_symbol)
             return nullptr;
 
-        // First, look in the current class
+        // All fields (including inherited ones) are now stored directly in field_registry
+        // No need for recursive lookup since field inheritance is handled during collection
         auto it = class_symbol->field_registry.find(field_name);
         if (it != class_symbol->field_registry.end())
             return &it->second;
-        
-        // If not found and there's a base class, search recursively
-        if (!class_symbol->base_class.empty())
-        {
-            return find_field_in_class(class_symbol->base_class, field_name);
-        }
         
         return nullptr;
     }

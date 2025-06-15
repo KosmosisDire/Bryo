@@ -102,7 +102,7 @@ void Logger::log(LogLevel level, const std::string& message, const std::string& 
     
     // Log to file if initialized and level is sufficient
     if (initialized_ && level >= min_file_level_) {
-        log_file_ << timestamp << " " << level_str << category_str << ": " << message << "\n";
+        log_file_ << level_str << category_str << ": " << message << "\n";
         log_file_.flush();
     }
     
