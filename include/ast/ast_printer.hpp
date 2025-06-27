@@ -3,9 +3,12 @@
 #include "ast/ast.hpp"
 #include "ast/ast_allocator.hpp"
 #include "ast/ast_rtti.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 
 using namespace Mycelium::Scripting::Lang;
+using namespace Mycelium::Scripting::Common;
+using namespace Mycelium;
 
 // An extended visitor to print a more complex AST structure.
 class AstPrinterVisitor : public StructuralVisitor
@@ -13,17 +16,18 @@ class AstPrinterVisitor : public StructuralVisitor
 private:
     int indentLevel = 0;
 
-    void print_indent() {
-        for (int i = 0; i < indentLevel; ++i) std::cout << "  ";
+    std::string get_indent() {
+        std::string indent;
+        for (int i = 0; i < indentLevel; ++i) indent += "    ";
+        return indent;
     }
 
     void print_node_header(AstNode* node, const std::string& extra = "") {
-        print_indent();
-        std::cout << "-> " << g_ordered_type_infos[node->typeId]->name;
+        std::string output = get_indent() + "-> " + g_ordered_type_infos[node->typeId]->name;
         if (!extra.empty()) {
-            std::cout << ": " << extra;
+            output += ": " + extra;
         }
-        std::cout << std::endl;
+        LOG_INFO(output, LogCategory::AST);
     }
 
 public:
@@ -52,15 +56,13 @@ public:
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
         if (!node->baseTypes.empty()) {
-            print_indent();
-            std::cout << "BaseTypes:" << std::endl;
+            LOG_INFO(get_indent() + "BaseTypes:", LogCategory::AST);
             indentLevel++;
             for(auto base_type : node->baseTypes) base_type->accept(this);
             indentLevel--;
         }
         if (!node->members.empty()) {
-            print_indent();
-            std::cout << "Members:" << std::endl;
+            LOG_INFO(get_indent() + "Members:", LogCategory::AST);
             indentLevel++;
             for(auto member : node->members) member->accept(this);
             indentLevel--;
@@ -71,10 +73,12 @@ public:
     void visit(FieldDeclarationNode* node) override {
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
-        print_indent(); std::cout << "Type: ";
+        LOG_INFO(get_indent() + "Type:", LogCategory::AST);
+        indentLevel++;
         node->type->accept(this);
+        indentLevel--;
         if (node->initializer) {
-            print_indent(); std::cout << "Initializer:" << std::endl;
+            LOG_INFO(get_indent() + "Initializer:", LogCategory::AST);
             indentLevel++;
             node->initializer->accept(this);
             indentLevel--;
@@ -85,16 +89,18 @@ public:
     void visit(FunctionDeclarationNode* node) override {
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
-        print_indent(); std::cout << "ReturnType: ";
+        LOG_INFO(get_indent() + "ReturnType:", LogCategory::AST);
+        indentLevel++;
         node->returnType->accept(this);
+        indentLevel--;
         if (!node->parameters.empty()) {
-            print_indent(); std::cout << "Parameters:" << std::endl;
+            LOG_INFO(get_indent() + "Parameters:", LogCategory::AST);
             indentLevel++;
             for(auto param : node->parameters) param->accept(this);
             indentLevel--;
         }
         if (node->body) {
-            print_indent(); std::cout << "Body:" << std::endl;
+            LOG_INFO(get_indent() + "Body:", LogCategory::AST);
             node->body->accept(this);
         }
         indentLevel--;
@@ -103,18 +109,22 @@ public:
     void visit(ParameterNode* node) override {
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
-        print_indent(); std::cout << "Type: ";
+        LOG_INFO(get_indent() + "Type:", LogCategory::AST);
+        indentLevel++;
         node->type->accept(this);
+        indentLevel--;
         indentLevel--;
     }
     
     void visit(VariableDeclarationNode* node) override {
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
-        print_indent(); std::cout << "Type: ";
+        LOG_INFO(get_indent() + "Type:", LogCategory::AST);
+        indentLevel++;
         node->type->accept(this);
+        indentLevel--;
         if (node->initializer) {
-            print_indent(); std::cout << "Initializer:" << std::endl;
+            LOG_INFO(get_indent() + "Initializer:", LogCategory::AST);
             node->initializer->accept(this);
         }
         indentLevel--;
@@ -123,12 +133,12 @@ public:
     void visit(IfStatementNode* node) override {
         print_node_header(node);
         indentLevel++;
-        print_indent(); std::cout << "Condition:" << std::endl;
+        LOG_INFO(get_indent() + "Condition:", LogCategory::AST);
         node->condition->accept(this);
-        print_indent(); std::cout << "Then:" << std::endl;
+        LOG_INFO(get_indent() + "Then:", LogCategory::AST);
         node->thenStatement->accept(this);
         if (node->elseStatement) {
-            print_indent(); std::cout << "Else:" << std::endl;
+            LOG_INFO(get_indent() + "Else:", LogCategory::AST);
             node->elseStatement->accept(this);
         }
         indentLevel--;
@@ -160,9 +170,9 @@ public:
     void visit(BinaryExpressionNode* node) override {
         print_node_header(node, "Op: " + std::to_string((int)node->opKind));
         indentLevel++;
-        print_indent(); std::cout << "Left:" << std::endl;
+        LOG_INFO(get_indent() + "Left:", LogCategory::AST);
         node->left->accept(this);
-        print_indent(); std::cout << "Right:" << std::endl;
+        LOG_INFO(get_indent() + "Right:", LogCategory::AST);
         node->right->accept(this);
         indentLevel--;
     }
@@ -170,9 +180,9 @@ public:
     void visit(AssignmentExpressionNode* node) override {
         print_node_header(node, "Op: " + std::to_string((int)node->opKind));
         indentLevel++;
-        print_indent(); std::cout << "Target:" << std::endl;
+        LOG_INFO(get_indent() + "Target:", LogCategory::AST);
         node->target->accept(this);
-        print_indent(); std::cout << "Source:" << std::endl;
+        LOG_INFO(get_indent() + "Source:", LogCategory::AST);
         node->source->accept(this);
         indentLevel--;
     }
@@ -180,7 +190,7 @@ public:
     void visit(MemberAccessExpressionNode* node) override {
         print_node_header(node, "Member: " + std::string(node->member->name));
         indentLevel++;
-        print_indent(); std::cout << "Target:" << std::endl;
+        LOG_INFO(get_indent() + "Target:", LogCategory::AST);
         node->target->accept(this);
         indentLevel--;
     }
@@ -205,10 +215,14 @@ public:
     void visit(GenericTypeNameNode* node) override {
         print_node_header(node);
         indentLevel++;
-        print_indent(); std::cout << "Base: ";
+        LOG_INFO(get_indent() + "Base:", LogCategory::AST);
+        indentLevel++;
         node->baseType->accept(this);
-        print_indent(); std::cout << "Args: ";
+        indentLevel--;
+        LOG_INFO(get_indent() + "Args:", LogCategory::AST);
+        indentLevel++;
         for(auto arg : node->arguments) arg->accept(this);
+        indentLevel--;
         indentLevel--;
     }
 

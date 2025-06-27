@@ -1,4 +1,5 @@
 #include "codegen/command_processor.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 
 #include "llvm/IR/IRBuilder.h"
@@ -230,13 +231,13 @@ void CommandProcessor::process_command(const Command& cmd) {
 }
 
 void CommandProcessor::process(const std::vector<Command>& commands) {
-    std::cout << "Processing " << commands.size() << " commands...\n";
+    LOG_INFO("Processing " + std::to_string(commands.size()) + " commands...", LogCategory::CODEGEN);
     
     for (const auto& cmd : commands) {
         process_command(cmd);
     }
     
-    std::cout << "Command processing complete.\n";
+    LOG_INFO("Command processing complete.", LogCategory::CODEGEN);
 }
 
 void CommandProcessor::dump_module() {
@@ -271,6 +272,26 @@ bool CommandProcessor::verify_module() {
     }
     
     return is_valid;
+}
+
+std::unique_ptr<llvm::LLVMContext> CommandProcessor::take_context() {
+    return std::move(context_);
+}
+
+std::unique_ptr<llvm::Module> CommandProcessor::take_module() {
+    return std::move(module_);
+}
+
+std::string CommandProcessor::process_to_ir_string(const std::vector<Command>& commands, const std::string& module_name) {
+    CommandProcessor processor(module_name);
+    processor.process(commands);
+    
+    if (processor.verify_module()) {
+        return processor.get_ir_string();
+    } else {
+        std::cerr << "CommandProcessor: Module verification failed" << std::endl;
+        return "";
+    }
 }
 
 } // namespace Mycelium::Scripting::Lang

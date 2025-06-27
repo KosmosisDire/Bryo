@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(MyceliumUI C CXX)
+project(Myre C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +38,9 @@ if(LLVM_AVAILABLE)
                 Target
                 MC
                 CodeGen
+                ExecutionEngine
+                MCJIT
+                native
             )
             llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
             message(STATUS "Using LLVM component libraries: ${LLVM_LIBS}")
@@ -51,6 +54,9 @@ if(LLVM_AVAILABLE)
             Target
             MC
             CodeGen
+            ExecutionEngine
+            MCJIT
+            native
         )
         llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
         if(NOT LLVM_LIBS)
@@ -74,6 +80,7 @@ set(SOURCE_FILES
     src/codegen/codegen.cpp
     src/codegen/ir_builder.cpp
     src/codegen/command_processor.cpp
+    src/codegen/jit_engine.cpp
     
     # Common Utilities
     src/common/logger.cpp
@@ -84,10 +91,22 @@ set(RUNTIME_FILES
     # lib/runtime_binding.cpp
 )
 
-add_executable(MyceliumUI ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
+set(TEST_FILES
+    tests/test_command_generation.cpp
+    tests/test_ir_generation.cpp
+    tests/test_jit_execution.cpp
+)
+
+# Main executable
+add_executable(Myre ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
+
+# Test runner executable
+add_executable(TestRunner ${SOURCE_FILES} ${TEST_FILES} test_runner.cpp)
 
 if(LLVM_AVAILABLE)
-    target_link_libraries(MyceliumUI PRIVATE ${LLVM_LIBS})
+    target_link_libraries(Myre PRIVATE ${LLVM_LIBS})
+    target_link_libraries(TestRunner PRIVATE ${LLVM_LIBS})
 endif()
 
-target_include_directories(MyceliumUI PRIVATE "include" "lib")
+target_include_directories(Myre PRIVATE "include" "lib")
+target_include_directories(TestRunner PRIVATE "include" "lib")

@@ -52,6 +52,13 @@ public:
     
     // Verification
     bool verify_module();
+    
+    // Transfer ownership for JIT
+    std::unique_ptr<llvm::LLVMContext> take_context();
+    std::unique_ptr<llvm::Module> take_module();
+    
+    // Static method to process commands and return IR string
+    static std::string process_to_ir_string(const std::vector<Command>& commands, const std::string& module_name = "Module");
 };
 
 } // namespace Mycelium::Scripting::Lang

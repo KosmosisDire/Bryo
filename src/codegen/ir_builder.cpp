@@ -1,4 +1,5 @@
 #include "codegen/ir_builder.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 
 namespace Mycelium::Scripting::Lang {
@@ -140,58 +141,58 @@ void IRBuilder::function_end() {
 
 // For debugging
 void IRBuilder::dump_commands() const {
-    std::cout << "Command stream (" << commands_.size() << " commands):\n";
+    LOG_DEBUG("Command stream (" + std::to_string(commands_.size()) + " commands):", LogCategory::CODEGEN);
     for (size_t i = 0; i < commands_.size(); ++i) {
         const auto& cmd = commands_[i];
-        std::cout << "[" << i << "] ";
+        std::string line = "[" + std::to_string(i) + "] ";
         
         // Print operation
         switch (cmd.op) {
-            case Op::Const: std::cout << "Const"; break;
-            case Op::Add: std::cout << "Add"; break;
-            case Op::Sub: std::cout << "Sub"; break;
-            case Op::Mul: std::cout << "Mul"; break;
-            case Op::Div: std::cout << "Div"; break;
-            case Op::Alloca: std::cout << "Alloca"; break;
-            case Op::Load: std::cout << "Load"; break;
-            case Op::Store: std::cout << "Store"; break;
-            case Op::Ret: std::cout << "Ret"; break;
-            case Op::RetVoid: std::cout << "RetVoid"; break;
-            case Op::FunctionBegin: std::cout << "FunctionBegin"; break;
-            case Op::FunctionEnd: std::cout << "FunctionEnd"; break;
-            case Op::Call: std::cout << "Call"; break;
+            case Op::Const: line += "Const"; break;
+            case Op::Add: line += "Add"; break;
+            case Op::Sub: line += "Sub"; break;
+            case Op::Mul: line += "Mul"; break;
+            case Op::Div: line += "Div"; break;
+            case Op::Alloca: line += "Alloca"; break;
+            case Op::Load: line += "Load"; break;
+            case Op::Store: line += "Store"; break;
+            case Op::Ret: line += "Ret"; break;
+            case Op::RetVoid: line += "RetVoid"; break;
+            case Op::FunctionBegin: line += "FunctionBegin"; break;
+            case Op::FunctionEnd: line += "FunctionEnd"; break;
+            case Op::Call: line += "Call"; break;
         }
         
         // Print result
         if (cmd.result.is_valid()) {
-            std::cout << " -> %" << cmd.result.id << " (" << cmd.result.type.to_string() << ")";
+            line += " -> %" + std::to_string(cmd.result.id) + " (" + cmd.result.type.to_string() + ")";
         }
         
         // Print args
         if (!cmd.args.empty()) {
-            std::cout << " [";
+            line += " [";
             for (size_t j = 0; j < cmd.args.size(); ++j) {
-                if (j > 0) std::cout << ", ";
-                std::cout << "%" << cmd.args[j].id;
+                if (j > 0) line += ", ";
+                line += "%" + std::to_string(cmd.args[j].id);
             }
-            std::cout << "]";
+            line += "]";
         }
         
         // Print immediate data
         if (!std::holds_alternative<std::monostate>(cmd.data)) {
-            std::cout << " ";
+            line += " ";
             if (auto* int_val = std::get_if<int64_t>(&cmd.data)) {
-                std::cout << *int_val;
+                line += std::to_string(*int_val);
             } else if (auto* bool_val = std::get_if<bool>(&cmd.data)) {
-                std::cout << (*bool_val ? "true" : "false");
+                line += (*bool_val ? "true" : "false");
             } else if (auto* float_val = std::get_if<double>(&cmd.data)) {
-                std::cout << *float_val;
+                line += std::to_string(*float_val);
             } else if (auto* str_val = std::get_if<std::string>(&cmd.data)) {
-                std::cout << "\"" << *str_val << "\"";
+                line += "\"" + *str_val + "\"";
             }
         }
         
-        std::cout << "\n";
+        LOG_DEBUG(line, LogCategory::CODEGEN);
     }
 }
 

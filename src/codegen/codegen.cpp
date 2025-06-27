@@ -1,6 +1,6 @@
 #include "codegen/codegen.hpp"
-#include "codegen/command_processor.hpp"
 #include "ast/ast_rtti.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 
 namespace Mycelium::Scripting::Lang {
@@ -9,25 +9,26 @@ CodeGenerator::CodeGenerator(SymbolTable& table)
     : symbol_table_(table), current_value_(ValueRef::invalid()) {
 }
 
+
 void CodeGenerator::visit(CompilationUnitNode* node) {
     if (!node) return;
     
-    std::cout << "CompilationUnitNode: Found " << node->statements.size << " statements" << std::endl;
+    LOG_DEBUG("CompilationUnitNode: Found " + std::to_string(node->statements.size) + " statements", LogCategory::CODEGEN);
     
     // Visit all statements in the compilation unit
     for (int i = 0; i < node->statements.size; ++i) {
         auto* stmt = node->statements[i];
         
-        std::cout << "Processing statement " << i << " of type: " << get_node_type_name(stmt) << " (ID " << (int)stmt->typeId << ")" << std::endl;
+        LOG_DEBUG("Processing statement " + std::to_string(i) + " of type: " + get_node_type_name(stmt) + " (ID " + std::to_string((int)stmt->typeId) + ")", LogCategory::CODEGEN);
         
         // Only process function declarations for now
         if (stmt->is_a<FunctionDeclarationNode>()) {
-            std::cout << "Found FunctionDeclarationNode at index " << i << std::endl;
+            LOG_DEBUG("Found FunctionDeclarationNode at index " + std::to_string(i), LogCategory::CODEGEN);
             stmt->accept(this);
         } else if (stmt->is_a<ClassDeclarationNode>()) {
-            std::cout << "Skipping ClassDeclarationNode at index " << i << std::endl;
+            LOG_DEBUG("Skipping ClassDeclarationNode at index " + std::to_string(i), LogCategory::CODEGEN);
         } else {
-            std::cout << "Processing other statement type at index " << i << std::endl;
+            LOG_DEBUG("Processing other statement type at index " + std::to_string(i), LogCategory::CODEGEN);
             stmt->accept(this);
         }
     }
@@ -146,12 +147,12 @@ void CodeGenerator::visit(ReturnStatementNode* node) {
 
 void CodeGenerator::visit(FunctionDeclarationNode* node) {
     if (!node || !ir_builder_) {
-        std::cout << "FunctionDeclarationNode: null node or null builder" << std::endl;
+        LOG_ERROR("FunctionDeclarationNode: null node or null builder", LogCategory::CODEGEN);
         return;
     }
     
     if (!node->name) {
-        std::cout << "FunctionDeclarationNode: null name" << std::endl;
+        LOG_ERROR("FunctionDeclarationNode: null name", LogCategory::CODEGEN);
         return;
     }
     
@@ -164,7 +165,7 @@ void CodeGenerator::visit(FunctionDeclarationNode* node) {
     
     // Begin the function
     std::string func_name = std::string(node->name->name);
-    std::cout << "Processing function: '" << func_name << "'" << std::endl;
+    LOG_INFO("Processing function: '" + func_name + "'", LogCategory::CODEGEN);
     ir_builder_->function_begin(func_name, return_type);
     
     // Clear local variables for this function
@@ -172,10 +173,10 @@ void CodeGenerator::visit(FunctionDeclarationNode* node) {
     
     // Process the function body
     if (node->body) {
-        std::cout << "Processing function body for: " << func_name << std::endl;
+        LOG_DEBUG("Processing function body for: " + func_name, LogCategory::CODEGEN);
         node->body->accept(this);
     } else {
-        std::cout << "No body for function: " << func_name << std::endl;
+        LOG_WARN("No body for function: " + func_name, LogCategory::CODEGEN);
     }
     
     // Add automatic void return for void functions that don't explicitly return
@@ -196,13 +197,13 @@ void CodeGenerator::visit(BlockStatementNode* node) {
     }
 }
 
-void CodeGenerator::generate_code(CompilationUnitNode* root) {
+std::vector<Command> CodeGenerator::generate_code(CompilationUnitNode* root) {
     if (!root) {
-        std::cout << "CodeGenerator: No AST root provided" << std::endl;
-        return;
+        LOG_ERROR("No AST root provided", LogCategory::CODEGEN);
+        return {};
     }
     
-    std::cout << "CodeGenerator: Starting code generation..." << std::endl;
+    LOG_INFO("Starting code generation...", LogCategory::CODEGEN);
     
     // Create the IR builder
     ir_builder_ = std::make_unique<IRBuilder>();
@@ -211,22 +212,13 @@ void CodeGenerator::generate_code(CompilationUnitNode* root) {
     root->accept(this);
     
     // Debug: dump the command stream
-    std::cout << "\nGenerated command stream:" << std::endl;
+    LOG_DEBUG("Generated command stream:", LogCategory::CODEGEN);
     ir_builder_->dump_commands();
     
-    // Create command processor and generate LLVM IR
-    auto processor = std::make_unique<CommandProcessor>("MyModule");
-    processor->process(ir_builder_->commands());
+    LOG_INFO("Code generation complete", LogCategory::CODEGEN);
     
-    // Verify and dump the module
-    if (processor->verify_module()) {
-        std::cout << "\nGenerated LLVM IR:" << std::endl;
-        processor->dump_module();
-    } else {
-        std::cerr << "Module verification failed!" << std::endl;
-    }
-    
-    std::cout << "CodeGenerator: Code generation complete" << std::endl;
+    // Return the generated commands
+    return ir_builder_->commands();
 }
 
 } // namespace Mycelium::Scripting::Lang

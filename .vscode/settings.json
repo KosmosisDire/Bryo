@@ -77,6 +77,14 @@
         "stack": "cpp",
         "variant": "cpp",
         "codecvt": "cpp",
-        "numeric": "cpp"
+        "numeric": "cpp",
+        "cstdarg": "cpp",
+        "cwctype": "cpp",
+        "memory_resource": "cpp",
+        "string_view": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "span": "cpp",
+        "cinttypes": "cpp"
     }
 }

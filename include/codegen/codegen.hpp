@@ -3,12 +3,12 @@
 #include "ast/ast.hpp"
 #include "semantic/symbol_table.hpp"
 #include "codegen/ir_builder.hpp"
+#include "codegen/ir_command.hpp"
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace Mycelium::Scripting::Lang {
-
-class CommandProcessor;
 
 
 class CodeGenerator : public StructuralVisitor {
@@ -32,8 +32,8 @@ public:
     void visit(FunctionDeclarationNode* node) override;
     void visit(BlockStatementNode* node) override;
 
-    // Generate code from AST
-    void generate_code(CompilationUnitNode* root);
+    // Generate code from AST and return command list
+    std::vector<Command> generate_code(CompilationUnitNode* root);
 };
 
 } // namespace Mycelium::Scripting::Lang

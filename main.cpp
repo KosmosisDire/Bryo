@@ -4,13 +4,18 @@
 #include "ast/ast_printer.hpp"
 #include "semantic/symbol_table.hpp"
 #include "codegen/codegen.hpp"
+#include "codegen/command_processor.hpp"
+#include "codegen/jit_engine.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
+#include <sstream>
 #include <cstring> // For memcpy
 
 // Bring the AST namespace into scope for convenience.
 using namespace Mycelium::Scripting::Lang;
+using namespace Mycelium::Scripting::Common;
 
 // --- Helper Functions for Manual AST Construction ---
 
@@ -54,10 +59,16 @@ TypeNameNode* create_type_name(AstAllocator& allocator, const std::string& name)
 
 int main()
 {
+    // Initialize logger
+    Logger& logger = Logger::get_instance();
+    logger.initialize();
+    logger.set_console_level(LogLevel::INFO);
+    logger.set_enabled_categories(LogCategory::ALL);
+    
     // 1. Initialize RTTI
     AstTypeInfo::initialize();
-    std::cout << "RTTI Initialized. Total types: " << (AstNode::sTypeInfo.fullDerivedCount + 1) << std::endl;
-    std::cout << "========================================\n" << std::endl;
+    LOG_INFO("RTTI Initialized. Total types: " + std::to_string(AstNode::sTypeInfo.fullDerivedCount + 1), LogCategory::GENERAL);
+    LOG_SEPARATOR();
 
     // 2. Create Allocator
     AstAllocator allocator;
@@ -344,23 +355,20 @@ int main()
     });
 
     // 4. Create and run the printer visitor.
-    std::cout << "Printing constructed AST:" << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    LOG_HEADER("Printing constructed AST", LogCategory::AST);
     AstPrinterVisitor printer;
     compilation_unit->accept(&printer);
-    std::cout << "----------------------------------------\n" << std::endl;
+    LOG_SEPARATOR('-', 40, LogCategory::AST);
 
     // 5. Build symbol table from AST
-    std::cout << "Building symbol table from AST:" << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    LOG_HEADER("Building symbol table from AST", LogCategory::SEMANTIC);
     SymbolTable symbol_table;
     build_symbol_table(symbol_table, compilation_unit);
     symbol_table.print_symbol_table();
-    std::cout << "----------------------------------------\n" << std::endl;
+    LOG_SEPARATOR('-', 40, LogCategory::SEMANTIC);
 
     // 6. Demonstrate symbol table navigation
-    std::cout << "Demonstrating symbol table navigation:" << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    LOG_HEADER("Demonstrating symbol table navigation", LogCategory::SEMANTIC);
     
     // Navigate to Console class
     symbol_table.push_scope("Console");
@@ -369,7 +377,7 @@ int main()
     // Look up a field in Console
     auto messageCount = symbol_table.lookup_symbol("messageCount");
     if (messageCount) {
-        std::cout << "Found: " << messageCount->name << " (" << messageCount->data_type << ")" << std::endl;
+        LOG_INFO("Found: " + messageCount->name + " (" + messageCount->data_type + ")", LogCategory::SEMANTIC);
     }
     
     // Navigate to Enemy class
@@ -380,32 +388,80 @@ int main()
     // Look up GetDamage function
     auto getDamage = symbol_table.lookup_symbol("GetDamage");
     if (getDamage) {
-        std::cout << "Found: " << getDamage->name << " (" << getDamage->data_type << ")" << std::endl;
+        LOG_INFO("Found: " + getDamage->name + " (" + getDamage->data_type + ")", LogCategory::SEMANTIC);
     }
     
     symbol_table.reset_navigation();
-    std::cout << "----------------------------------------\n" << std::endl;
+    LOG_SEPARATOR('-', 40, LogCategory::SEMANTIC);
 
     // 7. Test code generation
-    std::cout << "Testing code generation:" << std::endl;
-    std::cout << "----------------------------------------" << std::endl;
+    LOG_HEADER("Testing code generation", LogCategory::CODEGEN);
     CodeGenerator code_gen(symbol_table);
-    code_gen.generate_code(compilation_unit);
-    std::cout << "----------------------------------------\n" << std::endl;
+    auto commands = code_gen.generate_code(compilation_unit);
+    
+    // Process commands to generate LLVM IR
+    LOG_INFO("Processing commands to LLVM IR...", LogCategory::CODEGEN);
+    std::string ir_string = CommandProcessor::process_to_ir_string(commands, "GeneratedModule");
+    LOG_SUBHEADER("Generated LLVM IR", LogCategory::CODEGEN);
+    LOG_INFO(ir_string, LogCategory::CODEGEN);
+    
+    // Test JIT execution with the generated IR
+    LOG_HEADER("Testing JIT execution", LogCategory::JIT);
+    JITEngine jit;
+    if (jit.initialize_from_ir(ir_string, "GeneratedModule")) {
+        jit.dump_functions();
+        int result = jit.execute_function("Main");
+        LOG_INFO("JIT execution completed with result: " + std::to_string(result), LogCategory::JIT);
+    } else {
+        LOG_ERROR("Failed to initialize JIT engine with generated IR", LogCategory::JIT);
+    }
 
-    // 8. Test RTTI on the new AST
-    std::cout << "Testing RTTI on new AST:" << std::endl;
+    // 8. Test JIT engine with simple hardcoded IR example
+    LOG_HEADER("Testing JIT with simple IR example", LogCategory::JIT);
+    
+    // Simple LLVM IR that adds two numbers and returns the result
+    std::string simple_ir = R"(
+define i32 @add_numbers() {
+entry:
+  %a = add i32 10, 20
+  %b = add i32 %a, 5
+  ret i32 %b
+}
+
+define void @simple_test() {
+entry:
+  ret void
+}
+)";
+    
+    JITEngine simple_jit;
+    if (simple_jit.initialize_from_ir(simple_ir, "SimpleExample")) {
+        simple_jit.dump_functions();
+        
+        LOG_INFO("Executing add_numbers function...", LogCategory::JIT);
+        int add_result = simple_jit.execute_function("add_numbers");
+        LOG_INFO("add_numbers() returned: " + std::to_string(add_result), LogCategory::JIT);
+        
+        LOG_INFO("Executing simple_test function...", LogCategory::JIT);
+        int test_result = simple_jit.execute_function("simple_test");
+        LOG_INFO("simple_test() returned: " + std::to_string(test_result), LogCategory::JIT);
+    } else {
+        LOG_ERROR("Failed to initialize JIT engine with simple IR", LogCategory::JIT);
+    }
+
+    // 9. Test RTTI on the new AST
+    LOG_HEADER("Testing RTTI on new AST", LogCategory::AST);
     if (main_func->is_a<DeclarationNode>()) {
-         std::cout << "OK: FunctionDeclarationNode is a DeclarationNode." << std::endl;
+         LOG_INFO("OK: FunctionDeclarationNode is a DeclarationNode.", LogCategory::AST);
     }
     if (!while_stmt->is_a<ExpressionNode>()) {
-        std::cout << "OK: WhileStatementNode is NOT an ExpressionNode." << std::endl;
+        LOG_INFO("OK: WhileStatementNode is NOT an ExpressionNode.", LogCategory::AST);
     }
     auto casted_decl = console_messageCount_field->as<DeclarationNode>();
     if (casted_decl && casted_decl->name) {
-        std::cout << "OK: Cast from FieldDeclarationNode to DeclarationNode successful. Name: " << casted_decl->name->name << std::endl;
+        LOG_INFO("OK: Cast from FieldDeclarationNode to DeclarationNode successful. Name: " + std::string(casted_decl->name->name), LogCategory::AST);
     } else {
-        std::cout << "FAIL: Cast to DeclarationNode failed or name was null." << std::endl;
+        LOG_ERROR("FAIL: Cast to DeclarationNode failed or name was null.", LogCategory::AST);
     }
 
     return 0;

@@ -1,10 +1,15 @@
 #include "semantic/symbol_table.hpp"
 #include "ast/ast.hpp"
 #include "ast/ast_rtti.hpp"
+#include "common/logger.hpp"
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 
 namespace Mycelium::Scripting::Lang {
+
+using namespace Mycelium::Scripting::Common;
+
 
 SymbolTable::SymbolTable() : building_scope_level(0) {
     // Create global scope
@@ -149,26 +154,30 @@ void SymbolTable::clear() {
 }
 
 void SymbolTable::print_symbol_table() const {
-    std::cout << "\n=== Symbol Table ===" << std::endl;
-    std::cout << "Total scopes: " << all_scopes.size() << std::endl;
-    std::cout << std::endl;
+    LOG_HEADER("Symbol Table", LogCategory::SEMANTIC);
+    LOG_INFO("Total scopes: " + std::to_string(all_scopes.size()), LogCategory::SEMANTIC);
     
     for (size_t scope_id = 0; scope_id < all_scopes.size(); ++scope_id) {
         const auto& scope = all_scopes[scope_id];
-        std::cout << "Scope " << scope_id << ": \"" << scope.scope_name << "\"";
+        LOG_SEPARATOR('-', 60, LogCategory::SEMANTIC);
+        std::string scope_info = "Scope " + std::to_string(scope_id) + ": \"" + scope.scope_name + "\"";
         if (scope.parent_scope_id >= 0) {
-            std::cout << " (parent: " << scope.parent_scope_id << ")";
+            scope_info += " (parent: " + std::to_string(scope.parent_scope_id) + ")";
         }
-        std::cout << std::endl;
+
+        LOG_INFO(scope_info, LogCategory::SEMANTIC);
         
         if (scope.symbols.empty()) {
-            std::cout << "  (empty)" << std::endl;
+            LOG_INFO("  (empty)", LogCategory::SEMANTIC);
         } else {
-            std::cout << std::setw(20) << "Name" 
-                      << std::setw(12) << "Type" 
-                      << std::setw(15) << "Data Type" 
-                      << std::setw(10) << "Scope" << std::endl;
-            std::cout << std::string(57, '-') << std::endl;
+            // Create formatted header
+            std::ostringstream header;
+            header << Colors::DIM
+                   << std::setw(20) << "Name" 
+                   << std::setw(12) << "Type" 
+                   << std::setw(15) << "Data Type" 
+                   << Colors::RESET;
+            LOG_INFO(header.str(), LogCategory::SEMANTIC);
             
             for (const auto& [name, symbol] : scope.symbols) {
                 std::string type_str;
@@ -179,29 +188,29 @@ void SymbolTable::print_symbol_table() const {
                     case SymbolType::PARAMETER: type_str = "PARAMETER"; break;
                 }
                 
-                std::cout << std::setw(20) << symbol->name
-                          << std::setw(12) << type_str
-                          << std::setw(15) << symbol->data_type
-                          << std::setw(10) << symbol->scope_level << std::endl;
+                std::ostringstream row;
+                row << std::setw(20) << symbol->name
+                    << std::setw(12) << type_str
+                    << std::setw(15) << symbol->data_type;
+                LOG_INFO(row.str(), LogCategory::SEMANTIC);
             }
         }
-        std::cout << std::endl;
     }
-    
-    std::cout << "=== End Symbol Table ===" << std::endl;
 }
 
 void SymbolTable::print_navigation_state() const {
-    std::cout << "\n=== Navigation State ===" << std::endl;
-    std::cout << "Active scope stack: ";
+    LOG_SUBHEADER("Navigation State", LogCategory::SEMANTIC);
+    
+    std::string scope_stack = "Active scope stack: ";
     for (size_t i = 0; i < active_scope_stack.size(); ++i) {
-        if (i > 0) std::cout << " -> ";
+        if (i > 0) scope_stack += " -> ";
         int scope_id = active_scope_stack[i];
-        std::cout << scope_id << "(\"" << all_scopes[scope_id].scope_name << "\")";
+        scope_stack += std::to_string(scope_id) + "(\"" + all_scopes[scope_id].scope_name + "\")";
     }
-    std::cout << std::endl;
-    std::cout << "Current scope: " << get_current_scope_name() << " (ID: " << get_current_scope_id() << ")" << std::endl;
-    std::cout << "=== End Navigation State ===" << std::endl;
+    LOG_INFO(scope_stack, LogCategory::SEMANTIC);
+    
+    LOG_INFO("Current scope: " + get_current_scope_name() + " (ID: " + std::to_string(get_current_scope_id()) + ")", LogCategory::SEMANTIC);
+    LOG_SEPARATOR('-', 30, LogCategory::SEMANTIC);
 }
 
 using namespace Mycelium::Scripting::Lang;
