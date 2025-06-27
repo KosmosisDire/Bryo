@@ -1,114 +1,93 @@
 cmake_minimum_required(VERSION 3.16)
-project(MyceliumUI CXX)
+project(MyceliumUI C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# When using vcpkg toolchain file, CMAKE_PREFIX_PATH is less critical for LLVM
-# as vcpkg handles finding the package.
-find_package(LLVM REQUIRED CONFIG)
+# Try to find LLVM, but make it optional for basic functionality
+find_package(LLVM CONFIG)
 
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} via vcpkg.")
-message(STATUS "LLVM Include Dirs: ${LLVM_INCLUDE_DIRS}")
+if(LLVM_FOUND)
+    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+    message(STATUS "LLVM Include Dirs: ${LLVM_INCLUDE_DIRS}")
+    include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+    set(LLVM_AVAILABLE TRUE)
+else()
+    message(STATUS "LLVM not found - building without JIT functionality")
+    set(LLVM_AVAILABLE FALSE)
+endif()
 
-include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} include)
+include_directories(include)
 
-set(LLVM_LINK_COMPONENTS
-    # --- Core components you likely already have ---
-    Support
-    Core
-    IRReader          # For reading IR (not strictly used in this JIT example but often included)
-    BitReader         # For reading bitcode
-    BitWriter         # For writing bitcode
-    AsmParser         # For parsing LLVM assembly
-    Analysis          # Various analyses
-    Object            # For object file handling
-    ProfileData
-    Symbolize
-    DebugInfoDWARF    # Or PDB/CodeView depending on what you need/vcpkg provides
-    DebugInfoMSF
-    Remarks
-    BitstreamReader
-    MCParser
-    MC                # Machine Code library
-    BinaryFormat
-    TargetParser      # For parsing target triples, etc.
-    Demangle
-    MCJIT             
-
-    # --- CRUCIAL JIT and Target Libraries to ADD ---
-    ExecutionEngine   # Core JIT infrastructure, ExecutionSession
-    OrcJIT            # For LLJIT itself
-    OrcTargetProcess  # Support for out-of-process JITing, often linked
-    OrcShared         # Shared ORC utilities
-    Target            # Generic Target abstractions
-    ipo               # Interprocedural optimizations (often used by JIT passes)
-
-    # --- Native Target Specific Libraries (X86 example) ---
-    # These are needed for InitializeNativeTarget(), etc.
-    X86CodeGen        # Code generation for X86
-    X86AsmParser      # Assembly parser for X86
-    X86Desc           # X86 Target Descriptors
-    X86Info           # X86 Target Information
-    # Add other targets if you need them, e.g., AArch64CodeGen, etc.
-    # For just InitializeNativeTarget(), you only need your host's target components.
-)
-
-
-llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
+if(LLVM_AVAILABLE)
+    # Check if we should use monolithic LLVM library
+    if(UNIX AND NOT APPLE)
+        # On Linux, check if component libraries exist
+        find_library(LLVM_CORE_LIB LLVMCore PATHS ${LLVM_LIBRARY_DIR} NO_DEFAULT_PATH)
+        if(NOT LLVM_CORE_LIB)
+            # Use monolithic library
+            message(STATUS "Using monolithic LLVM library")
+            set(LLVM_LIBS LLVM)
+        else()
+            # Use component libraries
+            set(LLVM_LINK_COMPONENTS
+                Core
+                Support
+                IRReader
+                Target
+                MC
+                CodeGen
+            )
+            llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
+            message(STATUS "Using LLVM component libraries: ${LLVM_LIBS}")
+        endif()
+    else()
+        # On Windows and macOS, try component libraries first
+        set(LLVM_LINK_COMPONENTS
+            Core
+            Support
+            IRReader
+            Target
+            MC
+            CodeGen
+        )
+        llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
+        if(NOT LLVM_LIBS)
+            message(STATUS "Using monolithic LLVM library")
+            set(LLVM_LIBS LLVM)
+        else()
+            message(STATUS "Using LLVM component libraries: ${LLVM_LIBS}")
+        endif()
+    endif()
+endif()
 
 set(SOURCE_FILES
     # AST Implementation
-    src/sharpie/ast/ast_base.cpp
-    src/sharpie/ast/primitive_structs.cpp
-    
-    # Parser System
-    src/sharpie/parser/parser_helpers.cpp
-    src/sharpie/parser/parser_lexer.cpp
-    src/sharpie/parser/parser_rules.cpp
-    src/sharpie/parser/script_parser.cpp
-    
-    # Compiler System
-    src/sharpie/compiler/scope_manager.cpp
-    src/sharpie/compiler/script_compiler.cpp
-    src/sharpie/compiler/codegen/declaration_codegen.cpp
-    src/sharpie/compiler/codegen/expression_codegen.cpp
-    src/sharpie/compiler/codegen/statement_codegen.cpp
-    src/sharpie/compiler/codegen/codegen_util.cpp
+    src/ast/ast.cpp
+    src/ast/ast_allocator.cpp
     
     # Semantic Analyzer
-    src/sharpie/semantic_analyzer/declaration_pass.cpp
-    src/sharpie/semantic_analyzer/semantic_analyzer.cpp
-    src/sharpie/semantic_analyzer/semantic_logging.cpp
-    src/sharpie/semantic_analyzer/symbol_table.cpp
-    src/sharpie/semantic_analyzer/uml_generator.cpp
-    src/sharpie/semantic_analyzer/usage_collection_pass.cpp
+    src/semantic/symbol_table.cpp
+    
+    # Code Generator
+    src/codegen/codegen.cpp
+    src/codegen/ir_builder.cpp
+    src/codegen/command_processor.cpp
     
     # Common Utilities
-    src/sharpie/common/logger.cpp
-    
-    # UI System
-    src/ui/ui_ast.cpp
-    src/ui/ui_lexer.cpp
-    src/ui/ui_parser.cpp
-    src/ui/ui_token.cpp
-    
-    # Hot Reload
-    src/hot_reload.cpp
-    
-    # Unified Execution System
-    src/script_execution_engine.cpp
-    src/test_runner.cpp
+    src/common/logger.cpp
 )
 
 set(RUNTIME_FILES
-    lib/mycelium_runtime.cpp
-    lib/runtime_binding.cpp
+    # lib/mycelium_runtime.cpp
+    # lib/runtime_binding.cpp
 )
 
 add_executable(MyceliumUI ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
 
-target_link_libraries(MyceliumUI PRIVATE ${LLVM_LIBS})
+if(LLVM_AVAILABLE)
+    target_link_libraries(MyceliumUI PRIVATE ${LLVM_LIBS})
+endif()
 
-target_include_directories(MyceliumUI PRIVATE "include/sharpie" "include/ui" "lib")
+target_include_directories(MyceliumUI PRIVATE "include" "lib")

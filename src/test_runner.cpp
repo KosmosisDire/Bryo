@@ -76,7 +76,7 @@ ExecutionResult UnifiedTestRunner::run_single_test(const std::string& file_path)
 }
 
 TestSuiteResult UnifiedTestRunner::run_test_suite() {
-    TestSuiteResult suite("Sharpie Test Suite");
+    TestSuiteResult suite("Myre Test Suite");
     auto start_time = std::chrono::high_resolution_clock::now();
     
     std::vector<std::string> test_files = find_test_files();

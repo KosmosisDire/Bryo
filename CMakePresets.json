@@ -41,6 +41,28 @@
             "environment": {
                 "VCPKG": "$env{VCPKG_ROOT}"
             }
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux - Debug",
+            "description": "Debug build for Linux using system packages.",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
+            }
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux - Release",
+            "description": "Release build for Linux using system packages.",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
+            }
         }
     ],
     "buildPresets": [
@@ -55,6 +77,18 @@
             "displayName": "Build (Release)",
             "configurePreset": "windows-vcpkg-ninja-release",
             "description": "Build the Release configuration."
+        },
+        {
+            "name": "linux-debug-build",
+            "displayName": "Linux Build (Debug)",
+            "configurePreset": "linux-debug",
+            "description": "Build the Debug configuration on Linux."
+        },
+        {
+            "name": "linux-release-build",
+            "displayName": "Linux Build (Release)",
+            "configurePreset": "linux-release",
+            "description": "Build the Release configuration on Linux."
         }
     ],
     "testPresets": [

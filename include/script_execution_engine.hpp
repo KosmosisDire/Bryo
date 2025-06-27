@@ -9,10 +9,10 @@
 #include <optional>
 #include <variant>
 
-#include "sharpie/script_ast.hpp"
-#include "sharpie/parser/script_parser.hpp"
-#include "sharpie/compiler/script_compiler.hpp"
-#include "sharpie/common/logger.hpp"
+#include "script_ast.hpp"
+#include "parser/script_parser.hpp"
+#include "compiler/script_compiler.hpp"
+#include "common/logger.hpp"
 
 namespace Mycelium::Execution {
     enum class ExecutionPhase {
