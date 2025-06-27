@@ -11,7 +11,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/Support/raw_ostream.h"
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
 CommandProcessor::CommandProcessor(const std::string& module_name) 
     : current_function_(nullptr), current_block_(nullptr) {
@@ -273,4 +273,4 @@ bool CommandProcessor::verify_module() {
     return is_valid;
 }
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

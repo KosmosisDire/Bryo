@@ -3,7 +3,7 @@
 #include <vector>
 #include <unordered_map>
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
 class IRBuilder {
 private:
@@ -54,4 +54,4 @@ public:
     void dump_commands() const;
 };
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

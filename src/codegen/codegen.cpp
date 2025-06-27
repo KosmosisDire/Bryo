@@ -1,14 +1,15 @@
 #include "codegen/codegen.hpp"
 #include "codegen/command_processor.hpp"
+#include "ast/ast_rtti.hpp"
 #include <iostream>
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
-CodeGenerator::CodeGenerator(semantic::SymbolTable& table) 
+CodeGenerator::CodeGenerator(SymbolTable& table) 
     : symbol_table_(table), current_value_(ValueRef::invalid()) {
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::CompilationUnitNode* node) {
+void CodeGenerator::visit(CompilationUnitNode* node) {
     if (!node) return;
     
     std::cout << "CompilationUnitNode: Found " << node->statements.size << " statements" << std::endl;
@@ -16,13 +17,14 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::CompilationUnitNode* node) 
     // Visit all statements in the compilation unit
     for (int i = 0; i < node->statements.size; ++i) {
         auto* stmt = node->statements[i];
-        std::cout << "Processing statement " << i << " of type: " << stmt->typeId << std::endl;
+        
+        std::cout << "Processing statement " << i << " of type: " << get_node_type_name(stmt) << " (ID " << (int)stmt->typeId << ")" << std::endl;
         
         // Only process function declarations for now
-        if (stmt->is_a<Mycelium::Scripting::Lang::FunctionDeclarationNode>()) {
+        if (stmt->is_a<FunctionDeclarationNode>()) {
             std::cout << "Found FunctionDeclarationNode at index " << i << std::endl;
             stmt->accept(this);
-        } else if (stmt->is_a<Mycelium::Scripting::Lang::ClassDeclarationNode>()) {
+        } else if (stmt->is_a<ClassDeclarationNode>()) {
             std::cout << "Skipping ClassDeclarationNode at index " << i << std::endl;
         } else {
             std::cout << "Processing other statement type at index " << i << std::endl;
@@ -31,18 +33,18 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::CompilationUnitNode* node) 
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::LiteralExpressionNode* node) {
+void CodeGenerator::visit(LiteralExpressionNode* node) {
     if (!node || !ir_builder_ || !node->token) return;
     
     // Handle different literal types
     switch (node->kind) {
-        case Mycelium::Scripting::Lang::LiteralKind::Integer: {
+        case LiteralKind::Integer: {
             std::string token_text = std::string(node->token->text);
             int32_t value = std::stoi(token_text);
             current_value_ = ir_builder_->const_i32(value);
             break;
         }
-        case Mycelium::Scripting::Lang::LiteralKind::Boolean: {
+        case LiteralKind::Boolean: {
             std::string token_text = std::string(node->token->text);
             bool value = (token_text == "true");
             current_value_ = ir_builder_->const_bool(value);
@@ -55,7 +57,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::LiteralExpressionNode* node
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::BinaryExpressionNode* node) {
+void CodeGenerator::visit(BinaryExpressionNode* node) {
     if (!node || !ir_builder_) return;
     
     // Visit left operand
@@ -68,16 +70,16 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::BinaryExpressionNode* node)
     
     // Generate the binary operation
     switch (node->opKind) {
-        case Mycelium::Scripting::Lang::BinaryOperatorKind::Add:
+        case BinaryOperatorKind::Add:
             current_value_ = ir_builder_->add(lhs, rhs);
             break;
-        case Mycelium::Scripting::Lang::BinaryOperatorKind::Subtract:
+        case BinaryOperatorKind::Subtract:
             current_value_ = ir_builder_->sub(lhs, rhs);
             break;
-        case Mycelium::Scripting::Lang::BinaryOperatorKind::Multiply:
+        case BinaryOperatorKind::Multiply:
             current_value_ = ir_builder_->mul(lhs, rhs);
             break;
-        case Mycelium::Scripting::Lang::BinaryOperatorKind::Divide:
+        case BinaryOperatorKind::Divide:
             current_value_ = ir_builder_->div(lhs, rhs);
             break;
         default:
@@ -87,7 +89,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::BinaryExpressionNode* node)
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::LocalVariableDeclarationNode* node) {
+void CodeGenerator::visit(LocalVariableDeclarationNode* node) {
     if (!node || !ir_builder_) return;
     
     // Process all variable declarators in this statement
@@ -112,7 +114,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::LocalVariableDeclarationNod
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::IdentifierExpressionNode* node) {
+void CodeGenerator::visit(IdentifierExpressionNode* node) {
     if (!node || !ir_builder_ || !node->identifier) return;
     
     // Look up the variable in our local variables
@@ -127,7 +129,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::IdentifierExpressionNode* n
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::ReturnStatementNode* node) {
+void CodeGenerator::visit(ReturnStatementNode* node) {
     if (!node || !ir_builder_) return;
     
     if (node->expression) {
@@ -142,7 +144,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::ReturnStatementNode* node) 
     }
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::FunctionDeclarationNode* node) {
+void CodeGenerator::visit(FunctionDeclarationNode* node) {
     if (!node || !ir_builder_) {
         std::cout << "FunctionDeclarationNode: null node or null builder" << std::endl;
         return;
@@ -185,7 +187,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::FunctionDeclarationNode* no
     ir_builder_->function_end();
 }
 
-void CodeGenerator::visit(Mycelium::Scripting::Lang::BlockStatementNode* node) {
+void CodeGenerator::visit(BlockStatementNode* node) {
     if (!node) return;
     
     // Visit all statements in the block
@@ -194,7 +196,7 @@ void CodeGenerator::visit(Mycelium::Scripting::Lang::BlockStatementNode* node) {
     }
 }
 
-void CodeGenerator::generate_code(Mycelium::Scripting::Lang::CompilationUnitNode* root) {
+void CodeGenerator::generate_code(CompilationUnitNode* root) {
     if (!root) {
         std::cout << "CodeGenerator: No AST root provided" << std::endl;
         return;
@@ -227,4 +229,4 @@ void CodeGenerator::generate_code(Mycelium::Scripting::Lang::CompilationUnitNode
     std::cout << "CodeGenerator: Code generation complete" << std::endl;
 }
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

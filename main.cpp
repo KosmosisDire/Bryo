@@ -353,8 +353,8 @@ int main()
     // 5. Build symbol table from AST
     std::cout << "Building symbol table from AST:" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
-    semantic::SymbolTable symbol_table;
-    semantic::build_symbol_table(symbol_table, compilation_unit);
+    SymbolTable symbol_table;
+    build_symbol_table(symbol_table, compilation_unit);
     symbol_table.print_symbol_table();
     std::cout << "----------------------------------------\n" << std::endl;
 
@@ -389,7 +389,7 @@ int main()
     // 7. Test code generation
     std::cout << "Testing code generation:" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
-    codegen::CodeGenerator code_gen(symbol_table);
+    CodeGenerator code_gen(symbol_table);
     code_gen.generate_code(compilation_unit);
     std::cout << "----------------------------------------\n" << std::endl;
 

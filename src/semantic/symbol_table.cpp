@@ -4,7 +4,7 @@
 #include <iostream>
 #include <iomanip>
 
-namespace semantic {
+namespace Mycelium::Scripting::Lang {
 
 SymbolTable::SymbolTable() : building_scope_level(0) {
     // Create global scope
@@ -407,4 +407,4 @@ void build_symbol_table(SymbolTable& table, CompilationUnitNode* ast) {
     builder.build_from_ast(ast);
 }
 
-} // namespace semantic
+} // namespace Mycelium::Scripting::Lang

@@ -327,4 +327,20 @@ namespace Mycelium::Scripting::Lang
     
     // ... implementations for other to_string functions ...
 
+    // --- RTTI Utility Function Implementations ---
+
+    const char* get_type_name_from_id(uint8_t type_id) {
+        if (type_id < g_ordered_type_infos.size()) {
+            return g_ordered_type_infos[type_id]->name;
+        }
+        return "UnknownType";
+    }
+
+    const char* get_node_type_name(const AstNode* node) {
+        if (!node) {
+            return "NullNode";
+        }
+        return get_type_name_from_id(node->typeId);
+    }
+
 } // namespace Mycelium::Scripting::Lang

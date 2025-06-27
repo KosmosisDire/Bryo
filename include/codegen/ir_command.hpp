@@ -4,7 +4,7 @@
 #include <string>
 #include <cstdint>
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
 // Type-safe operations
 enum class Op {
@@ -111,4 +111,4 @@ struct Command {
         : op(operation), result(res), args(std::move(arguments)) {}
 };
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

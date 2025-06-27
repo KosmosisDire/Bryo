@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-namespace semantic {
+namespace Mycelium::Scripting::Lang {
 
 enum class SymbolType {
     VARIABLE,
@@ -84,14 +84,9 @@ public:
     void print_navigation_state() const;
 };
 
-} // namespace semantic
+// Forward declaration
+struct CompilationUnitNode;
 
-namespace Mycelium::Scripting::Lang {
-    struct CompilationUnitNode;
-}
+void build_symbol_table(SymbolTable& table, CompilationUnitNode* ast);
 
-namespace semantic {
-
-void build_symbol_table(SymbolTable& table, Mycelium::Scripting::Lang::CompilationUnitNode* ast);
-
-} // namespace semantic
+} // namespace Mycelium::Scripting::Lang

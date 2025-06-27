@@ -1,7 +1,7 @@
 #include "codegen/ir_builder.hpp"
 #include <iostream>
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
 IRBuilder::IRBuilder() : next_id_(1), ignore_writes_(false) {
 }
@@ -195,4 +195,4 @@ void IRBuilder::dump_commands() const {
     }
 }
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

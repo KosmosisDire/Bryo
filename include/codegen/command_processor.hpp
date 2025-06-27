@@ -17,7 +17,7 @@ namespace llvm {
     class BasicBlock;
 }
 
-namespace codegen {
+namespace Mycelium::Scripting::Lang {
 
 class CommandProcessor {
 private:
@@ -54,4 +54,4 @@ public:
     bool verify_module();
 };
 
-} // namespace codegen
+} // namespace Mycelium::Scripting::Lang

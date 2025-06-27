@@ -81,4 +81,10 @@ namespace Mycelium::Scripting::Lang
     template <typename T>
     T* node_dyn_cast_exact(AstNode* node);
 
+    // Get human-readable type name from AST node
+    const char* get_node_type_name(const AstNode* node);
+
+    // Get human-readable type name from type ID
+    const char* get_type_name_from_id(uint8_t type_id);
+
 } // namespace Mycelium::Scripting::Lang
