@@ -249,10 +249,12 @@ private:
     void visit_declaration(DeclarationNode* node) {
         if (!node) return;
         
-        if (auto class_decl = node->as<ClassDeclarationNode>()) {
-            visit_class_declaration(class_decl);
-        } else if (auto struct_decl = node->as<StructDeclarationNode>()) {
-            visit_struct_declaration(struct_decl);
+        if (auto type_decl = node->as<TypeDeclarationNode>()) {
+            visit_type_declaration(type_decl);
+        } else if (auto interface_decl = node->as<InterfaceDeclarationNode>()) {
+            visit_interface_declaration(interface_decl);
+        } else if (auto enum_decl = node->as<EnumDeclarationNode>()) {
+            visit_enum_declaration(enum_decl);
         } else if (auto func_decl = node->as<FunctionDeclarationNode>()) {
             visit_function_declaration(func_decl);
         } else if (auto field_decl = node->as<FieldDeclarationNode>()) {
@@ -264,11 +266,19 @@ private:
         }
     }
     
-    void visit_class_declaration(ClassDeclarationNode* node) {
-        std::string class_name = std::string(node->name->name);
-        symbol_table.declare_symbol(class_name, SymbolType::CLASS, "class");
+    void visit_type_declaration(TypeDeclarationNode* node) {
+        std::string type_name = std::string(node->name->name);
+        // Check modifiers to determine if it's a ref type (class) or value type (struct)
+        bool is_ref_type = false;
+        for (int i = 0; i < node->modifiers.size; i++) {
+            if (node->modifiers.values[i] == ModifierKind::Ref) {
+                is_ref_type = true;
+                break;
+            }
+        }
+        symbol_table.declare_symbol(type_name, SymbolType::CLASS, is_ref_type ? "ref type" : "type");
         
-        symbol_table.enter_named_scope(class_name);
+        symbol_table.enter_named_scope(type_name);
         
         for (int i = 0; i < node->members.size; i++) {
             visit_declaration(node->members.values[i]);
@@ -277,14 +287,36 @@ private:
         symbol_table.exit_scope();
     }
     
-    void visit_struct_declaration(StructDeclarationNode* node) {
-        std::string struct_name = std::string(node->name->name);
-        symbol_table.declare_symbol(struct_name, SymbolType::CLASS, "struct");
+    void visit_interface_declaration(InterfaceDeclarationNode* node) {
+        std::string interface_name = std::string(node->name->name);
+        symbol_table.declare_symbol(interface_name, SymbolType::CLASS, "interface");
         
-        symbol_table.enter_named_scope(struct_name);
+        symbol_table.enter_named_scope(interface_name);
         
         for (int i = 0; i < node->members.size; i++) {
             visit_declaration(node->members.values[i]);
+        }
+        
+        symbol_table.exit_scope();
+    }
+    
+    void visit_enum_declaration(EnumDeclarationNode* node) {
+        std::string enum_name = std::string(node->name->name);
+        symbol_table.declare_symbol(enum_name, SymbolType::CLASS, "enum");
+        
+        symbol_table.enter_named_scope(enum_name);
+        
+        // Handle enum cases
+        for (int i = 0; i < node->cases.size; i++) {
+            if (auto case_node = node->cases.values[i]) {
+                std::string case_name = std::string(case_node->name->name);
+                symbol_table.declare_symbol(case_name, SymbolType::VARIABLE, "enum case");
+            }
+        }
+        
+        // Handle enum methods
+        for (int i = 0; i < node->methods.size; i++) {
+            visit_function_declaration(node->methods.values[i]);
         }
         
         symbol_table.exit_scope();
@@ -316,7 +348,12 @@ private:
     
     void visit_field_declaration(FieldDeclarationNode* node) {
         std::string field_type = get_type_string(node->type);
-        symbol_table.declare_symbol(std::string(node->name->name), SymbolType::VARIABLE, field_type);
+        // Handle multiple field names (x, y, z: type)
+        for (int i = 0; i < node->names.size; i++) {
+            if (node->names.values[i]) {
+                symbol_table.declare_symbol(std::string(node->names.values[i]->name), SymbolType::VARIABLE, field_type);
+            }
+        }
     }
     
     void visit_variable_declaration(VariableDeclarationNode* node) {

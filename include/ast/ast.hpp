@@ -53,8 +53,6 @@ namespace Mycelium::Scripting::Lang
     struct NamespaceDeclarationNode;
     struct UsingDirectiveNode;
     struct TypeDeclarationNode;
-    struct ClassDeclarationNode;
-    struct StructDeclarationNode;
     struct InterfaceDeclarationNode;
     struct EnumDeclarationNode;
     struct MemberDeclarationNode;
@@ -72,6 +70,33 @@ namespace Mycelium::Scripting::Lang
     struct ArrayTypeNameNode;
     struct GenericTypeNameNode;
     struct GenericParameterNode;
+
+    // Match Expressions and Patterns
+    struct MatchExpressionNode;
+    struct MatchArmNode;
+    struct MatchPatternNode;
+    struct EnumPatternNode;
+    struct RangePatternNode;
+    struct ComparisonPatternNode;
+    struct WildcardPatternNode;
+    struct LiteralPatternNode;
+
+    // Properties
+    struct PropertyDeclarationNode;
+    struct PropertyAccessorNode;
+
+    // Constructor
+    struct ConstructorDeclarationNode;
+
+    // Enum Cases
+    struct EnumCaseNode;
+
+    // Additional Expressions
+    struct ConditionalExpressionNode;
+    struct RangeExpressionNode;
+    struct EnumMemberExpressionNode;
+    struct FieldKeywordExpressionNode;
+    struct ValueKeywordExpressionNode;
 
 
     // --- SizedArray Utility ---
@@ -128,6 +153,12 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(IndexerExpressionNode* node);
         virtual void visit(TypeOfExpressionNode* node);
         virtual void visit(SizeOfExpressionNode* node);
+        virtual void visit(MatchExpressionNode* node);
+        virtual void visit(ConditionalExpressionNode* node);
+        virtual void visit(RangeExpressionNode* node);
+        virtual void visit(EnumMemberExpressionNode* node);
+        virtual void visit(FieldKeywordExpressionNode* node);
+        virtual void visit(ValueKeywordExpressionNode* node);
         
         // Statements
         virtual void visit(StatementNode* node);
@@ -147,8 +178,6 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(NamespaceDeclarationNode* node);
         virtual void visit(UsingDirectiveNode* node);
         virtual void visit(TypeDeclarationNode* node);
-        virtual void visit(ClassDeclarationNode* node);
-        virtual void visit(StructDeclarationNode* node);
         virtual void visit(InterfaceDeclarationNode* node);
         virtual void visit(EnumDeclarationNode* node);
         virtual void visit(MemberDeclarationNode* node);
@@ -157,6 +186,19 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(ParameterNode* node);
         virtual void visit(VariableDeclarationNode* node);
         virtual void visit(GenericParameterNode* node);
+        virtual void visit(PropertyDeclarationNode* node);
+        virtual void visit(PropertyAccessorNode* node);
+        virtual void visit(ConstructorDeclarationNode* node);
+        virtual void visit(EnumCaseNode* node);
+        
+        // Match Patterns
+        virtual void visit(MatchArmNode* node);
+        virtual void visit(MatchPatternNode* node);
+        virtual void visit(EnumPatternNode* node);
+        virtual void visit(RangePatternNode* node);
+        virtual void visit(ComparisonPatternNode* node);
+        virtual void visit(WildcardPatternNode* node);
+        virtual void visit(LiteralPatternNode* node);
         
         // Types
         virtual void visit(TypeNameNode* node);
@@ -329,6 +371,55 @@ namespace Mycelium::Scripting::Lang
         TokenNode* closeParen;
     };
 
+    struct MatchExpressionNode : ExpressionNode
+    {
+        AST_TYPE(MatchExpressionNode, ExpressionNode)
+        TokenNode* matchKeyword;
+        TokenNode* openParen;
+        ExpressionNode* expression;
+        TokenNode* closeParen;
+        TokenNode* openBrace;
+        SizedArray<MatchArmNode*> arms;
+        TokenNode* closeBrace;
+    };
+
+    struct ConditionalExpressionNode : ExpressionNode
+    {
+        AST_TYPE(ConditionalExpressionNode, ExpressionNode)
+        ExpressionNode* condition;
+        TokenNode* question;
+        ExpressionNode* whenTrue;
+        TokenNode* colon;
+        ExpressionNode* whenFalse;
+    };
+
+    struct RangeExpressionNode : ExpressionNode
+    {
+        AST_TYPE(RangeExpressionNode, ExpressionNode)
+        ExpressionNode* start;
+        TokenNode* rangeOp; // .. or ..=
+        ExpressionNode* end;
+    };
+
+    struct EnumMemberExpressionNode : ExpressionNode
+    {
+        AST_TYPE(EnumMemberExpressionNode, ExpressionNode)
+        TokenNode* dot;
+        IdentifierNode* memberName;
+    };
+
+    struct FieldKeywordExpressionNode : ExpressionNode
+    {
+        AST_TYPE(FieldKeywordExpressionNode, ExpressionNode)
+        TokenNode* fieldKeyword;
+    };
+
+    struct ValueKeywordExpressionNode : ExpressionNode
+    {
+        AST_TYPE(ValueKeywordExpressionNode, ExpressionNode)
+        TokenNode* valueKeyword;
+    };
+
     // --- Statements ---
     struct StatementNode : AstNode { AST_TYPE(StatementNode, AstNode) };
 
@@ -423,7 +514,7 @@ namespace Mycelium::Scripting::Lang
     {
         AST_TYPE(QualifiedTypeNameNode, TypeNameNode)
         TypeNameNode* left;
-        TokenNode* colonColonToken;
+        TokenNode* dotToken;
         IdentifierNode* right;
     };
 
@@ -472,9 +563,11 @@ namespace Mycelium::Scripting::Lang
     struct VariableDeclarationNode : DeclarationNode
     {
         AST_TYPE(VariableDeclarationNode, DeclarationNode)
-        TypeNameNode* type;
-        TokenNode* equalsToken; // Optional, can be null
-        ExpressionNode* initializer; // Optional, can be null
+        // name inherited from DeclarationNode
+        TokenNode* colon; // optional
+        TypeNameNode* type; // optional for type inference
+        TokenNode* equalsToken;
+        ExpressionNode* initializer;
     };
 
     struct LocalVariableDeclarationNode : StatementNode
@@ -494,11 +587,11 @@ namespace Mycelium::Scripting::Lang
     struct FieldDeclarationNode : MemberDeclarationNode
     {
         AST_TYPE(FieldDeclarationNode, MemberDeclarationNode)
+        SizedArray<IdentifierNode*> names; // x, y, z: type syntax
+        TokenNode* colon;
         TypeNameNode* type;
-        // The 'name' is inherited from DeclarationNode.
-        TokenNode* equalsToken;
-        ExpressionNode* initializer;
-        TokenNode* semicolon;
+        TokenNode* equalsToken; // optional
+        ExpressionNode* initializer; // optional
     };
 
     struct GenericParameterNode : DeclarationNode
@@ -510,35 +603,49 @@ namespace Mycelium::Scripting::Lang
     struct FunctionDeclarationNode : MemberDeclarationNode
     {
         AST_TYPE(FunctionDeclarationNode, MemberDeclarationNode)
-        TypeNameNode* returnType; // Can be null for constructors
-        TokenNode* openGeneric; // <
-        SizedArray<GenericParameterNode*> genericParameters;
-        TokenNode* closeGeneric; // >
+        TokenNode* fnKeyword;
+        // name inherited from DeclarationNode
         TokenNode* openParen;
         SizedArray<ParameterNode*> parameters;
         TokenNode* closeParen;
-        BlockStatementNode* body; // Can be null for extern/interface methods
-        TokenNode* semicolon; // For methods without a body
+        // modifiers inherited from DeclarationNode
+        TokenNode* arrow; // optional -> for return type
+        TypeNameNode* returnType; // optional, after arrow
+        BlockStatementNode* body; // can be null for abstract
+        TokenNode* semicolon; // for abstract functions
     };
 
     struct TypeDeclarationNode : DeclarationNode
     {
         AST_TYPE(TypeDeclarationNode, DeclarationNode)
-        TokenNode* keyword; // class, struct, etc.
-        TokenNode* openGeneric; // <
-        SizedArray<GenericParameterNode*> genericParameters;
-        TokenNode* closeGeneric; // >
-        TokenNode* baseListColon;
-        SizedArray<TypeNameNode*> baseTypes;
+        TokenNode* typeKeyword; // always "type"
+        // modifiers array has ref/static from DeclarationNode
+        // name inherited from DeclarationNode
         TokenNode* openBrace;
         SizedArray<MemberDeclarationNode*> members;
         TokenNode* closeBrace;
     };
 
-    struct ClassDeclarationNode : TypeDeclarationNode { AST_TYPE(ClassDeclarationNode, TypeDeclarationNode) };
-    struct StructDeclarationNode : TypeDeclarationNode { AST_TYPE(StructDeclarationNode, TypeDeclarationNode) };
-    struct InterfaceDeclarationNode : TypeDeclarationNode { AST_TYPE(InterfaceDeclarationNode, TypeDeclarationNode) };
-    struct EnumDeclarationNode : TypeDeclarationNode { AST_TYPE(EnumDeclarationNode, TypeDeclarationNode) }; // Members will be FieldDeclarations with initializers
+    struct InterfaceDeclarationNode : DeclarationNode
+    {
+        AST_TYPE(InterfaceDeclarationNode, DeclarationNode)
+        TokenNode* interfaceKeyword;
+        // name inherited from DeclarationNode
+        TokenNode* openBrace;
+        SizedArray<MemberDeclarationNode*> members;
+        TokenNode* closeBrace;
+    };
+
+    struct EnumDeclarationNode : DeclarationNode
+    {
+        AST_TYPE(EnumDeclarationNode, DeclarationNode)
+        TokenNode* enumKeyword;
+        // name inherited from DeclarationNode
+        TokenNode* openBrace;
+        SizedArray<EnumCaseNode*> cases;
+        SizedArray<FunctionDeclarationNode*> methods; // enums can have methods
+        TokenNode* closeBrace;
+    };
 
     struct UsingDirectiveNode : StatementNode
     {
@@ -560,6 +667,102 @@ namespace Mycelium::Scripting::Lang
     {
         AST_TYPE(CompilationUnitNode, AstNode)
         SizedArray<StatementNode*> statements; // Can contain usings, namespace, function, and class decls
+    };
+
+    // --- Match Patterns ---
+    struct MatchArmNode : AstNode
+    {
+        AST_TYPE(MatchArmNode, AstNode)
+        MatchPatternNode* pattern;
+        TokenNode* arrow; // =>
+        ExpressionNode* result; // can be expression or block
+        TokenNode* comma; // optional trailing comma
+    };
+
+    struct MatchPatternNode : AstNode 
+    { 
+        AST_TYPE(MatchPatternNode, AstNode) 
+    };
+
+    struct EnumPatternNode : MatchPatternNode
+    {
+        AST_TYPE(EnumPatternNode, MatchPatternNode)
+        TokenNode* dot;
+        IdentifierNode* enumCase;
+    };
+
+    struct RangePatternNode : MatchPatternNode
+    {
+        AST_TYPE(RangePatternNode, MatchPatternNode)
+        ExpressionNode* start; // optional for open ranges
+        TokenNode* rangeOp; // .. or ..=
+        ExpressionNode* end; // optional for open ranges
+    };
+
+    struct ComparisonPatternNode : MatchPatternNode
+    {
+        AST_TYPE(ComparisonPatternNode, MatchPatternNode)
+        TokenNode* comparisonOp; // <=, >=, <, >
+        ExpressionNode* value;
+    };
+
+    struct WildcardPatternNode : MatchPatternNode
+    {
+        AST_TYPE(WildcardPatternNode, MatchPatternNode)
+        TokenNode* underscore;
+    };
+
+    struct LiteralPatternNode : MatchPatternNode
+    {
+        AST_TYPE(LiteralPatternNode, MatchPatternNode)
+        LiteralExpressionNode* literal;
+    };
+
+    // --- Properties ---
+    struct PropertyDeclarationNode : MemberDeclarationNode
+    {
+        AST_TYPE(PropertyDeclarationNode, MemberDeclarationNode)
+        // name inherited from DeclarationNode
+        TokenNode* colon;
+        TokenNode* propKeyword; // optional for full syntax
+        TypeNameNode* type;
+        TokenNode* arrow; // optional for expression-bodied getter
+        ExpressionNode* getterExpression; // for => syntax
+        TokenNode* openBrace; // optional for accessor block
+        SizedArray<PropertyAccessorNode*> accessors;
+        TokenNode* closeBrace; // optional
+    };
+
+    struct PropertyAccessorNode : AstNode
+    {
+        AST_TYPE(PropertyAccessorNode, AstNode)
+        SizedArray<ModifierKind> modifiers; // public, protected, etc.
+        TokenNode* accessorKeyword; // "get" or "set"
+        TokenNode* arrow; // optional =>
+        ExpressionNode* expression; // for => field
+        BlockStatementNode* body; // for { } syntax
+    };
+
+    // --- Constructor ---
+    struct ConstructorDeclarationNode : MemberDeclarationNode
+    {
+        AST_TYPE(ConstructorDeclarationNode, MemberDeclarationNode)
+        TokenNode* newKeyword;
+        TokenNode* openParen;
+        SizedArray<ParameterNode*> parameters;
+        TokenNode* closeParen;
+        BlockStatementNode* body;
+    };
+
+    // --- Enum Cases ---
+    struct EnumCaseNode : MemberDeclarationNode
+    {
+        AST_TYPE(EnumCaseNode, MemberDeclarationNode)
+        TokenNode* caseKeyword;
+        // name inherited from DeclarationNode
+        TokenNode* openParen; // optional
+        SizedArray<ParameterNode*> associatedData; // for Square(x, y, w, h)
+        TokenNode* closeParen; // optional
     };
 
 

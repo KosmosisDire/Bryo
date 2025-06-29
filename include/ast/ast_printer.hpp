@@ -52,15 +52,9 @@ public:
         indentLevel--;
     }
 
-    void visit(ClassDeclarationNode* node) override {
+    void visit(TypeDeclarationNode* node) override {
         print_node_header(node, std::string(node->name->name));
         indentLevel++;
-        if (!node->baseTypes.empty()) {
-            LOG_INFO(get_indent() + "BaseTypes:", LogCategory::AST);
-            indentLevel++;
-            for(auto base_type : node->baseTypes) base_type->accept(this);
-            indentLevel--;
-        }
         if (!node->members.empty()) {
             LOG_INFO(get_indent() + "Members:", LogCategory::AST);
             indentLevel++;
@@ -71,7 +65,13 @@ public:
     }
 
     void visit(FieldDeclarationNode* node) override {
-        print_node_header(node, std::string(node->name->name));
+        // Handle multiple field names
+        std::string field_names;
+        for (int i = 0; i < node->names.size; i++) {
+            if (i > 0) field_names += ", ";
+            field_names += std::string(node->names.values[i]->name);
+        }
+        print_node_header(node, field_names);
         indentLevel++;
         LOG_INFO(get_indent() + "Type:", LogCategory::AST);
         indentLevel++;

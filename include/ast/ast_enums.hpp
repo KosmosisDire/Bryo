@@ -12,12 +12,13 @@ namespace Mycelium::Scripting::Lang
         // Keywords
         Abstract, As, Asm, Base, Bool, Break, Byte, Case, Catch, Char,
         Class, Const, Continue, Default, Delegate, Delete, Do, Double,
-        Else, Enum, Extern, False, Finally, Float, For, Foreach, If,
-        Implicit, In, Int, Interface, Internal, Is, Long, Namespace,
-        New, Null, Operator, Out, Override, Params, Private, Protected,
-        Public, Readonly, Ref, Return, Sealed, Short, SizeOf, Static,
-        String, Struct, Switch, This, Throw, True, Try, TypeOf,
-        Uint, Ulong, Ushort, Using, Var, Virtual, Void, Volatile, While,
+        Else, Enum, Extern, False, Field, Finally, Float, Fn, For, Foreach,
+        Get, If, Implicit, In, Inline, Int, Interface, Internal, Is, Long,
+        Match, Mut, Namespace, New, Null, Open, Operator, Out, Override,
+        Params, Passdown, Private, Prop, Protected, Public, Readonly, Ref,
+        Return, Sealed, Set, Short, SizeOf, Static, String, Struct, Switch,
+        This, Throw, True, Try, Type, TypeOf, Uint, Ulong, Underscore,
+        Ushort, Using, Value, Var, Virtual, Void, Volatile, While,
 
         // Operators and Punctuation
         Assign,
@@ -73,6 +74,7 @@ namespace Mycelium::Scripting::Lang
         Arrow,
         FatArrow,
         DotDot,
+        DotDotEquals,
         ColonColon,
 
         // Literals and Identifiers
@@ -149,12 +151,15 @@ namespace Mycelium::Scripting::Lang
         Private,
         Protected,
         Static,
-        Mutable,
-        Reference,
+        Mut,
+        Ref,
         Virtual,
         Override,
         Abstract,
         Extern,
+        Open,
+        Passdown,
+        Inline,
     };
 
     enum class LiteralKind

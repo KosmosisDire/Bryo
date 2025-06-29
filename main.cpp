@@ -79,12 +79,12 @@ int main()
     
     // Console fields
     auto console_messageCount_field = allocator.alloc<FieldDeclarationNode>();
-    console_messageCount_field->name = create_identifier(allocator, "messageCount");
+    console_messageCount_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "messageCount")});
     console_messageCount_field->type = create_type_name(allocator, "i32");
-    console_messageCount_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mutable});
+    console_messageCount_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mut});
     
     auto console_doubleVar2_field = allocator.alloc<FieldDeclarationNode>();
-    console_doubleVar2_field->name = create_identifier(allocator, "doubleVar2");
+    console_doubleVar2_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "doubleVar2")});
     console_doubleVar2_field->type = create_type_name(allocator, "f64");
     auto double_literal_24 = allocator.alloc<LiteralExpressionNode>();
     double_literal_24->kind = LiteralKind::Double;
@@ -92,9 +92,9 @@ int main()
     console_doubleVar2_field->initializer = double_literal_24;
     
     auto console_lastMessage_field = allocator.alloc<FieldDeclarationNode>();
-    console_lastMessage_field->name = create_identifier(allocator, "lastMessage");
+    console_lastMessage_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "lastMessage")});
     console_lastMessage_field->type = create_type_name(allocator, "string");
-    console_lastMessage_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Mutable});
+    console_lastMessage_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Mut});
     
     // Console.Log method body
     auto print_call_expr = allocator.alloc<CallExpressionNode>();
@@ -127,6 +127,7 @@ int main()
     console_log_body->statements = create_sized_array<StatementNode*>(allocator, {print_call_stmt, increment_stmt, assign_stmt});
     
     auto console_log_method = allocator.alloc<FunctionDeclarationNode>();
+    console_log_method->fnKeyword = create_token(allocator, TokenKind::Fn, "fn");
     console_log_method->name = create_identifier(allocator, "Log");
     console_log_method->returnType = create_type_name(allocator, "void");
     console_log_method->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public});
@@ -144,15 +145,17 @@ int main()
     console_getLast_body->statements = create_sized_array<StatementNode*>(allocator, {return_lastMessage});
     
     auto console_getLast_method = allocator.alloc<FunctionDeclarationNode>();
+    console_getLast_method->fnKeyword = create_token(allocator, TokenKind::Fn, "fn");
     console_getLast_method->name = create_identifier(allocator, "GetLast");
     console_getLast_method->returnType = create_type_name(allocator, "string");
     console_getLast_method->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public});
     console_getLast_method->body = console_getLast_body;
     console_getLast_method->parameters = create_sized_array<ParameterNode*>(allocator, {});
     
-    auto console_class = allocator.alloc<ClassDeclarationNode>();
+    auto console_class = allocator.alloc<TypeDeclarationNode>();
     console_class->name = create_identifier(allocator, "Console");
     console_class->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Static});
+    console_class->typeKeyword = create_token(allocator, TokenKind::Type, "type");
     console_class->members = create_sized_array<MemberDeclarationNode*>(allocator, {
         (MemberDeclarationNode*)console_messageCount_field,
         (MemberDeclarationNode*)console_doubleVar2_field,
@@ -164,22 +167,23 @@ int main()
     // --- Vector3 type ---
     
     auto vector3_x_field = allocator.alloc<FieldDeclarationNode>();
-    vector3_x_field->name = create_identifier(allocator, "x");
+    vector3_x_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "x")});
     vector3_x_field->type = create_type_name(allocator, "f32");
-    vector3_x_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mutable});
+    vector3_x_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mut});
     
     auto vector3_y_field = allocator.alloc<FieldDeclarationNode>();
-    vector3_y_field->name = create_identifier(allocator, "y");
+    vector3_y_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "y")});
     vector3_y_field->type = create_type_name(allocator, "f32");
-    vector3_y_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mutable});
+    vector3_y_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mut});
     
     auto vector3_z_field = allocator.alloc<FieldDeclarationNode>();
-    vector3_z_field->name = create_identifier(allocator, "z");
+    vector3_z_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "z")});
     vector3_z_field->type = create_type_name(allocator, "f32");
-    vector3_z_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mutable});
+    vector3_z_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mut});
     
-    auto vector3_class = allocator.alloc<ClassDeclarationNode>();
+    auto vector3_class = allocator.alloc<TypeDeclarationNode>();
     vector3_class->name = create_identifier(allocator, "Vector3");
+    vector3_class->typeKeyword = create_token(allocator, TokenKind::Type, "type");
     vector3_class->members = create_sized_array<MemberDeclarationNode*>(allocator, {
         (MemberDeclarationNode*)vector3_x_field,
         (MemberDeclarationNode*)vector3_y_field,
@@ -189,16 +193,16 @@ int main()
     // --- Enemy ref type ---
     
     auto enemy_position_field = allocator.alloc<FieldDeclarationNode>();
-    enemy_position_field->name = create_identifier(allocator, "position");
+    enemy_position_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "position")});
     enemy_position_field->type = create_type_name(allocator, "Vector3");
-    enemy_position_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mutable});
+    enemy_position_field->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public, ModifierKind::Mut});
     
     auto enemy_attack_field = allocator.alloc<FieldDeclarationNode>();
-    enemy_attack_field->name = create_identifier(allocator, "attack");
+    enemy_attack_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "attack")});
     enemy_attack_field->type = create_type_name(allocator, "i32");
     
     auto enemy_hitChance_field = allocator.alloc<FieldDeclarationNode>();
-    enemy_hitChance_field->name = create_identifier(allocator, "hitChance");
+    enemy_hitChance_field->names = create_sized_array<IdentifierNode*>(allocator, {create_identifier(allocator, "hitChance")});
     enemy_hitChance_field->type = create_type_name(allocator, "f32");
     auto hitChance_literal = allocator.alloc<LiteralExpressionNode>();
     hitChance_literal->kind = LiteralKind::Float;
@@ -227,9 +231,8 @@ int main()
     auto enemy_ctor_body = allocator.alloc<BlockStatementNode>();
     enemy_ctor_body->statements = create_sized_array<StatementNode*>(allocator, {position_assign_stmt, attack_assign_stmt});
     
-    auto enemy_ctor = allocator.alloc<FunctionDeclarationNode>();
-    enemy_ctor->name = create_identifier(allocator, "constructor");
-    enemy_ctor->returnType = create_type_name(allocator, "void"); // Constructor return type
+    auto enemy_ctor = allocator.alloc<ConstructorDeclarationNode>();
+    enemy_ctor->newKeyword = create_token(allocator, TokenKind::New, "new");
     auto ctor_param1 = allocator.alloc<ParameterNode>();
     ctor_param1->name = create_identifier(allocator, "startPos");
     ctor_param1->type = create_type_name(allocator, "Vector3");
@@ -275,15 +278,17 @@ int main()
     getDamage_body->statements = create_sized_array<StatementNode*>(allocator, {if_stmt});
     
     auto enemy_getDamage_method = allocator.alloc<FunctionDeclarationNode>();
+    enemy_getDamage_method->fnKeyword = create_token(allocator, TokenKind::Fn, "fn");
     enemy_getDamage_method->name = create_identifier(allocator, "GetDamage");
     enemy_getDamage_method->returnType = create_type_name(allocator, "i32");
     enemy_getDamage_method->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Public});
     enemy_getDamage_method->body = getDamage_body;
     enemy_getDamage_method->parameters = create_sized_array<ParameterNode*>(allocator, {});
     
-    auto enemy_class = allocator.alloc<ClassDeclarationNode>();
+    auto enemy_class = allocator.alloc<TypeDeclarationNode>();
     enemy_class->name = create_identifier(allocator, "Enemy");
-    enemy_class->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Reference});
+    enemy_class->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Ref});
+    enemy_class->typeKeyword = create_token(allocator, TokenKind::Type, "type");
     enemy_class->members = create_sized_array<MemberDeclarationNode*>(allocator, {
         (MemberDeclarationNode*)enemy_position_field,
         (MemberDeclarationNode*)enemy_attack_field,
@@ -297,7 +302,7 @@ int main()
     auto running_var_decl = allocator.alloc<VariableDeclarationNode>();
     running_var_decl->name = create_identifier(allocator, "running");
     running_var_decl->type = create_type_name(allocator, "bool");
-    running_var_decl->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Mutable});
+    running_var_decl->modifiers = create_sized_array<ModifierKind>(allocator, {ModifierKind::Mut});
     auto true_literal = allocator.alloc<LiteralExpressionNode>();
     true_literal->kind = LiteralKind::Boolean;
     true_literal->token = create_token(allocator, TokenKind::True, "true");
@@ -330,6 +335,7 @@ int main()
     main_body->statements = create_sized_array<StatementNode*>(allocator, {running_decl_stmt, while_stmt, log_call_stmt});
     
     auto main_func = allocator.alloc<FunctionDeclarationNode>();
+    main_func->fnKeyword = create_token(allocator, TokenKind::Fn, "fn");
     main_func->name = create_identifier(allocator, "Main");
     main_func->returnType = create_type_name(allocator, "void");
     main_func->body = main_body;

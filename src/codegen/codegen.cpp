@@ -25,8 +25,8 @@ void CodeGenerator::visit(CompilationUnitNode* node) {
         if (stmt->is_a<FunctionDeclarationNode>()) {
             LOG_DEBUG("Found FunctionDeclarationNode at index " + std::to_string(i), LogCategory::CODEGEN);
             stmt->accept(this);
-        } else if (stmt->is_a<ClassDeclarationNode>()) {
-            LOG_DEBUG("Skipping ClassDeclarationNode at index " + std::to_string(i), LogCategory::CODEGEN);
+        } else if (stmt->is_a<TypeDeclarationNode>()) {
+            LOG_DEBUG("Skipping TypeDeclarationNode at index " + std::to_string(i), LogCategory::CODEGEN);
         } else {
             LOG_DEBUG("Processing other statement type at index " + std::to_string(i), LogCategory::CODEGEN);
             stmt->accept(this);
