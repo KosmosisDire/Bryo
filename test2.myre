@@ -1,36 +1,37 @@
 
-enum Shape
+enum Shape: public
 {
-    case None
-    case Square(int x, int y, int width, int height)
-    case Circle(int x, int y, int radius)
+    None
+    Square(i32 x, i32 y, i32 width, i32 height)
+    Circle(i32 x, i32 y, i32 radius)
 }
 
-enum Direction
+enum Direction: public
 {
-    case North
-    case East
-    case South
-    case West
+    North
+    East
+    South
+    West
 
     fn Opposite() public -> Direction
     {
-        match (this)
+        when (this)
         {
             .North => .South,
             .East =>
-            {
-                Console.Log("West")
-                return .West
-            },
+                {
+                    Console.Log("West")
+                    return .West
+                },
             .South => .North,
             .West => .East,
         }
     }
 }
 
-static type Console
+static type Console: public
 {
+    // members of a static class are implicitly static
 	messageCount: public mut i32
 	doubleVar1: f64 = 2.4
 	doubleVar2: f64 = 2.4
@@ -43,34 +44,68 @@ static type Console
 		lastMessage = msg
 	}
 	
-    // open functions can be overriden
-	fn GetLast() public open -> string
+    // virtual functions can be overriden
+	fn GetLast() public virtual -> string
 	{
 		return lastMessage
 	}
 }
 
-type Vector3
+type Vector3: public
 {
 	x, y, z: public mut f32
 
 	// An auto implemented constructor is provided if no constructor defined
 }
 
-type Health
+ref type MutableConstraint<T, U>
+{
+    value: public mut T
+
+    fn GetValue() public -> T
+    {
+        return value
+    }
+}
+
+ref type Observable<T>: public where T : ref type, Updateable, new(i32, i32)
+{
+    value: public mut T
+
+    // This is a simple observable that can be used to notify changes
+    fn NotifyChange() public
+    {
+        Console.Log("Value changed to: " + value.ToString())
+    }
+
+    fn GetValue() public -> T
+    {
+        return value
+    }
+}
+
+type Updateable: public
+{
+    // This is an interface that can be used to mark types that can be updated
+    fn Update(deltaTime: f32) public abstract
+}
+
+type Health: public abstract Updateable
 {
     // prop is used to declare a property with a getter and setter.
     // properties can use the field keyword to access a backing field.
     // the field keyword is optional, if not used no auto backing field is created and you must create your own field.
     // Although an auto backing field will be created is the default getter and setter are used.
-    health: prop u32
+    health: u32 = 100
     {
-        public get => field
-        protected set 
+        get: public => field
+        set: protected =>
         {
+            // value is a keyword that refers to the value being set
             if (value < 0)
             {
                 Console.Log("Health cannot be negative, setting to 0")
+                // field is a keyword that refers to the backing field
                 field = 0
             }
 
@@ -78,7 +113,29 @@ type Health
         }
     }
 
+    // you can also use default access modifiers for properties
+    // this will inherit access from the property declaration
+    // health: public mut u32 = 100
+    //     get => field
+    //     set =>
+    //     {
+    //         if (value < 0)
+    //         {
+    //             Console.Log("Health cannot be negative, setting to 0")
+    //             field = 0
+    //         }
+    //         field = value
+    //     }
+
+    // you can of course also use auto implemented properties
+    // health: public mut u32 = 100 {get set}
+    // or 
+    // health: mut u32 = 100 {get: public set: protected}
+
+    
+    
     // properties with only a getter can be creates with a simple arrow function
+    // the getter access level matches the level of the property
     isAlive: public bool => health > 0
 
     // or
@@ -88,24 +145,55 @@ type Health
     // }
     
 
-    maxHealth: public mut u32
+    maxHealth: public mut u32 = 100
 
-    // this function is open meaning it can be overridden in derived classes
-    // it is also passdown meaning that any derived class must explicity choose whether to inherit this implementation or define their own implementation
+    // this function is enforced meaning that any derived class must explicity choose whether to inherit this implementation or define their own implementation
     // This help to make sure that the user of a derived class is aware that this function exists and can choose to override it if needed.
-    fn TakeDamage(amount: u32) public open passdown
+    // This is basically just an abstract function with a default implementation.
+    fn TakeDamage(amount: u32) public enforced
     {
         health -= amount
     }
 
     // default implementations are not required. This means the derived class MUST implement this function.
+    // these can only be used in abstract classes.
     fn Heal(amount: u32) public abstract
+
+    // We do nothing by default, but force the derived class to implement this function
+    fn Update(deltaTime: f32) public enforced
+    {
+    }
+}
+
+// if I extends health, I must implement the Heal function or choose to inherit the default implementation
+type HealthWithRegeneration: public Health
+{
+    regenerationRate: public mut f32
+
+    // we must either implement a new TakeDamage function or choose to inherit the default implementation
+    // here we choose to inherit the existing implementation
+    // if we wanted to override it, we would use the override keyword
+    // since we kept the enforced keyword, anything that derives from this class must implement the TakeDamage function the same as here.
+    fn TakeDamage(amount: u32) public inherit enforced;
+
+    // here you can see we override the Heal function since it is abstract
+    fn Heal(amount: u32) public override
+    {
+        health += amount
+    }
+
+    // we can ommit the enforced function, to allow the derived class to silently inherit this new implementation
+    fn Update(deltaTime: f32) public
+    {
+        health += (regenerationRate * deltaTime)
+    }
 }
 
 // Ref types always passed by reference 
-ref type Enemy
+ref type Enemy: public
 {
-    health: public Health
+    enemies: public static mut List<Enemy> = new List<Enemy>()
+    health: public HealthWithRegeneration
 	position: public mut Vector3
 	attack: i32
 	hitChance: f32 = 0.5
@@ -114,26 +202,41 @@ ref type Enemy
 	{
 		position = startPos
 		attack = damage
+        enemies.Add(this)
 	}
   
-    fn GetDamage() public open passdown -> u32
+    fn GetDamage() public enforce -> u32
     {
-        PrivateFunc()
+        PrivateFunc(42, MutableConstraint<Shape, Health>(), (direction: Direction) =>
+        {
+            return when (direction)
+            {
+                .North => .Square(0, 0, 10, 10),
+                .East => .Circle(0, 0, 5),
+                .South => .Square(5, 5, 15, 15),
+                .West => .Circle(5, 5, 10),
+            }
+        })
+
+        // shorthand lambda
+        PrivateFunc(42, MutableConstraint<Shape, Health>(), d => .Square(0, 0, 10, 10))
+
 	    return Random.Chance(hitChance) ? attack : 0
     }
     
-    fn PrivateFunc()
+    fn PrivateFunc(param: i32, bigType: mut MutableConstraint<Shape, Health>, functionParam: fn(Direction) -> Shape) protected virtual Observable<Health>
     {
         Console.Log("This is a private function")
+        return Observable<Health>(health)
     }
 
-    fn PrintStatus() public open
+    fn PrintStatus() public virtual
     {
-        match (health)
+        when
         {
-            <= 0 => Console.Log("Enemy is dead"),
-            1..10 => Console.Log("Enemy is severely injured"),
-            11..50 => Console.Log("Enemy is injured"),
+            health <= 0 => Console.Log("Enemy is dead"),
+            health in 1..10 => Console.Log("Enemy is severely injured"),
+            health in 11..50 => Console.Log("Enemy is injured"),
             _ => Console.Log("Enemy is healthy"),
         }
     }
@@ -145,7 +248,81 @@ fn Main()
 	running: mut = true
 	newvar = "Hello there"
 	someVar: mut i32 = 5
-	
+    floatVar: f32 = 3.14
+    enemy: Enemy = new Enemy(Vector3(0, 0, 0), 10)
+
+    // this is invalid because enemy is not mut
+    // enemy = new Enemy(Vector3(1, 1, 1), 20)
+
+    // implicit type inference
+    enemy2: mut = new Enemy(Vector3(1, 1, 1), 20)
+
+    // valid because enemy2 is mut
+    enemy2 = new Enemy(Vector3(2, 2, 2), 30)
+
+    for (e: Enemy in Enemy.enemies)
+    {
+        e.PrintStatus()
+        Console.Log("Enemy damage: " + e.GetDamage().ToString())
+    }
+
+    // or type can be inferred
+	for (e in Enemy.enemies)
+    {
+        e.PrintStatus()
+        Console.Log("Enemy damage: " + e.GetDamage().ToString())
+    }
+
+    // for i in range
+    for (i: i32 in 0..10)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
+    // or type can be inferred
+    for (i in 0..10)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
+    // step by 2, "0..10 by 2" is an expression that creates a range from 0 to 10 with a step of 2
+    for (i in 0..10 by 2)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
+    // use a variable for range and with a float
+    for (i: f32 in 0.0..floatVar by 0.5)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
+    // type can still be inferred
+    for (i in 0..floatVar by 0.5)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
+    // subarray with a range
+    for (i in Enemy.enemies[0..2])
+    {
+        i.PrintStatus()
+        Console.Log("Enemy damage: " + i.GetDamage().ToString())
+    }
+
+    // subarray with a range
+    for (i in Enemy.enemies[5..10 by 2])
+    {
+        i.PrintStatus()
+        Console.Log("Enemy damage: " + i.GetDamage().ToString())
+    }
+
+    // and of course the conventional for loop
+    for (i: i32 = 0; i < 10; i++)
+    {
+        Console.Log("Index: " + i.ToString())
+    }
+
 	while (running)
     {
         someVar++

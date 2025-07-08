@@ -140,6 +140,12 @@ void Logger::log(LogLevel level, LogCategory category, const std::string& messag
     std::string category_str = category_to_string(category);
     std::string context_str = current_context_.empty() ? "" : "[" + current_context_ + "] ";
     
+    // If string capture mode is active, capture to string instead of normal output
+    if (string_capture_mode_ && should_log(level, category, true)) {
+        captured_output_ << message << "\n";
+        return; // Don't output to console/file during capture
+    }
+    
     // Log to file if initialized and level is sufficient
     if (initialized_ && should_log(level, category, false)) {
         log_file_ << timestamp << " " << level_str << " [" << category_str << "] " 
@@ -296,6 +302,20 @@ void Logger::flush() {
     }
     std::cout.flush();
     std::cerr.flush();
+}
+
+// String capture methods
+void Logger::begin_string_capture() {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    string_capture_mode_ = true;
+    captured_output_.str("");  // Clear any previous capture
+    captured_output_.clear();  // Clear error flags
+}
+
+std::string Logger::end_string_capture() {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    string_capture_mode_ = false;
+    return captured_output_.str();
 }
 
 void Logger::shutdown() {

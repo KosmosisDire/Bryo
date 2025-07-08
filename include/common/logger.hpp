@@ -95,10 +95,14 @@ private:
     bool colors_enabled_;
     bool test_mode_;
     std::string current_context_;
+    
+    // String capture mode
+    bool string_capture_mode_;
+    std::stringstream captured_output_;
 
     Logger() : min_console_level_(LogLevel::INFO), min_file_level_(LogLevel::TRACE), 
                enabled_categories_(LogCategory::ALL), initialized_(false), 
-               colors_enabled_(true), test_mode_(false) {}
+               colors_enabled_(true), test_mode_(false), string_capture_mode_(false) {}
 
     std::string get_timestamp() const;
     std::string level_to_string(LogLevel level) const;
@@ -151,6 +155,11 @@ public:
     void progress(const std::string& operation, LogCategory category = LogCategory::GENERAL);
     void step(const std::string& step_name, LogCategory category = LogCategory::GENERAL);
     
+    // String capture mode for testing/debugging
+    void begin_string_capture();
+    std::string end_string_capture();
+    bool is_string_capture_active() const { return string_capture_mode_; }
+    
     // Flush all outputs
     void flush();
     
@@ -180,5 +189,9 @@ public:
 #define LOG_TEST_SUITE_START(suite_name) Mycelium::Scripting::Common::Logger::get_instance().test_suite_start(suite_name)
 #define LOG_TEST_SUITE_END(suite_name, passed, total) Mycelium::Scripting::Common::Logger::get_instance().test_suite_end(suite_name, passed, total)
 #define LOG_TEST_RESULT(test_name, passed, message) Mycelium::Scripting::Common::Logger::get_instance().test_result(test_name, passed, message)
+
+// String capture macros
+#define LOG_BEGIN_CAPTURE() Mycelium::Scripting::Common::Logger::get_instance().begin_string_capture()
+#define LOG_END_CAPTURE() Mycelium::Scripting::Common::Logger::get_instance().end_string_capture()
 
 } // namespace Mycelium::Scripting::Common

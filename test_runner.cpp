@@ -9,6 +9,10 @@ using namespace Mycelium::Scripting::Common;
 using namespace Mycelium;
 
 // Test function declarations
+void run_lexer_tests();
+void run_parse_result_tests();
+void run_pratt_parser_tests();
+void run_recursive_parser_tests();
 void run_command_generation_tests();
 void run_ir_generation_tests();
 void run_jit_execution_tests();
@@ -17,8 +21,8 @@ int main() {
     // Initialize logger for test output
     Logger& logger = Logger::get_instance();
     logger.initialize();
-    logger.set_console_level(LogLevel::INFO);
-    logger.set_enabled_categories(LogCategory::TEST | LogCategory::GENERAL);
+    logger.set_console_level(LogLevel::DEBUG);
+    logger.set_enabled_categories(LogCategory::TEST | LogCategory::GENERAL | LogCategory::PARSER | LogCategory::AST);
     logger.set_test_mode(true);
     
     logger.test_suite_start("🔬 Mycelium Compiler Test Suite 🔬");
@@ -31,6 +35,18 @@ int main() {
     TestTracker::instance().clear();
     
     // Run all test suites
+    LOG_INFO("🧪 Running Lexer Tests...", LogCategory::TEST);
+    run_lexer_tests();
+    
+    LOG_INFO("🧪 Running ParseResult Tests...", LogCategory::TEST);
+    run_parse_result_tests();
+    
+    LOG_INFO("🧪 Running Pratt Parser Tests...", LogCategory::TEST);
+    run_pratt_parser_tests();
+    
+    LOG_INFO("🧪 Running Recursive Parser Tests...", LogCategory::TEST);
+    run_recursive_parser_tests();
+    
     LOG_INFO("🧪 Running Command Generation Tests...", LogCategory::TEST);
     run_command_generation_tests();
     

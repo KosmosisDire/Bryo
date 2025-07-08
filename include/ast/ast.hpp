@@ -4,8 +4,8 @@
 #include <string>
 #include <cstring> // for memcpy
 #include "ast_rtti.hpp"
-#include "ast_enums.hpp"
 #include "ast_allocator.hpp"
+#include "common/token.hpp"
 
 // Define this to include a parent pointer in each AST node, which can be useful
 // for analysis but adds memory overhead.
@@ -71,10 +71,10 @@ namespace Mycelium::Scripting::Lang
     struct GenericTypeNameNode;
     struct GenericParameterNode;
 
-    // Match Expressions and Patterns
-    struct MatchExpressionNode;
-    struct MatchArmNode;
-    struct MatchPatternNode;
+    // When Expressions and Patterns
+    struct WhenExpressionNode;
+    struct WhenArmNode;
+    struct WhenPatternNode;
     struct EnumPatternNode;
     struct RangePatternNode;
     struct ComparisonPatternNode;
@@ -153,7 +153,7 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(IndexerExpressionNode* node);
         virtual void visit(TypeOfExpressionNode* node);
         virtual void visit(SizeOfExpressionNode* node);
-        virtual void visit(MatchExpressionNode* node);
+        virtual void visit(WhenExpressionNode* node);
         virtual void visit(ConditionalExpressionNode* node);
         virtual void visit(RangeExpressionNode* node);
         virtual void visit(EnumMemberExpressionNode* node);
@@ -191,9 +191,9 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(ConstructorDeclarationNode* node);
         virtual void visit(EnumCaseNode* node);
         
-        // Match Patterns
-        virtual void visit(MatchArmNode* node);
-        virtual void visit(MatchPatternNode* node);
+        // When Patterns
+        virtual void visit(WhenArmNode* node);
+        virtual void visit(WhenPatternNode* node);
         virtual void visit(EnumPatternNode* node);
         virtual void visit(RangePatternNode* node);
         virtual void visit(ComparisonPatternNode* node);
@@ -233,8 +233,8 @@ namespace Mycelium::Scripting::Lang
         std::string_view to_string_view() const;
 
         // RTTI functions defined at the end of this file
-        template <typename T> bool is_a() { return node_is_a<T>(this); }
-        template <typename T> T* as() { return node_dyn_cast<T>(this); }
+        template <typename T> bool is_a() { return node_is<T>(this); }
+        template <typename T> T* as() { return node_cast<T>(this); }
     };
 
 
@@ -371,15 +371,15 @@ namespace Mycelium::Scripting::Lang
         TokenNode* closeParen;
     };
 
-    struct MatchExpressionNode : ExpressionNode
+    struct WhenExpressionNode : ExpressionNode
     {
-        AST_TYPE(MatchExpressionNode, ExpressionNode)
-        TokenNode* matchKeyword;
+        AST_TYPE(WhenExpressionNode, ExpressionNode)
+        TokenNode* whenKeyword;
         TokenNode* openParen;
         ExpressionNode* expression;
         TokenNode* closeParen;
         TokenNode* openBrace;
-        SizedArray<MatchArmNode*> arms;
+        SizedArray<WhenArmNode*> arms;
         TokenNode* closeBrace;
     };
 
@@ -669,52 +669,52 @@ namespace Mycelium::Scripting::Lang
         SizedArray<StatementNode*> statements; // Can contain usings, namespace, function, and class decls
     };
 
-    // --- Match Patterns ---
-    struct MatchArmNode : AstNode
+    // --- When Patterns ---
+    struct WhenArmNode : AstNode
     {
-        AST_TYPE(MatchArmNode, AstNode)
-        MatchPatternNode* pattern;
+        AST_TYPE(WhenArmNode, AstNode)
+        WhenPatternNode* pattern;
         TokenNode* arrow; // =>
         ExpressionNode* result; // can be expression or block
         TokenNode* comma; // optional trailing comma
     };
 
-    struct MatchPatternNode : AstNode 
+    struct WhenPatternNode : AstNode 
     { 
-        AST_TYPE(MatchPatternNode, AstNode) 
+        AST_TYPE(WhenPatternNode, AstNode) 
     };
 
-    struct EnumPatternNode : MatchPatternNode
+    struct EnumPatternNode : WhenPatternNode
     {
-        AST_TYPE(EnumPatternNode, MatchPatternNode)
+        AST_TYPE(EnumPatternNode, WhenPatternNode)
         TokenNode* dot;
         IdentifierNode* enumCase;
     };
 
-    struct RangePatternNode : MatchPatternNode
+    struct RangePatternNode : WhenPatternNode
     {
-        AST_TYPE(RangePatternNode, MatchPatternNode)
+        AST_TYPE(RangePatternNode, WhenPatternNode)
         ExpressionNode* start; // optional for open ranges
         TokenNode* rangeOp; // .. or ..=
         ExpressionNode* end; // optional for open ranges
     };
 
-    struct ComparisonPatternNode : MatchPatternNode
+    struct ComparisonPatternNode : WhenPatternNode
     {
-        AST_TYPE(ComparisonPatternNode, MatchPatternNode)
+        AST_TYPE(ComparisonPatternNode, WhenPatternNode)
         TokenNode* comparisonOp; // <=, >=, <, >
         ExpressionNode* value;
     };
 
-    struct WildcardPatternNode : MatchPatternNode
+    struct WildcardPatternNode : WhenPatternNode
     {
-        AST_TYPE(WildcardPatternNode, MatchPatternNode)
+        AST_TYPE(WildcardPatternNode, WhenPatternNode)
         TokenNode* underscore;
     };
 
-    struct LiteralPatternNode : MatchPatternNode
+    struct LiteralPatternNode : WhenPatternNode
     {
-        AST_TYPE(LiteralPatternNode, MatchPatternNode)
+        AST_TYPE(LiteralPatternNode, WhenPatternNode)
         LiteralExpressionNode* literal;
     };
 
@@ -771,7 +771,7 @@ namespace Mycelium::Scripting::Lang
     // They are templated, so they must be in the header.
 
     template <typename T>
-    inline bool node_is_a(AstNode* node)
+    inline bool node_is(AstNode* node)
     {
         if (node == nullptr)
             return false;
@@ -789,13 +789,13 @@ namespace Mycelium::Scripting::Lang
     }
 
     template <typename T>
-    inline T* node_dyn_cast(AstNode* node)
+    inline T* node_cast(AstNode* node)
     {
-        return node_is_a<T>(node) ? static_cast<T*>(node) : nullptr;
+        return node_is<T>(node) ? static_cast<T*>(node) : nullptr;
     }
 
     template <typename T>
-    inline T* node_dyn_cast_exact(AstNode* node)
+    inline T* node_cast_exact(AstNode* node)
     {
         return node_is_exact<T>(node) ? static_cast<T*>(node) : nullptr;
     }

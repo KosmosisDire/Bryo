@@ -7,6 +7,7 @@
 namespace Mycelium::Testing {
 
 using namespace Mycelium::Scripting::Lang;
+using namespace Mycelium::Scripting;
 
 class TestASTBuilder {
 private:
@@ -53,7 +54,7 @@ public:
     LiteralExpressionNode* create_bool_literal(bool value) {
         auto literal = allocator_.alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::Boolean;
-        literal->token = create_token(TokenKind::True, value ? "true" : "false");
+        literal->token = create_token(TokenKind::BooleanLiteral, value ? "true" : "false");
         return literal;
     }
     

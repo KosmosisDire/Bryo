@@ -73,6 +73,14 @@ set(SOURCE_FILES
     src/ast/ast.cpp
     src/ast/ast_allocator.cpp
     
+    # Parser Implementation
+    src/parser/lexer.cpp
+    src/parser/token_stream.cpp
+    src/parser/parser_context.cpp
+    src/parser/parser_base.cpp
+    src/parser/pratt_parser.cpp
+    src/parser/recursive_parser.cpp
+    
     # Semantic Analyzer
     src/semantic/symbol_table.cpp
     
@@ -84,6 +92,7 @@ set(SOURCE_FILES
     
     # Common Utilities
     src/common/logger.cpp
+    src/common/token.cpp
 )
 
 set(RUNTIME_FILES
@@ -92,6 +101,10 @@ set(RUNTIME_FILES
 )
 
 set(TEST_FILES
+    tests/test_lexer.cpp
+    tests/test_parse_result.cpp
+    tests/test_pratt_parser.cpp
+    tests/test_recursive_parser.cpp
     tests/test_command_generation.cpp
     tests/test_ir_generation.cpp
     tests/test_jit_execution.cpp

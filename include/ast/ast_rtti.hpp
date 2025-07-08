@@ -65,7 +65,7 @@ namespace Mycelium::Scripting::Lang
 
     // Checks if a node is of type T or a derived type of T.
     template <typename T>
-    bool node_is_a(AstNode* node);
+    bool node_is(AstNode* node);
 
     // Checks if a node is exactly of type T.
     template <typename T>
@@ -74,12 +74,12 @@ namespace Mycelium::Scripting::Lang
     // Safely casts a node to type T if it's an instance of T or a derived type.
     // Returns nullptr otherwise.
     template <typename T>
-    T* node_dyn_cast(AstNode* node);
+    T* node_cast(AstNode* node);
 
     // Safely casts a node to type T only if it's an exact instance of T.
     // Returns nullptr otherwise.
     template <typename T>
-    T* node_dyn_cast_exact(AstNode* node);
+    T* node_cast_exact(AstNode* node);
 
     // Get human-readable type name from AST node
     const char* get_node_type_name(const AstNode* node);
