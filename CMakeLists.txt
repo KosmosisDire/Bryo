@@ -76,10 +76,6 @@ set(SOURCE_FILES
     # Parser Implementation
     src/parser/lexer.cpp
     src/parser/token_stream.cpp
-    src/parser/parser_context.cpp
-    src/parser/parser_base.cpp
-    src/parser/pratt_parser.cpp
-    src/parser/recursive_parser.cpp
     
     # Semantic Analyzer
     src/semantic/symbol_table.cpp

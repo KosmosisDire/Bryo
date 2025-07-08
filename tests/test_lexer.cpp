@@ -447,7 +447,7 @@ namespace MyApp {
         }
         
         // Test member access and calls
-        v: Vector3 = new Vector3()
+        v = new Vector3()
         len: f32 = v.length()
         arr[index] = value
         
