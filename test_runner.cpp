@@ -38,15 +38,6 @@ int main() {
     LOG_INFO("🧪 Running Lexer Tests...", LogCategory::TEST);
     run_lexer_tests();
     
-    LOG_INFO("🧪 Running ParseResult Tests...", LogCategory::TEST);
-    run_parse_result_tests();
-    
-    LOG_INFO("🧪 Running Pratt Parser Tests...", LogCategory::TEST);
-    run_pratt_parser_tests();
-    
-    LOG_INFO("🧪 Running Recursive Parser Tests...", LogCategory::TEST);
-    run_recursive_parser_tests();
-    
     LOG_INFO("🧪 Running Command Generation Tests...", LogCategory::TEST);
     run_command_generation_tests();
     

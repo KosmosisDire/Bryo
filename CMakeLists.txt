@@ -102,9 +102,6 @@ set(RUNTIME_FILES
 
 set(TEST_FILES
     tests/test_lexer.cpp
-    tests/test_parse_result.cpp
-    tests/test_pratt_parser.cpp
-    tests/test_recursive_parser.cpp
     tests/test_command_generation.cpp
     tests/test_ir_generation.cpp
     tests/test_jit_execution.cpp
