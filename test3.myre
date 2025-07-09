@@ -1,2 +1,11 @@
 using System;
 
+// define a function reference
+var fib: public fn(n: i32) -> i32
+
+// Define a function
+
+fn Fib(n: i32): public i32
+{
+
+}
