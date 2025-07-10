@@ -1,70 +1,71 @@
-pub type Vector2
+public type Vector2
 {
-    pub f32 x, y
+    public f32 x, y
 
     // examples for operator overloading
-    pub op +(Vector2 other): Vector2
+    public op +(Vector2 other): Vector2
     {
         return new Vector2(x + other.x, y + other.y)
     }
 
-    pub op +=(Vector2 other)
+    public op +=(Vector2 other)
     {
         x += other.x
         y += other.y
     }
 
-    pub implicit op cast(): Transform
+    public implicit op cast(): Transform
     {
         return new Transform(this, 90.0)
     }
 }
 
 // maybe some other type from a different library
-pub type Vector2f
+public type Vector2f
 {
-    pub f32 x, y
+    public f32 x, y
 }
 
 // we want to create an easy transformation between Vector2 and Vector2f
-pub extension Vector2
+public extension Vector2
 {
     // allow adding static methods
-    pub static Vector2 Dot(Vector2 a, Vector2 b): f32
+    public static Vector2 Dot(Vector2 a, Vector2 b): f32
     {
         return a.x * b.x + a.y * b.y
     }
 
-    pub implicit op cast(): Vector2f
+    public implicit op cast(): Vector2f
     {
         return new Vector2f(this.x, this.y)
     }
 }
-pub extension Vector2f
+public extension Vector2f
 {
-    pub implicit op cast(): Vector2
+    public implicit op cast(): Vector2
     {
         return new Vector2(this.x, this.y)
     }
 }
 
-pub ref type Transform
+public ref type Transform
 {
-    pub var position = new Vector2(0, 0)
-    pub f32 rotation = 0.0
+    public var position = new Vector2(0, 0)
+    public f32 rotation = 0.0
     
     // explicit cast to Vector2
-    pub explicit op cast(): Vector2
+    public explicit op cast(): Vector2
     {
         return position
     }
 }
 
-pub ref type Player
+public ref type Player
 {
-    pub var transform = new Transform()
-    pub i32 health = 100
-    pub bool IsAlive => health > 0
+    public var transform = new Transform()
+    public i32 health = 100
+    public bool IsAlive => health > 0
+    bool privateData = true // private data example
 
     new(f32 startX, f32 startY)
     {
@@ -73,12 +74,12 @@ pub ref type Player
         Console.Log("Player created at position: " + startX.ToString() + ", " + startY.ToString())
     }
 
-    pub fn Update(Fn<Player, bool> updateCallback): bool
+    public fn Update(Fn<Player, bool> updateCallback): bool
     {
         return updateCallback(this)
     }
 
-    pub fn Move(f32 x, f32 y)
+    public fn Move(f32 x, f32 y)
     {
         transform.position += new Vector2(x, y)
     }
