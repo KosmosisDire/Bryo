@@ -1,65 +1,86 @@
-public type Vector2
+pub type Vector2
 {
-    public f32 x, y
+    pub f32 x, y
 
     // examples for operator overloading
-    public op +(Vector2 other): Vector2
+    pub op +(Vector2 other): Vector2
     {
         return new Vector2(x + other.x, y + other.y)
     }
 
-    public op +=(Vector2 other)
+    pub op +=(Vector2 other)
     {
         x += other.x
         y += other.y
     }
+
+    pub implicit op cast(): Transform
+    {
+        return new Transform(this, 90.0)
+    }
 }
 
-public ref type Transform
+// maybe some other type from a different library
+pub type Vector2f
 {
-    public var position = new Vector2(0, 0)
-    public f32 rotation = 0.0
+    pub f32 x, y
+}
 
-    // implicity cast from Vector2
-    public implicit op from(Vector2 pos): Transform
+// we want to create an easy transformation between Vector2 and Vector2f
+pub extension Vector2
+{
+    // allow adding static methods
+    pub static Vector2 Dot(Vector2 a, Vector2 b): f32
     {
-        return new Transform(pos, 0.0)
+        return a.x * b.x + a.y * b.y
     }
+
+    pub implicit op cast(): Vector2f
+    {
+        return new Vector2f(this.x, this.y)
+    }
+}
+pub extension Vector2f
+{
+    pub implicit op cast(): Vector2
+    {
+        return new Vector2(this.x, this.y)
+    }
+}
+
+pub ref type Transform
+{
+    pub var position = new Vector2(0, 0)
+    pub f32 rotation = 0.0
     
     // explicit cast to Vector2
-    public explicit op to(): Vector2
+    pub explicit op cast(): Vector2
     {
         return position
     }
 }
 
-public ref type Player
+pub ref type Player
 {
-    public var transform = new Transform()
-    public i32 health = 100
-    public bool isInitialized = false
+    pub var transform = new Transform()
+    pub i32 health = 100
+    pub bool IsAlive => health > 0
 
     new(f32 startX, f32 startY)
     {
         transform.position = new Vector2(startX, startY)
         health = 100
-        isInitialized = true
         Console.Log("Player created at position: " + startX.ToString() + ", " + startY.ToString())
     }
 
-    public fn Update(fn(Player): bool updateCallback): bool
+    pub fn Update(Fn<Player, bool> updateCallback): bool
     {
         return updateCallback(this)
     }
 
-    public fn Move(f32 x, f32 y)
+    pub fn Move(f32 x, f32 y)
     {
         transform.position += new Vector2(x, y)
-    }
-
-    public fn IsAlive(): bool
-    {
-        return health > 0
     }
 }
 
@@ -68,12 +89,21 @@ Main()
     var player = new Player(10.0, 20.0)
     
     // Function type parameter example with return value
-    var success = player.Update(p => {
+    var alive = player.Update(p => {
         p.Move(1.0, 2.0)
         p.health -= 5
-        return p.health > 0
+
+        return match (p.health)
+        {
+            in ..=0 => false, // Player is dead
+            in 1..100 => true, // Player is injured but alive
+            in 101.. => throw new Exception("Player health is out of expected range") // Unexpected health value
+        }
     })
+
+    var array = [1, 2, 3, 4, 5]
+    var transformed = array.Map((v) => v + 1).Where((v) => v > 3)
     
     Console.Log("Player health: " + player.health.ToString())
-    Console.Log("Update successful: " + success.ToString())
+    Console.Log("Update successful: " + alive.ToString())
 }
