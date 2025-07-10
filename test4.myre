@@ -1,0 +1,79 @@
+public type Vector2
+{
+    public f32 x, y
+
+    // examples for operator overloading
+    public op +(Vector2 other): Vector2
+    {
+        return new Vector2(x + other.x, y + other.y)
+    }
+
+    public op +=(Vector2 other)
+    {
+        x += other.x
+        y += other.y
+    }
+}
+
+public ref type Transform
+{
+    public var position = new Vector2(0, 0)
+    public f32 rotation = 0.0
+
+    // implicity cast from Vector2
+    public implicit op from(Vector2 pos): Transform
+    {
+        return new Transform(pos, 0.0)
+    }
+    
+    // explicit cast to Vector2
+    public explicit op to(): Vector2
+    {
+        return position
+    }
+}
+
+public ref type Player
+{
+    public var transform = new Transform()
+    public i32 health = 100
+    public bool isInitialized = false
+
+    new(f32 startX, f32 startY)
+    {
+        transform.position = new Vector2(startX, startY)
+        health = 100
+        isInitialized = true
+        Console.Log("Player created at position: " + startX.ToString() + ", " + startY.ToString())
+    }
+
+    public fn Update(fn(Player): bool updateCallback): bool
+    {
+        return updateCallback(this)
+    }
+
+    public fn Move(f32 x, f32 y)
+    {
+        transform.position += new Vector2(x, y)
+    }
+
+    public fn IsAlive(): bool
+    {
+        return health > 0
+    }
+}
+
+Main()
+{
+    var player = new Player(10.0, 20.0)
+    
+    // Function type parameter example with return value
+    var success = player.Update(p => {
+        p.Move(1.0, 2.0)
+        p.health -= 5
+        return p.health > 0
+    })
+    
+    Console.Log("Player health: " + player.health.ToString())
+    Console.Log("Update successful: " + success.ToString())
+}
