@@ -72,6 +72,9 @@ public:
     std::string get_expected_message(TokenKind expected) const;
     std::string get_expected_message(std::initializer_list<TokenKind> expected) const;
     
+    // String representation
+    std::string to_string() const;
+    
 private:
     std::vector<Token> tokens_;
     size_t position_ = 0;

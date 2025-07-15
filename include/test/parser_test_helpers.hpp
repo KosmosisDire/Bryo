@@ -199,13 +199,32 @@ inline std::string get_ast_debug_info(AstNode* node, const std::string& label = 
 
 #define ASSERT_TOKEN_SEQUENCE(stream, expected_kinds, message) \
     do { \
-        if ((stream).size() < (expected_kinds).size()) { \
-            std::stringstream ss; \
-            ss << message << " (Stream has " << (stream).size() << " tokens but expected " << (expected_kinds).size() << ")"; \
-            return TestResult(false, ss.str()); \
+        size_t stream_size = (stream).size(); \
+        size_t expected_size = (expected_kinds).size(); \
+        size_t min_size = std::min(stream_size, expected_size); \
+        bool length_mismatch = (stream_size != expected_size); \
+        \
+        /* Compare tokens up to the minimum size */ \
+        for (size_t i = 0; i < min_size; ++i) { \
+            if ((stream)[i].kind != (expected_kinds)[i]) { \
+                std::stringstream ss; \
+                ss << message << " at token " << i << " (Expected: " << std::string(to_string((expected_kinds)[i])) \
+                   << ", Actual: " << std::string(to_string((stream)[i].kind)) << ")"; \
+                if (length_mismatch) { \
+                    ss << " [Note: Stream has " << stream_size << " tokens but expected " << expected_size << "]"; \
+                } \
+                std::cout << stream.to_string(); \
+                return TestResult(false, ss.str()); \
+            } \
         } \
-        for (size_t i = 0; i < (expected_kinds).size(); ++i) { \
-            ASSERT_TOKEN_KIND((stream)[i].kind, (expected_kinds)[i], i, message); \
+        \
+        /* Report length mismatch if all compared tokens matched */ \
+        if (length_mismatch) { \
+            std::stringstream ss; \
+            ss << message << " (Stream has " << stream_size << " tokens but expected " << expected_size; \
+            ss << ". First " << min_size << " tokens matched correctly)"; \
+            std::cout << stream.to_string(); \
+            return TestResult(false, ss.str()); \
         } \
     } while(0)
 

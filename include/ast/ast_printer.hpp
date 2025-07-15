@@ -219,7 +219,7 @@ public:
         indentLevel--;
     }
 
-    void visit(WhenExpressionNode* node) override {
+    void visit(MatchExpressionNode* node) override {
         print_node_header(node);
         indentLevel++;
         LOG_INFO(get_indent() + "Expression:", LogCategory::AST);
@@ -670,9 +670,9 @@ public:
         indentLevel--;
     }
 
-    // --- When Pattern Implementations ---
+    // --- Match Pattern Implementations ---
 
-    void visit(WhenArmNode* node) override {
+    void visit(MatchArmNode* node) override {
         print_node_header(node);
         indentLevel++;
         LOG_INFO(get_indent() + "Pattern:", LogCategory::AST);
@@ -686,7 +686,7 @@ public:
         indentLevel--;
     }
 
-    void visit(WhenPatternNode* node) override {
+    void visit(MatchPatternNode* node) override {
         print_node_header(node, "[Abstract Pattern]");
     }
 

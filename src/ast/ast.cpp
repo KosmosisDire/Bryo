@@ -132,7 +132,7 @@ namespace Mycelium::Scripting::Lang
     AST_DECL_IMPL(IndexerExpressionNode, ExpressionNode)
     AST_DECL_IMPL(TypeOfExpressionNode, ExpressionNode)
     AST_DECL_IMPL(SizeOfExpressionNode, ExpressionNode)
-    AST_DECL_IMPL(WhenExpressionNode, ExpressionNode)
+    AST_DECL_IMPL(MatchExpressionNode, ExpressionNode)
     AST_DECL_IMPL(ConditionalExpressionNode, ExpressionNode)
     AST_DECL_IMPL(RangeExpressionNode, ExpressionNode)
     AST_DECL_IMPL(EnumMemberExpressionNode, ExpressionNode)
@@ -167,14 +167,14 @@ namespace Mycelium::Scripting::Lang
     AST_DECL_IMPL(EnumDeclarationNode, DeclarationNode)
     AST_DECL_IMPL(NamespaceDeclarationNode, DeclarationNode)
     
-    // When patterns
-    AST_DECL_IMPL(WhenArmNode, AstNode)
-    AST_DECL_IMPL(WhenPatternNode, AstNode)
-    AST_DECL_IMPL(EnumPatternNode, WhenPatternNode)
-    AST_DECL_IMPL(RangePatternNode, WhenPatternNode)
-    AST_DECL_IMPL(ComparisonPatternNode, WhenPatternNode)
-    AST_DECL_IMPL(WildcardPatternNode, WhenPatternNode)
-    AST_DECL_IMPL(LiteralPatternNode, WhenPatternNode)
+    // Match patterns
+    AST_DECL_IMPL(MatchArmNode, AstNode)
+    AST_DECL_IMPL(MatchPatternNode, AstNode)
+    AST_DECL_IMPL(EnumPatternNode, MatchPatternNode)
+    AST_DECL_IMPL(RangePatternNode, MatchPatternNode)
+    AST_DECL_IMPL(ComparisonPatternNode, MatchPatternNode)
+    AST_DECL_IMPL(WildcardPatternNode, MatchPatternNode)
+    AST_DECL_IMPL(LiteralPatternNode, MatchPatternNode)
     
     // Property accessor
     AST_DECL_IMPL(PropertyAccessorNode, AstNode)
@@ -210,7 +210,7 @@ namespace Mycelium::Scripting::Lang
     void IndexerExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<IndexerExpressionNode*>(node)); }
     void TypeOfExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<TypeOfExpressionNode*>(node)); }
     void SizeOfExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<SizeOfExpressionNode*>(node)); }
-    void WhenExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<WhenExpressionNode*>(node)); }
+    void MatchExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<MatchExpressionNode*>(node)); }
     void ConditionalExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ConditionalExpressionNode*>(node)); }
     void RangeExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<RangeExpressionNode*>(node)); }
     void EnumMemberExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<EnumMemberExpressionNode*>(node)); }
@@ -247,9 +247,9 @@ namespace Mycelium::Scripting::Lang
     void VariableDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<VariableDeclarationNode*>(node)); }
     void GenericParameterNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<GenericParameterNode*>(node)); }
     
-    // When patterns
-    void WhenArmNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<WhenArmNode*>(node)); }
-    void WhenPatternNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<WhenPatternNode*>(node)); }
+    // Match patterns
+    void MatchArmNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<MatchArmNode*>(node)); }
+    void MatchPatternNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<MatchPatternNode*>(node)); }
     void EnumPatternNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<EnumPatternNode*>(node)); }
     void RangePatternNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<RangePatternNode*>(node)); }
     void ComparisonPatternNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ComparisonPatternNode*>(node)); }
@@ -298,7 +298,7 @@ namespace Mycelium::Scripting::Lang
     DEF_VISITOR_IMPL(IndexerExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(TypeOfExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(SizeOfExpressionNode, ExpressionNode)
-    DEF_VISITOR_IMPL(WhenExpressionNode, ExpressionNode)
+    DEF_VISITOR_IMPL(MatchExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(ConditionalExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(RangeExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(EnumMemberExpressionNode, ExpressionNode)
@@ -342,14 +342,14 @@ namespace Mycelium::Scripting::Lang
     DEF_VISITOR_IMPL(VariableDeclarationNode, DeclarationNode)
     DEF_VISITOR_IMPL(GenericParameterNode, DeclarationNode)
     
-    // When patterns
-    DEF_VISITOR_IMPL(WhenArmNode, AstNode)
-    DEF_VISITOR_IMPL(WhenPatternNode, AstNode)
-    DEF_VISITOR_IMPL(EnumPatternNode, WhenPatternNode)
-    DEF_VISITOR_IMPL(RangePatternNode, WhenPatternNode)
-    DEF_VISITOR_IMPL(ComparisonPatternNode, WhenPatternNode)
-    DEF_VISITOR_IMPL(WildcardPatternNode, WhenPatternNode)
-    DEF_VISITOR_IMPL(LiteralPatternNode, WhenPatternNode)
+    // Match patterns
+    DEF_VISITOR_IMPL(MatchArmNode, AstNode)
+    DEF_VISITOR_IMPL(MatchPatternNode, AstNode)
+    DEF_VISITOR_IMPL(EnumPatternNode, MatchPatternNode)
+    DEF_VISITOR_IMPL(RangePatternNode, MatchPatternNode)
+    DEF_VISITOR_IMPL(ComparisonPatternNode, MatchPatternNode)
+    DEF_VISITOR_IMPL(WildcardPatternNode, MatchPatternNode)
+    DEF_VISITOR_IMPL(LiteralPatternNode, MatchPatternNode)
     
     // Property accessor
     DEF_VISITOR_IMPL(PropertyAccessorNode, AstNode)

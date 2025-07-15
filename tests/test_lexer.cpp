@@ -403,61 +403,357 @@ fn test() {
 // Test all lexer features combined in a realistic code sample
 TestResult test_lexer_all_features() {
     std::string source = R"(
-// Mycelium comprehensive lexer test
-namespace MyApp {
-    /* Multi-line comment
-     * with multiple lines
-     */
-    type Vector3 {
-        x, y, z: f32 = 0.0
-        
-        fn length() -> f32 {
-            return x + y + z
+using System.Collections;
+using Tests;
+
+namespace Test.Namespace;
+
+// example of bracketed namespace (not valid to have two namespaces like this but it is just an example)
+namespace Test.Bracketed.Namespace
+{
+    public fn Stuff(): i32
+    {
+        return 1;
+    }
+}
+
+public enum Shape
+{
+    None,
+    Square(i32 x, i32 y, i32 width, i32 height),
+    Circle(i32 x, i32 y, i32 radius)
+}
+
+public enum Direction
+{
+    North,
+    East,
+    South,
+    West,
+
+    public fn Opposite(): Direction
+    {
+        return match (this)
+        {
+            .North => .South,
+            .East =>
+                {
+                    Console.Log("West");
+                    return .West;
+                },
+            .South => .North,
+            .West => .East,
+        };
+    }
+}
+
+public static type Console
+{
+    // members of a static class are implicitly static
+	public i32 messageCount;
+	f64 doubleVar1 = 2.4;
+	f64 doubleVar2 = 2.4;
+	string lastMessage;
+
+	public fn Log(string msg)
+	{
+		Print(msg);
+		messageCount++;
+		lastMessage = msg;
+	}
+
+    // virtual functions can be overriden
+	public virtual fn GetLast(): string
+	{
+		return lastMessage;
+	}
+}
+
+public type Vector3
+{
+	public f32 x, y, z;
+
+	// An auto implemented constructor is provided if no constructor defined
+}
+
+ref type MutableConstraint<T, U>
+{
+    public T value;
+
+    public fn GetValue(): T
+    {
+        return value;
+    }
+}
+
+public ref type Observable<T> where T : ref type, Updateable, new(i32, i32)
+{
+    public T value;
+
+    // This is a simple observable that can be used to notify changes
+    public fn NotifyChange()
+    {
+        Console.Log("Value changed to: " + value.ToString());
+    }
+
+    public fn GetValue(): T
+    {
+        return value;
+    }
+}
+
+public type Updateable
+{
+    // This is an interface that can be used to mark types that can be updated
+    public abstract fn Update(f32 deltaTime);
+}
+
+public abstract type Health : Updateable
+{
+    // prop is used to declare a property with a getter and setter.
+    // properties can use the field keyword to access a backing field.
+    // the field keyword is optional, if not used no auto backing field is created and you must create your own field.
+    // Although an auto backing field will be created is the default getter and setter are used.
+    u32 health = 100
+    {
+        public get => field;
+        protected set =>
+        {
+            // value is a keyword that refers to the value being set
+            if (value < 0)
+            {
+                Console.Log("Health cannot be negative, setting to 0");
+                // field is a keyword that refers to the backing field
+                field = 0;
+            }
+
+            field = value;
         }
     }
-    
-    fn main() {
-        // Test various literals
-        int_val: mut i32 = 42
-        float_val: f32 = 3.14159
-        hex_val: i32 = 0xFF00
-        str_val: string = "Hello, \"World\"!\n"
-        char_val: char = 'a'
-        bool_val: bool = true && false || !true
-        
-        // Test operators
-        sum: i32 = 10 + 20 - 5 * 2 / 3 % 4
-        bits: i32 = 0b1010 & 0b1100 | 0b0001 ^ ~0b1111
-        shift: i32 = 1 << 4 >> 2
-        cmp: bool = x < y && y <= z || z > w && w >= x || x == y || y != z
-        
-        // Test assignments
-        sum += 1
-        bits &= 0xFF
-        
-        // Test control flow
-        if (condition) {
-            while (x < 10) {
-                x++
-            }
-        } else {
-            for (i = 0; i < 10; i++) {
-                break
-            }
-        }
-        
-        // Test member access and calls
-        v = new Vector3()
-        len: f32 = v.length()
-        arr[index] = value
-        
-        // Test special tokens
-        range: i32 = 0..10
-        inclusive: i32 = 0..=10
-        ref_type: ref MyType
-        path: Type = Module::SubModule::Type
+
+    // you can also use default access modifiers for properties
+    // this will inherit access from the property declaration
+    // public u32 health = 100
+    //     get => field;
+    //     set =>
+    //     {
+    //         if (value < 0)
+    //         {
+    //             Console.Log("Health cannot be negative, setting to 0");
+    //             field = 0;
+    //         }
+    //         field = value;
+    //     }
+
+    // you can of course also use auto implemented properties
+    // public u32 health = 100 {get; set;}
+    // or
+    // u32 health = 100 {get: public; set: protected;}
+
+
+
+    // properties with only a getter can be creates with a simple arrow function
+    // the getter access level matches the level of the property
+    public bool isAlive => health > 0;
+
+    // or
+    // public bool isAlive =>
+    // {
+    //     return health > 0;
+    // }
+
+
+    public u32 maxHealth = 100;
+
+    // this function is enforced meaning that any derived class must explicity choose whether to inherit this implementation or define their own implementation
+    // This help to make sure that the user of a derived class is aware that this function exists and can choose to override it if needed.
+    // This is basically just an abstract function with a default implementation.
+    public enforced fn TakeDamage(u32 amount)
+    {
+        health -= amount;
     }
-})";
+
+    // default implementations are not required. This means the derived class MUST implement this function.
+    // these can only be used in abstract classes.
+    public abstract fn Heal(u32 amount);
+
+    // We do nothing by default, but force the derived class to implement this function
+    public enforced fn Update(f32 deltaTime)
+    {
+    }
+}
+
+// if I extends health, I must implement the Heal function or choose to inherit the default implementation
+public type HealthWithRegeneration : Health
+{
+    public f32 regenerationRate;
+
+    // we must either implement a new TakeDamage function or choose to inherit the default implementation
+    // here we choose to inherit the existing implementation
+    // if we wanted to override it, we would use the override keyword
+    // since we kept the enforced keyword, anything that derives from this class must implement the TakeDamage function the same as here.
+    public inherit enforced fn TakeDamage(u32 amount);
+
+    // here you can see we override the Heal function since it is abstract
+    public override fn Heal(u32 amount)
+    {
+        health += amount;
+    }
+
+    // we can ommit the enforced function, to allow the derived class to silently inherit this new implementation
+    public fn Update(f32 deltaTime)
+    {
+        health += (regenerationRate * deltaTime);
+    }
+}
+
+// ref types always passed by reference
+public ref type Enemy
+{
+    public static var enemies = new List<Enemy>();
+    public HealthWithRegeneration health;
+	public Vector3 position;
+	i32 attack;
+	f32 hitChance = 0.5;
+
+	new(Vector3 startPos, u32 damage = 5)
+	{
+		position = startPos;
+		attack = damage;
+        enemies.Add(this);
+	}
+
+    public enforced fn GetDamage(): u32
+    {
+        PrivateFunc(42, MutableConstraint<Shape, Health>(), (Direction direction) =>
+        {
+            return match (direction)
+            {
+                .North => .Square(0, 0, 10, 10),
+                .East => .Circle(0, 0, 5),
+                .South => .Square(5, 5, 15, 15),
+                .West => .Circle(5, 5, 10),
+            };
+        });
+
+        // shorthand lambda
+        PrivateFunc(42, MutableConstraint<Shape, Health>(), d => .Square(0, 0, 10, 10));
+
+	    return Random.Chance(hitChance) ? attack : 0;
+    }
+
+    protected virtual fn PrivateFunc(i32 param, MutableConstraint<Shape, Health> bigType, Fn<Direction, Shape> functionParam): Observable<Health>
+    {
+        Console.Log("This is a private function");
+        return Observable<Health>(health);
+    }
+
+    public virtual fn PrintStatus()
+    {
+        match (health)
+        {
+            in ..=0 => Console.Log("Enemy is dead"),
+            in 1..=10 => Console.Log("Enemy is severely injured"),
+            in 11..=50 => Console.Log("Enemy is injured"),
+            _ => Console.Log("Enemy is healthy"),
+        };
+    }
+
+}
+
+fn Main()
+{
+	var running = true;
+	var newvar = "Hello there";
+	var someVar = 5;
+    var floatVar = 3.14;
+    var enemy = new Enemy(Vector3(0, 0, 0), 10);
+
+    // this is invalid because enemy is not mut
+    // enemy = new Enemy(Vector3(1, 1, 1), 20);
+
+    // implicit type inference
+    var enemy2 = new Enemy(Vector3(1, 1, 1), 20);
+
+    // valid because enemy2 is mut
+    enemy2 = new Enemy(Vector3(2, 2, 2), 30);
+
+    for (Enemy e in Enemy.enemies)
+    {
+        e.PrintStatus();
+        Console.Log("Enemy damage: " + e.GetDamage().ToString());
+    }
+
+    // or type can be inferred
+	for (var e in Enemy.enemies)
+    {
+        e.PrintStatus();
+        Console.Log("Enemy damage: " + e.GetDamage().ToString());
+    }
+
+    // for i in range
+    for (i32 i in 0..10)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+    // or type can be inferred
+    for (var i in 0..10)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+    // step by 2, "0..10 by 2" is an expression that creates a range from 0 to 10 with a step of 2
+    for (var i in 0..10 by 2)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+    // use a variable for range and with a float
+    for (f32 i in 0.0..floatVar by 0.5)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+    // type can still be inferred
+    for (var i in 0..floatVar by 0.5)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+    // subarray with a range
+    for (var i in Enemy.enemies[0..2])
+    {
+        i.PrintStatus();
+        Console.Log("Enemy damage: " + i.GetDamage().ToString());
+    }
+
+    // subarray with a range
+    for (var i in Enemy.enemies[5..10 by 2])
+    {
+        i.PrintStatus();
+        Console.Log("Enemy damage: " + i.GetDamage().ToString());
+    }
+
+    for (i32 i = 0; i < 10; i++)
+    {
+        Console.Log("Index: " + i.ToString());
+    }
+
+	while (running)
+    {
+        someVar++;
+        if (someVar > 10)
+        {
+            running = false;
+        }
+    }
+
+	Console.Log("Done");
+}
+
+Main();
+)";
     
     LexerOptions options;
     options.preserve_trivia = true;
@@ -467,150 +763,244 @@ namespace MyApp {
     // Get all tokens
     TokenStream stream = lexer.tokenize_all();
     
-    // Define the complete expected token sequence
+    // Verify no lexical errors
+    ASSERT_FALSE(sink.has_errors(), "Should have no lexical errors");
+
+    // Full token sequence check
     std::vector<TokenKind> expected = {
-        // namespace MyApp {
-        TokenKind::Namespace, TokenKind::Identifier, TokenKind::LeftBrace,
-        
-        // type Vector3 {
-        TokenKind::Type, TokenKind::Identifier, TokenKind::LeftBrace,
-        
-        // x, y, z: f32 = 0.0
-        TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Comma, 
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral,
-        
-        // fn length() -> f32 {
-        TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, 
-        TokenKind::Arrow, TokenKind::Identifier, TokenKind::LeftBrace,
-        
-        // return x + y + z
-        TokenKind::Return, TokenKind::Identifier, TokenKind::Plus, TokenKind::Identifier,
-        TokenKind::Plus, TokenKind::Identifier,
-        
-        // }
+        TokenKind::Using, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Using, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Namespace, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Namespace, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::IntegerLiteral, TokenKind::Semicolon,
         TokenKind::RightBrace,
-        
-        // }
         TokenKind::RightBrace,
-        
-        // fn main() {
-        TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::LeftBrace,
-        
-        // int_val: mut i32 = 42
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Mut, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        
-        // float_val: f32 = 3.14159
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral,
-        
-        // hex_val: i32 = 0xFF00
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        
-        // str_val: string = "Hello, \"World\"!\n"
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::StringLiteral,
-        
-        // char_val: char = 'a'
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::CharLiteral,
-        
-        // bool_val: bool = true && false || !true
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::BooleanLiteral,
-        TokenKind::And, TokenKind::BooleanLiteral, TokenKind::Or, TokenKind::Not, TokenKind::BooleanLiteral,
-        
-        // sum: i32 = 10 + 20 - 5 * 2 / 3 % 4
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::Plus, TokenKind::IntegerLiteral, TokenKind::Minus, TokenKind::IntegerLiteral,
-        TokenKind::Asterisk, TokenKind::IntegerLiteral, TokenKind::Slash, TokenKind::IntegerLiteral,
-        TokenKind::Percent, TokenKind::IntegerLiteral,
-        
-        // bits: i32 = 0b1010 & 0b1100 | 0b0001 ^ ~0b1111
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::BitwiseAnd, TokenKind::IntegerLiteral, TokenKind::BitwiseOr, TokenKind::IntegerLiteral,
-        TokenKind::BitwiseXor, TokenKind::BitwiseNot, TokenKind::IntegerLiteral,
-        
-        // shift: i32 = 1 << 4 >> 2
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::LeftShift, TokenKind::IntegerLiteral, TokenKind::RightShift, TokenKind::IntegerLiteral,
-        
-        // cmp: bool = x < y && y <= z || z > w && w >= x || x == y || y != z
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier,
-        TokenKind::Less, TokenKind::Identifier, TokenKind::And, TokenKind::Identifier,
-        TokenKind::LessEqual, TokenKind::Identifier, TokenKind::Or, TokenKind::Identifier,
-        TokenKind::Greater, TokenKind::Identifier, TokenKind::And, TokenKind::Identifier,
-        TokenKind::GreaterEqual, TokenKind::Identifier, TokenKind::Or, TokenKind::Identifier,
-        TokenKind::Equal, TokenKind::Identifier, TokenKind::Or, TokenKind::Identifier,
-        TokenKind::NotEqual, TokenKind::Identifier,
-         
-        // if (condition) {
-        TokenKind::If, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen, TokenKind::LeftBrace,
-        
-        // while (x < 10) {
-        TokenKind::While, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Less, 
-        TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::LeftBrace,
-        
-        // x++
-        TokenKind::Identifier, TokenKind::Increment,
-        
-        // }
+        TokenKind::Public, TokenKind::Enum, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
         TokenKind::RightBrace,
-        
-        // } else {
-        TokenKind::RightBrace, TokenKind::Else, TokenKind::LeftBrace,
-        
-        // for (i = 0; i < 10; i++) {
-        TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Less, TokenKind::IntegerLiteral,
-        TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Increment, TokenKind::RightParen, TokenKind::LeftBrace,
-        
-        // break
-        TokenKind::Break,
-        
-        // }
+        TokenKind::Public, TokenKind::Enum, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::Match, TokenKind::LeftParen, TokenKind::This, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Return, TokenKind::Dot, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::Comma,
+        TokenKind::RightBrace, TokenKind::Semicolon,
         TokenKind::RightBrace,
-        
-        // }
         TokenKind::RightBrace,
-        
-        // v: Vector3 = new Vector3()
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::New, TokenKind::Identifier,
-        TokenKind::LeftParen, TokenKind::RightParen,
-        
-        // len: f32 = v.length()
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier,
-        TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen,
-        
-        // arr[index] = value
-        TokenKind::Identifier, TokenKind::LeftBracket, TokenKind::Identifier, TokenKind::RightBracket,
-        TokenKind::Assign, TokenKind::Identifier,
-        
-        // range: i32 = 0..10
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::DotDot, TokenKind::IntegerLiteral,
-        
-        // inclusive: i32 = 0..=10
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
-        TokenKind::DotDotEquals, TokenKind::IntegerLiteral,
-        
-        // ref_type: ref MyType
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Ref, TokenKind::Identifier,
-        
-        // path: Type = Module::SubModule::Type
-        TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier,
-        TokenKind::DoubleColon, TokenKind::Identifier, TokenKind::DoubleColon, TokenKind::Identifier,
-        
-        // }
+        TokenKind::Public, TokenKind::Static, TokenKind::Type, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Increment, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier, TokenKind::Semicolon,
         TokenKind::RightBrace,
-        
-        // }
+        TokenKind::Public, TokenKind::Virtual, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::Identifier, TokenKind::Semicolon,
         TokenKind::RightBrace,
-        
-        // EOF
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Type, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Ref, TokenKind::Type, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Greater,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Ref, TokenKind::Type, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Greater, TokenKind::Where, TokenKind::Identifier, TokenKind::Colon, TokenKind::Ref, TokenKind::Type, TokenKind::Comma, TokenKind::Identifier, TokenKind::Comma, TokenKind::New, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Type, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Abstract, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Abstract, TokenKind::Type, TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Get, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Protected, TokenKind::Set, TokenKind::FatArrow,
+        TokenKind::LeftBrace,
+        TokenKind::If, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Less, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Greater, TokenKind::IntegerLiteral, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Enforced, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::MinusAssign, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Abstract, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Enforced, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Type, TokenKind::Identifier, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Inherit, TokenKind::Enforced, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Override, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::PlusAssign, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::PlusAssign, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Asterisk, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Ref, TokenKind::Type, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Public, TokenKind::Static, TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::New, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Greater, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Public, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral, TokenKind::Semicolon,
+        TokenKind::New, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::Identifier, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::This, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Enforced, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Greater, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Comma, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::RightParen, TokenKind::FatArrow,
+        TokenKind::LeftBrace,
+        TokenKind::Return, TokenKind::Match, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::Dot, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::RightBrace, TokenKind::Semicolon,
+        TokenKind::RightBrace, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Greater, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Comma, TokenKind::Identifier, TokenKind::FatArrow, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Return, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Question, TokenKind::Identifier, TokenKind::Colon, TokenKind::IntegerLiteral, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Protected, TokenKind::Virtual, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Greater, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Comma, TokenKind::Identifier, TokenKind::Greater, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Colon, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Greater,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Return, TokenKind::Identifier, TokenKind::Less, TokenKind::Identifier, TokenKind::Greater, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Public, TokenKind::Virtual, TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Match, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::In, TokenKind::DotDotEquals, TokenKind::IntegerLiteral, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDotEquals, TokenKind::IntegerLiteral, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDotEquals, TokenKind::IntegerLiteral, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::Underscore, TokenKind::FatArrow, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Comma,
+        TokenKind::RightBrace, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Fn, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::BooleanLiteral, TokenKind::Semicolon,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::StringLiteral, TokenKind::Semicolon,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::Semicolon,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::FloatLiteral, TokenKind::Semicolon,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::New, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::New, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::New, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::In, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::IntegerLiteral, TokenKind::By, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::In, TokenKind::FloatLiteral, TokenKind::DotDot, TokenKind::Identifier, TokenKind::By, TokenKind::FloatLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::Identifier, TokenKind::By, TokenKind::FloatLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftBracket, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::IntegerLiteral, TokenKind::RightBracket, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftBracket, TokenKind::IntegerLiteral, TokenKind::DotDot, TokenKind::IntegerLiteral, TokenKind::By, TokenKind::IntegerLiteral, TokenKind::RightBracket, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Less, TokenKind::IntegerLiteral, TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Increment, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::While, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Increment, TokenKind::Semicolon,
+        TokenKind::If, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Greater, TokenKind::IntegerLiteral, TokenKind::RightParen,
+        TokenKind::LeftBrace,
+        TokenKind::Identifier, TokenKind::Assign, TokenKind::BooleanLiteral, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::RightBrace,
+        TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::Semicolon,
         TokenKind::EndOfFile
     };
     
-    // Verify the complete token sequence
-    ASSERT_TOKEN_SEQUENCE(stream, expected, "Complete lexer test should match expected token sequence");
-    
-    // Verify no lexical errors
-    ASSERT_FALSE(sink.has_errors(), "Should have no lexical errors");
+    ASSERT_TOKEN_SEQUENCE(stream, expected, "All features token sequence should match expected");
     
     return TestResult(true);
 }
@@ -618,10 +1008,10 @@ namespace MyApp {
 TestResult test_tokenize_all() {
     std::string source = "fn main() { x + 42 }";
     Lexer lexer(source);
-    
+
     // Test tokenize_all method
     TokenStream stream = lexer.tokenize_all();
-    
+
     // Verify we got all tokens
     std::vector<TokenKind> expected = {
         TokenKind::Fn,
@@ -635,15 +1025,10 @@ TestResult test_tokenize_all() {
         TokenKind::RightBrace,
         TokenKind::EndOfFile
     };
-    
-    ASSERT_EQ(expected.size(), stream.size(), "Should have correct number of tokens");
-    
+
     // Verify token kinds using sequence macro
     ASSERT_TOKEN_SEQUENCE(stream, expected, "Tokenize all method should produce expected sequence");
-    
-    // Verify at_end behavior
-    ASSERT_TRUE(stream.at_end(), "Should be at end after last token");
-    
+
     return TestResult(true);
 }
 

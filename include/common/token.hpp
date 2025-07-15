@@ -64,30 +64,27 @@ enum class TokenKind {
     // Identifiers and keywords
     Identifier,
     
-    // Type keywords
+    // Declaration keywords
     Type,
-    Ref,
-    Interface,
     Enum,
+    Var,
+    Fn,
     
     // Function keywords
-    Fn,
     New,
-    Return,
-    
+
     // Control flow keywords
     If,
     Else,
     While,
     For,
-    When,
+    Match,
     Case,
     Break,
     Continue,
+    Return,
     In,
-    
-    // Variable keywords
-    Mut,
+    Await,
     
     // Property keywords
     Prop,
@@ -105,10 +102,10 @@ enum class TokenKind {
     Override,
     Abstract,
     Extern,
-    Open,
     Enforced,
-    Inline,
     Inherit,
+    Async,
+    Ref,
     
     // Other keywords
     This,
@@ -117,6 +114,7 @@ enum class TokenKind {
     Where,
     Typeof,
     Sizeof,
+    By, // (for 0..10 by 2) syntax
     
     // Operators - Arithmetic
     Plus,           // +
@@ -195,8 +193,8 @@ enum class KeywordKind
     Invalid = (int)TokenKind::Invalid,
     Type = (int)TokenKind::Type,
     Ref = (int)TokenKind::Ref,
-    Interface = (int)TokenKind::Interface,
     Enum = (int)TokenKind::Enum,
+    Var = (int)TokenKind::Var,
     Fn = (int)TokenKind::Fn,
     New = (int)TokenKind::New,
     Return = (int)TokenKind::Return,
@@ -204,12 +202,12 @@ enum class KeywordKind
     Else = (int)TokenKind::Else,
     While = (int)TokenKind::While,
     For = (int)TokenKind::For,
-    When = (int)TokenKind::When,
+    Match = (int)TokenKind::Match,
     Case = (int)TokenKind::Case,
     Break = (int)TokenKind::Break,
     Continue = (int)TokenKind::Continue,
     In = (int)TokenKind::In,
-    Mut = (int)TokenKind::Mut,
+    Await = (int)TokenKind::Await,
     Prop = (int)TokenKind::Prop,
     Get = (int)TokenKind::Get,
     Set = (int)TokenKind::Set,
@@ -223,16 +221,16 @@ enum class KeywordKind
     Override = (int)TokenKind::Override,
     Abstract = (int)TokenKind::Abstract,
     Extern = (int)TokenKind::Extern,
-    Open = (int)TokenKind::Open,
     Enforced = (int)TokenKind::Enforced,
-    Inline = (int)TokenKind::Inline,
     Inherit = (int)TokenKind::Inherit,
+    Async = (int)TokenKind::Async,
     This = (int)TokenKind::This,
     Where = (int)TokenKind::Where,
     Using = (int)TokenKind::Using,
     Namespace = (int)TokenKind::Namespace,
     Typeof = (int)TokenKind::Typeof,
-    Sizeof = (int)TokenKind::Sizeof
+    Sizeof = (int)TokenKind::Sizeof,
+    By = (int)TokenKind::By
 };
 
 enum class UnaryOperatorKind
@@ -298,16 +296,14 @@ enum class ModifierKind
     Private = (int)TokenKind::Private,
     Protected = (int)TokenKind::Protected,
     Static = (int)TokenKind::Static,
-    Mut = (int)TokenKind::Mut,
     Ref = (int)TokenKind::Ref,
     Virtual = (int)TokenKind::Virtual,
     Override = (int)TokenKind::Override,
     Abstract = (int)TokenKind::Abstract,
     Extern = (int)TokenKind::Extern,
-    Open = (int)TokenKind::Open,
     Enforced = (int)TokenKind::Enforced,
-    Inline = (int)TokenKind::Inline,
     Inherit = (int)TokenKind::Inherit,
+    Async = (int)TokenKind::Async,
 };
 
 enum class LiteralKind
@@ -461,7 +457,6 @@ struct Token {
     constexpr bool is_type_keyword() const {
         switch (kind) {
             case TokenKind::Type:
-            case TokenKind::Interface:
             case TokenKind::Enum:
             case TokenKind::Ref:
                 return true;
@@ -662,7 +657,7 @@ struct Token {
             // Grouping
             case TokenKind::LeftParen:
             // Special expressions
-            case TokenKind::When:
+            case TokenKind::Match:
             case TokenKind::Dot: // For enum members like .Red
                 return true;
             default:
@@ -679,7 +674,7 @@ struct Token {
             case TokenKind::Break:
             case TokenKind::Continue:
             case TokenKind::LeftBrace:
-            case TokenKind::When:
+            case TokenKind::Match:
                 return true;
             default:
                 return starts_expression(); // Expressions can be statements
@@ -689,11 +684,12 @@ struct Token {
     constexpr bool starts_declaration() const {
         switch (kind) {
             case TokenKind::Type:
-            case TokenKind::Interface:
             case TokenKind::Enum:
             case TokenKind::Fn:
+            case TokenKind::Var:
             case TokenKind::Using:
             case TokenKind::Namespace:
+
             // Modifiers can start declarations
             case TokenKind::Public:
             case TokenKind::Private:
@@ -703,12 +699,10 @@ struct Token {
             case TokenKind::Override:
             case TokenKind::Abstract:
             case TokenKind::Extern:
-            case TokenKind::Open:
             case TokenKind::Enforced:
-            case TokenKind::Inline:
             case TokenKind::Inherit:
-            case TokenKind::Mut:
             case TokenKind::Ref:
+            case TokenKind::Async:
                 return true;
             default:
                 return false;
@@ -739,8 +733,8 @@ inline const std::unordered_map<std::string_view, TokenKind> Token::keyword_map 
 {
     {"type", TokenKind::Type},
     {"ref", TokenKind::Ref},
-    {"interface", TokenKind::Interface},
     {"enum", TokenKind::Enum},
+    {"var", TokenKind::Var},
     {"fn", TokenKind::Fn},
     {"new", TokenKind::New},
     {"return", TokenKind::Return},
@@ -748,16 +742,14 @@ inline const std::unordered_map<std::string_view, TokenKind> Token::keyword_map 
     {"else", TokenKind::Else},
     {"while", TokenKind::While},
     {"for", TokenKind::For},
-    {"when", TokenKind::When},
+    {"match", TokenKind::Match},
     {"case", TokenKind::Case},
     {"break", TokenKind::Break},
     {"continue", TokenKind::Continue},
-    {"mut", TokenKind::Mut},
+    {"await", TokenKind::Await},
     {"prop", TokenKind::Prop},
     {"get", TokenKind::Get},
     {"set", TokenKind::Set},
-    {"field", TokenKind::Field},
-    {"value", TokenKind::Value},
     {"public", TokenKind::Public},
     {"private", TokenKind::Private},
     {"protected", TokenKind::Protected},
@@ -766,9 +758,8 @@ inline const std::unordered_map<std::string_view, TokenKind> Token::keyword_map 
     {"override", TokenKind::Override},
     {"abstract", TokenKind::Abstract},
     {"extern", TokenKind::Extern},
-    {"open", TokenKind::Open},
     {"enforced", TokenKind::Enforced},
-    {"inline", TokenKind::Inline},
+    {"async", TokenKind::Async},
     {"this", TokenKind::This},
     {"using", TokenKind::Using},
     {"namespace", TokenKind::Namespace},
@@ -777,6 +768,7 @@ inline const std::unordered_map<std::string_view, TokenKind> Token::keyword_map 
     {"where", TokenKind::Where},
     {"inherit", TokenKind::Inherit},
     {"in", TokenKind::In},
+    {"by", TokenKind::By},
     {"true", TokenKind::BooleanLiteral},
     {"false", TokenKind::BooleanLiteral}
 };

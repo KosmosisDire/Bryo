@@ -71,10 +71,10 @@ namespace Mycelium::Scripting::Lang
     struct GenericTypeNameNode;
     struct GenericParameterNode;
 
-    // When Expressions and Patterns
-    struct WhenExpressionNode;
-    struct WhenArmNode;
-    struct WhenPatternNode;
+    // Match Expressions and Patterns
+    struct MatchExpressionNode;
+    struct MatchArmNode;
+    struct MatchPatternNode;
     struct EnumPatternNode;
     struct RangePatternNode;
     struct ComparisonPatternNode;
@@ -153,7 +153,7 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(IndexerExpressionNode* node);
         virtual void visit(TypeOfExpressionNode* node);
         virtual void visit(SizeOfExpressionNode* node);
-        virtual void visit(WhenExpressionNode* node);
+        virtual void visit(MatchExpressionNode* node);
         virtual void visit(ConditionalExpressionNode* node);
         virtual void visit(RangeExpressionNode* node);
         virtual void visit(EnumMemberExpressionNode* node);
@@ -191,9 +191,9 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(ConstructorDeclarationNode* node);
         virtual void visit(EnumCaseNode* node);
         
-        // When Patterns
-        virtual void visit(WhenArmNode* node);
-        virtual void visit(WhenPatternNode* node);
+        // Match Patterns
+        virtual void visit(MatchArmNode* node);
+        virtual void visit(MatchPatternNode* node);
         virtual void visit(EnumPatternNode* node);
         virtual void visit(RangePatternNode* node);
         virtual void visit(ComparisonPatternNode* node);
@@ -371,15 +371,15 @@ namespace Mycelium::Scripting::Lang
         TokenNode* closeParen;
     };
 
-    struct WhenExpressionNode : ExpressionNode
+    struct MatchExpressionNode : ExpressionNode
     {
-        AST_TYPE(WhenExpressionNode, ExpressionNode)
-        TokenNode* whenKeyword;
+        AST_TYPE(MatchExpressionNode, ExpressionNode)
+        TokenNode* matchKeyword;
         TokenNode* openParen;
         ExpressionNode* expression;
         TokenNode* closeParen;
         TokenNode* openBrace;
-        SizedArray<WhenArmNode*> arms;
+        SizedArray<MatchArmNode*> arms;
         TokenNode* closeBrace;
     };
 
@@ -669,52 +669,52 @@ namespace Mycelium::Scripting::Lang
         SizedArray<StatementNode*> statements; // Can contain usings, namespace, function, and class decls
     };
 
-    // --- When Patterns ---
-    struct WhenArmNode : AstNode
+    // --- Match Patterns ---
+    struct MatchArmNode : AstNode
     {
-        AST_TYPE(WhenArmNode, AstNode)
-        WhenPatternNode* pattern;
+        AST_TYPE(MatchArmNode, AstNode)
+        MatchPatternNode* pattern;
         TokenNode* arrow; // =>
         ExpressionNode* result; // can be expression or block
         TokenNode* comma; // optional trailing comma
     };
 
-    struct WhenPatternNode : AstNode 
+    struct MatchPatternNode : AstNode
     { 
-        AST_TYPE(WhenPatternNode, AstNode) 
+        AST_TYPE(MatchPatternNode, AstNode)
     };
 
-    struct EnumPatternNode : WhenPatternNode
+    struct EnumPatternNode : MatchPatternNode
     {
-        AST_TYPE(EnumPatternNode, WhenPatternNode)
+        AST_TYPE(EnumPatternNode, MatchPatternNode)
         TokenNode* dot;
         IdentifierNode* enumCase;
     };
 
-    struct RangePatternNode : WhenPatternNode
+    struct RangePatternNode : MatchPatternNode
     {
-        AST_TYPE(RangePatternNode, WhenPatternNode)
+        AST_TYPE(RangePatternNode, MatchPatternNode)
         ExpressionNode* start; // optional for open ranges
         TokenNode* rangeOp; // .. or ..=
         ExpressionNode* end; // optional for open ranges
     };
 
-    struct ComparisonPatternNode : WhenPatternNode
+    struct ComparisonPatternNode : MatchPatternNode
     {
-        AST_TYPE(ComparisonPatternNode, WhenPatternNode)
+        AST_TYPE(ComparisonPatternNode, MatchPatternNode)
         TokenNode* comparisonOp; // <=, >=, <, >
         ExpressionNode* value;
     };
 
-    struct WildcardPatternNode : WhenPatternNode
+    struct WildcardPatternNode : MatchPatternNode
     {
-        AST_TYPE(WildcardPatternNode, WhenPatternNode)
+        AST_TYPE(WildcardPatternNode, MatchPatternNode)
         TokenNode* underscore;
     };
 
-    struct LiteralPatternNode : WhenPatternNode
+    struct LiteralPatternNode : MatchPatternNode
     {
-        AST_TYPE(LiteralPatternNode, WhenPatternNode)
+        AST_TYPE(LiteralPatternNode, MatchPatternNode)
         LiteralExpressionNode* literal;
     };
 

@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <iomanip>
+#include <iostream>
 
 namespace Mycelium::Scripting::Parser {
 
@@ -78,7 +80,8 @@ Token TokenStream::consume_any(std::initializer_list<TokenKind> kinds) {
 }
 
 bool TokenStream::at_end() const {
-    return position_ >= tokens_.size() || 
+
+    return position_ >= tokens_.size() ||
            (position_ < tokens_.size() && tokens_[position_].kind == TokenKind::EndOfFile);
 }
 
@@ -114,8 +117,8 @@ bool TokenStream::match_sequence(std::initializer_list<TokenKind> sequence) cons
 
 std::string TokenStream::get_expected_message(TokenKind expected) const {
     std::ostringstream oss;
-    oss << "Expected " << to_string(expected) 
-        << " but found " << to_string(current().kind);
+    oss << "Expected " << Mycelium::Scripting::to_string(expected) 
+        << " but found " << Mycelium::Scripting::to_string(current().kind);
     return oss.str();
 }
 
@@ -124,19 +127,19 @@ std::string TokenStream::get_expected_message(std::initializer_list<TokenKind> e
     oss << "Expected ";
     
     if (expected.size() == 1) {
-        oss << to_string(*expected.begin());
+        oss << Mycelium::Scripting::to_string(*expected.begin());
     } else {
         bool first = true;
         for (TokenKind kind : expected) {
             if (!first) {
                 oss << ", ";
             }
-            oss << to_string(kind);
+            oss << Mycelium::Scripting::to_string(kind);
             first = false;
         }
     }
     
-    oss << " but found " << to_string(current().kind);
+    oss << " but found " << Mycelium::Scripting::to_string(current().kind);
     return oss.str();
 }
 
@@ -147,6 +150,43 @@ void TokenStream::ensure_valid_position() const {
     if (position_ >= tokens_.size()) {
         throw std::runtime_error("TokenStream position out of bounds");
     }
+}
+
+std::string TokenStream::to_string() const {
+    std::ostringstream oss;
+    oss << "TokenStream (" << tokens_.size() << " tokens, position=" << position_ << "):\n";
+    
+    for (size_t i = 0; i < tokens_.size(); ++i) {
+        const Token& token = tokens_[i];
+        
+        // Mark current position with an arrow
+        if (i == position_) {
+            oss << " --> ";
+        } else {
+            oss << "     ";
+        }
+        
+        // Token index
+        oss << "[" << std::setw(3) << i << "] ";
+        
+        // Token location
+        oss << "(" << std::setw(4) << token.location.line 
+            << ":" << std::setw(3) << token.location.column << ") ";
+        
+        // Token kind
+        oss << std::setw(20) << std::left << token.to_string();
+        
+        // Token text (if not too long)
+        if (!token.text.empty() && token.text.length() <= 30) {
+            oss << " \"" << token.text << "\"";
+        } else if (!token.text.empty()) {
+            oss << " \"" << token.text.substr(0, 27) << "...\"";
+        }
+        
+        oss << "\n";
+    }
+    
+    return oss.str();
 }
 
 } // namespace Mycelium::Scripting::Parser

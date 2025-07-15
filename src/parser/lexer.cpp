@@ -187,7 +187,8 @@ Token Lexer::scan_token() {
     Token token;
     
     // Determine token type based on first character
-    if (is_alpha(ch) || ch == '_') {
+    // TODO: Implement smarter identifier checking (ex __hello__). Right now it only supports one leading underscore _
+    if (is_alpha(ch) || (ch == '_' && is_alpha(peek_char()))) {
         token = scan_identifier_or_keyword();
     }
     else if (is_digit(ch)) {
@@ -509,6 +510,7 @@ Token Lexer::scan_operator_or_punctuation() {
             
         case '=':
             if (peek_char() == '=') return make_token(TokenKind::Equal, 2);
+            if (peek_char() == '>') return make_token(TokenKind::FatArrow, 2);
             return make_token(TokenKind::Assign, 1);
             
         case '!':
