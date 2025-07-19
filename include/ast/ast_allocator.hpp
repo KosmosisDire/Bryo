@@ -63,6 +63,21 @@ namespace Mycelium::Scripting::Lang
             
             return new (mem) T();
         }
+        
+        // Allocates an array of T objects (for SizedArray support)
+        template <typename T>
+        T* alloc_array(size_t count)
+        {
+            void* mem = alloc_bytes(sizeof(T) * count, alignof(T));
+            
+            // Zero-initialize the entire array
+            memset(mem, 0, sizeof(T) * count);
+            
+            // For pointer types, no construction needed (just zeroed memory)
+            // For complex types, we'd need to call constructors
+            return static_cast<T*>(mem);
+        }
+        
     };
 
 } // namespace Mycelium::Scripting::Lang

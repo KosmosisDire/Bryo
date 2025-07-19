@@ -5,7 +5,7 @@
 #include <cctype>
 #include <algorithm>
 
-namespace Mycelium::Scripting::Parser
+namespace Mycelium::Scripting::Lang
 {
 
 
@@ -679,4 +679,4 @@ std::unique_ptr<Lexer> create_simple_lexer(std::string_view source) {
     return std::make_unique<Lexer>(source, options);
 }
 
-} // namespace Mycelium::Scripting::Parser
+} // namespace Mycelium::Scripting::Lang

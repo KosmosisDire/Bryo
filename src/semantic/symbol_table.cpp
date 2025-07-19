@@ -238,7 +238,9 @@ private:
             std::string result = get_type_string(generic->baseType) + "<";
             for (int i = 0; i < generic->arguments.size; i++) {
                 if (i > 0) result += ", ";
-                result += get_type_string(generic->arguments.values[i]);
+                if (auto* type = ast_cast_or_error<TypeNameNode>(generic->arguments.values[i])) {
+                    result += get_type_string(type);
+                }
             }
             result += ">";
             return result;
@@ -281,7 +283,9 @@ private:
         symbol_table.enter_named_scope(type_name);
         
         for (int i = 0; i < node->members.size; i++) {
-            visit_declaration(node->members.values[i]);
+            if (auto* decl = ast_cast_or_error<DeclarationNode>(node->members.values[i])) {
+                visit_declaration(decl);
+            }
         }
         
         symbol_table.exit_scope();
@@ -294,7 +298,9 @@ private:
         symbol_table.enter_named_scope(interface_name);
         
         for (int i = 0; i < node->members.size; i++) {
-            visit_declaration(node->members.values[i]);
+            if (auto* decl = ast_cast_or_error<DeclarationNode>(node->members.values[i])) {
+                visit_declaration(decl);
+            }
         }
         
         symbol_table.exit_scope();
@@ -330,16 +336,19 @@ private:
         symbol_table.enter_named_scope(func_name);
         
         for (int i = 0; i < node->parameters.size; i++) {
-            auto param = node->parameters.values[i];
-            std::string param_type = get_type_string(param->type);
-            symbol_table.declare_symbol(std::string(param->name->name), SymbolType::PARAMETER, param_type);
+            if (auto* param = ast_cast_or_error<ParameterNode>(node->parameters.values[i])) {
+                std::string param_type = get_type_string(param->type);
+                symbol_table.declare_symbol(std::string(param->name->name), SymbolType::PARAMETER, param_type);
+            }
         }
         
         if (node->body) {
             // Process block contents directly without creating a new scope
             // since the function already has its own scope
             for (int i = 0; i < node->body->statements.size; i++) {
-                visit_statement(node->body->statements.values[i]);
+                if (auto* stmt = ast_cast_or_error<StatementNode>(node->body->statements.values[i])) {
+                    visit_statement(stmt);
+                }
             }
         }
         
@@ -391,7 +400,9 @@ private:
         symbol_table.enter_scope();
         
         for (int i = 0; i < node->statements.size; i++) {
-            visit_statement(node->statements.values[i]);
+            if (auto* stmt = ast_cast_or_error<StatementNode>(node->statements.values[i])) {
+                visit_statement(stmt);
+            }
         }
         
         symbol_table.exit_scope();
@@ -439,10 +450,10 @@ public:
         for (int i = 0; i < root->statements.size; i++) {
             auto stmt = root->statements.values[i];
             // Top-level statements in a compilation unit are often declarations
-            if (auto decl = stmt->as<DeclarationNode>()) {
+            if (auto decl = ast_cast_or_error<DeclarationNode>(stmt)) {
                 visit_declaration(decl);
-            } else {
-                visit_statement(stmt);
+            } else if (auto statement = ast_cast_or_error<StatementNode>(stmt)) {
+                visit_statement(statement);
             }
         }
     }

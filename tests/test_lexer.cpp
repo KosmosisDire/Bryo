@@ -4,7 +4,7 @@
 #include "parser/token_stream.hpp"
 
 using namespace Mycelium::Testing;
-using namespace Mycelium::Scripting::Parser;
+using namespace Mycelium::Scripting::Lang;
 using namespace Mycelium::Scripting;
 
 // Test diagnostic sink for collecting errors

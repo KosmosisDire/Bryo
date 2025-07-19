@@ -76,6 +76,7 @@ set(SOURCE_FILES
     # Parser Implementation
     src/parser/lexer.cpp
     src/parser/token_stream.cpp
+    src/parser/parser.cpp
     
     # Semantic Analyzer
     src/semantic/symbol_table.cpp
@@ -98,6 +99,7 @@ set(RUNTIME_FILES
 
 set(TEST_FILES
     tests/test_lexer.cpp
+    tests/test_parser.cpp
     tests/test_command_generation.cpp
     tests/test_ir_generation.cpp
     tests/test_jit_execution.cpp

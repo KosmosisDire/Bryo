@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <cstring> // for memcpy
+#include <functional> // for std::function in TypeSafeVisitor
 #include "ast_rtti.hpp"
 #include "ast_allocator.hpp"
 #include "common/token.hpp"
@@ -16,6 +17,7 @@ namespace Mycelium::Scripting::Lang
     // --- Forward Declarations ---
     // This comprehensive list allows any node to reference any other node.
     struct AstNode;
+    struct ErrorNode;
     struct TokenNode;
     struct IdentifierNode;
     struct ExpressionNode;
@@ -44,6 +46,7 @@ namespace Mycelium::Scripting::Lang
     struct IfStatementNode;
     struct WhileStatementNode;
     struct ForStatementNode;
+    struct ForInStatementNode;
     struct ReturnStatementNode;
     struct BreakStatementNode;
     struct ContinueStatementNode;
@@ -122,11 +125,22 @@ namespace Mycelium::Scripting::Lang
     };
 
 
-    // --- Structural Visitor ---
+    // --- Enhanced Structural Visitor ---
     // The base class for all AST traversal and analysis passes.
-    // It uses the RTTI system for dispatch.
+    // Now includes type-safe error handling capabilities.
     class StructuralVisitor
     {
+    protected:
+        // Type-safe visitor helper that handles errors gracefully
+        // Implementation moved after AstNode definition
+        template<typename T>
+        void visit_as(AstNode* node, std::function<void(T*)> handler);
+        
+        // Visit collections with automatic error handling
+        // Implementation moved after AstNode definition
+        template<typename T>
+        void visit_collection(const SizedArray<AstNode*>& nodes, std::function<void(T*)> handler);
+
     public:
         virtual ~StructuralVisitor() = default;
 
@@ -134,6 +148,7 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(AstNode* node);
 
         // One visit method for each concrete AND abstract node type.
+        virtual void visit(ErrorNode* node);
         virtual void visit(TokenNode* node);
         virtual void visit(IdentifierNode* node);
 
@@ -167,6 +182,7 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(IfStatementNode* node);
         virtual void visit(WhileStatementNode* node);
         virtual void visit(ForStatementNode* node);
+        virtual void visit(ForInStatementNode* node);
         virtual void visit(ReturnStatementNode* node);
         virtual void visit(BreakStatementNode* node);
         virtual void visit(ContinueStatementNode* node);
@@ -222,6 +238,7 @@ namespace Mycelium::Scripting::Lang
         #endif
 
         uint8_t typeId;
+        bool contains_errors;  // Fast error detection flag
         TokenKind tokenKind;
         int sourceStart;
         int sourceLength;
@@ -235,6 +252,28 @@ namespace Mycelium::Scripting::Lang
         // RTTI functions defined at the end of this file
         template <typename T> bool is_a() { return node_is<T>(this); }
         template <typename T> T* as() { return node_cast<T>(this); }
+    };
+
+    enum class ErrorKind {
+        UnexpectedToken,    // "Expected ';', found 'if'"
+        MissingToken       // "Expected ')' after expression"
+    };
+
+    struct ErrorNode : AstNode {
+        AST_TYPE(ErrorNode, AstNode)
+
+        ErrorKind kind;
+        std::string error_message;
+
+        static ErrorNode* create(ErrorKind k, const char* msg, const Token& token, AstAllocator& allocator) {
+            auto* node = allocator.alloc<ErrorNode>();
+            node->kind = k;
+            node->error_message = msg;
+            node->sourceStart = token.location.offset;
+            node->sourceLength = token.width;
+            node->contains_errors = true;  // ErrorNodes always contain errors
+            return node;
+        }
     };
 
 
@@ -288,10 +327,10 @@ namespace Mycelium::Scripting::Lang
     struct BinaryExpressionNode : ExpressionNode
     {
         AST_TYPE(BinaryExpressionNode, ExpressionNode)
-        ExpressionNode* left;
+        AstNode* left;        // Can be ExpressionNode* or ErrorNode*
         BinaryOperatorKind opKind;
         TokenNode* operatorToken;
-        ExpressionNode* right;
+        AstNode* right;       // Can be ExpressionNode* or ErrorNode*
     };
 
     struct AssignmentExpressionNode : ExpressionNode
@@ -308,7 +347,7 @@ namespace Mycelium::Scripting::Lang
         AST_TYPE(CallExpressionNode, ExpressionNode)
         ExpressionNode* target;
         TokenNode* openParen;
-        SizedArray<ExpressionNode*> arguments;
+        SizedArray<AstNode*> arguments;  // Can contain ExpressionNodes or ErrorNodes
         SizedArray<TokenNode*> commas;
         TokenNode* closeParen;
     };
@@ -433,15 +472,15 @@ namespace Mycelium::Scripting::Lang
     {
         AST_TYPE(BlockStatementNode, StatementNode)
         TokenNode* openBrace;
-        // A block can contain both statements and local declarations
-        SizedArray<StatementNode*> statements;
+        // A block can contain both statements and local declarations (including ErrorNodes)
+        SizedArray<AstNode*> statements;
         TokenNode* closeBrace;
     };
 
     struct ExpressionStatementNode : StatementNode
     {
         AST_TYPE(ExpressionStatementNode, StatementNode)
-        ExpressionNode* expression;
+        AstNode* expression;  // Can be ExpressionNode* or ErrorNode*
         TokenNode* semicolon;
     };
 
@@ -477,6 +516,18 @@ namespace Mycelium::Scripting::Lang
         TokenNode* firstSemicolon;
         SizedArray<ExpressionNode*> incrementors;
         TokenNode* secondSemicolon;
+        TokenNode* closeParen;
+        StatementNode* body;
+    };
+
+    struct ForInStatementNode : StatementNode
+    {
+        AST_TYPE(ForInStatementNode, StatementNode)
+        TokenNode* forKeyword;
+        TokenNode* openParen;
+        VariableDeclarationNode* variable;  // var i or Type var
+        TokenNode* inKeyword;
+        ExpressionNode* iterable;  // 0..10 or collection
         TokenNode* closeParen;
         StatementNode* body;
     };
@@ -538,7 +589,7 @@ namespace Mycelium::Scripting::Lang
         AST_TYPE(GenericTypeNameNode, TypeNameNode)
         TypeNameNode* baseType;
         TokenNode* openAngle;
-        SizedArray<TypeNameNode*> arguments;
+        SizedArray<AstNode*> arguments;  // Can contain TypeNameNodes or ErrorNodes
         SizedArray<TokenNode*> commas;
         TokenNode* closeAngle;
     };
@@ -606,7 +657,7 @@ namespace Mycelium::Scripting::Lang
         TokenNode* fnKeyword;
         // name inherited from DeclarationNode
         TokenNode* openParen;
-        SizedArray<ParameterNode*> parameters;
+        SizedArray<AstNode*> parameters;  // Can contain ParameterNodes or ErrorNodes
         TokenNode* closeParen;
         // modifiers inherited from DeclarationNode
         TokenNode* arrow; // optional -> for return type
@@ -622,7 +673,7 @@ namespace Mycelium::Scripting::Lang
         // modifiers array has ref/static from DeclarationNode
         // name inherited from DeclarationNode
         TokenNode* openBrace;
-        SizedArray<MemberDeclarationNode*> members;
+        SizedArray<AstNode*> members;  // Can contain MemberDeclarationNodes or ErrorNodes
         TokenNode* closeBrace;
     };
 
@@ -666,7 +717,7 @@ namespace Mycelium::Scripting::Lang
     struct CompilationUnitNode : AstNode
     {
         AST_TYPE(CompilationUnitNode, AstNode)
-        SizedArray<StatementNode*> statements; // Can contain usings, namespace, function, and class decls
+        SizedArray<AstNode*> statements; // Can contain usings, namespace, function, class decls, and ErrorNodes
     };
 
     // --- Match Patterns ---
@@ -798,6 +849,63 @@ namespace Mycelium::Scripting::Lang
     inline T* node_cast_exact(AstNode* node)
     {
         return node_is_exact<T>(node) ? static_cast<T*>(node) : nullptr;
+    }
+
+    // --- Type-Safe Error Handling Helpers ---
+
+    // Check if a node is valid (not an ErrorNode)
+    inline bool ast_is_valid(AstNode* node) {
+        return node != nullptr && !node_is<ErrorNode>(node);
+    }
+
+    // Check if a node or its children contain errors
+    inline bool ast_has_errors(AstNode* node) {
+        return node != nullptr && node->contains_errors;
+    }
+
+    // Type-safe cast that returns nullptr for ErrorNodes
+    template <typename T>
+    inline T* ast_cast_or_error(AstNode* node) {
+        if (!ast_is_valid(node)) {
+            return nullptr;
+        }
+        return node_cast<T>(node);
+    }
+
+    // Count valid nodes in a collection
+    template <typename T>
+    inline size_t ast_count_valid(const SizedArray<T*>& collection) {
+        size_t count = 0;
+        for (int i = 0; i < collection.size; ++i) {
+            if (ast_is_valid(collection[i])) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // --- StructuralVisitor Template Method Implementations ---
+    // These need to be defined after AstNode is complete
+
+    template<typename T>
+    inline void StructuralVisitor::visit_as(AstNode* node, std::function<void(T*)> handler) {
+        if (auto* typed = ast_cast_or_error<T>(node)) {
+            handler(typed);  // Process valid node
+        } else if (node && node->is_a<ErrorNode>()) {
+            visit(node->as<ErrorNode>());  // Handle error node through visitor
+        }
+        // If null, just skip
+    }
+    
+    template<typename T>
+    inline void StructuralVisitor::visit_collection(const SizedArray<AstNode*>& nodes, std::function<void(T*)> handler) {
+        for (int i = 0; i < nodes.size; ++i) {
+            if (auto* typed = ast_cast_or_error<T>(nodes[i])) {
+                handler(typed);
+            } else if (nodes[i] && nodes[i]->is_a<ErrorNode>()) {
+                visit(nodes[i]->as<ErrorNode>());
+            }
+        }
     }
 
 } // namespace Mycelium::Scripting::Lang

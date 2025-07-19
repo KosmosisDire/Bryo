@@ -4,7 +4,7 @@
 #include <string_view>
 #include <memory>
 
-namespace Mycelium::Scripting::Parser {
+namespace Mycelium::Scripting::Lang {
 
 // Forward declaration
 class TokenStream;
@@ -173,4 +173,4 @@ private:
 // Create a simple lexer for quick tokenization (no trivia, basic options)
 std::unique_ptr<Lexer> create_simple_lexer(std::string_view source);
 
-} // namespace Mycelium::Scripting::Parser
+} // namespace Mycelium::Scripting::Lang

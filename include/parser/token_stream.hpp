@@ -5,7 +5,7 @@
 #include <initializer_list>
 #include <stdexcept>
 
-namespace Mycelium::Scripting::Parser {
+namespace Mycelium::Scripting::Lang {
 
 // Token stream as a data structure containing all tokens from lexical analysis
 class TokenStream {
@@ -83,4 +83,4 @@ private:
     void ensure_valid_position() const;
 };
 
-} // namespace Mycelium::Scripting::Parser
+} // namespace Mycelium::Scripting::Lang

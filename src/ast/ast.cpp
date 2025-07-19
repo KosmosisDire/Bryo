@@ -375,4 +375,37 @@ namespace Mycelium::Scripting::Lang
         return get_type_name_from_id(node->typeId);
     }
 
+    // --- Static Type Info Definitions ---
+    // These define the static sTypeInfo members for AST nodes
+    
+    // Forward declare visitor accept functions
+    void ErrorNode_accept(AstNode* node, StructuralVisitor* visitor);
+    void ForInStatementNode_accept(AstNode* node, StructuralVisitor* visitor);
+    
+    // Type info definitions for new AST types
+    AstTypeInfo ErrorNode::sTypeInfo("ErrorNode", &AstNode::sTypeInfo, ErrorNode_accept);
+    AstTypeInfo ForInStatementNode::sTypeInfo("ForInStatementNode", &StatementNode::sTypeInfo, ForInStatementNode_accept);
+    
+    // Accept function implementations
+    void ErrorNode_accept(AstNode* node, StructuralVisitor* visitor) {
+        visitor->visit(static_cast<ErrorNode*>(node));
+    }
+    
+    void ForInStatementNode_accept(AstNode* node, StructuralVisitor* visitor) {
+        visitor->visit(static_cast<ForInStatementNode*>(node));
+    }
+    
+    // StructuralVisitor method implementations for new types
+    void StructuralVisitor::visit(ErrorNode* node) {
+        // Default implementation - just report that we visited an error
+        // Subclasses can override for specific error handling
+    }
+    
+    void StructuralVisitor::visit(ForInStatementNode* node) {
+        // Default implementation - visit children
+        if (node->variable) visit(node->variable);
+        if (node->iterable) visit(node->iterable);
+        if (node->body) visit(node->body);
+    }
+
 } // namespace Mycelium::Scripting::Lang

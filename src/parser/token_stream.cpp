@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <iostream>
 
-namespace Mycelium::Scripting::Parser {
+namespace Mycelium::Scripting::Lang {
 
 const Token& TokenStream::current() const {
     ensure_valid_position();
@@ -189,4 +189,4 @@ std::string TokenStream::to_string() const {
     return oss.str();
 }
 
-} // namespace Mycelium::Scripting::Parser
+} // namespace Mycelium::Scripting::Lang

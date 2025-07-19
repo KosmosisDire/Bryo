@@ -10,6 +10,7 @@ using namespace Mycelium;
 
 // Test function declarations
 void run_lexer_tests();
+void run_parser_tests();
 void run_parse_result_tests();
 void run_pratt_parser_tests();
 void run_recursive_parser_tests();
@@ -37,6 +38,9 @@ int main() {
     // Run all test suites
     LOG_INFO("🧪 Running Lexer Tests...", LogCategory::TEST);
     run_lexer_tests();
+    
+    LOG_INFO("🧪 Running Parser Tests...", LogCategory::TEST);
+    run_parser_tests();
     
     LOG_INFO("🧪 Running Command Generation Tests...", LogCategory::TEST);
     run_command_generation_tests();

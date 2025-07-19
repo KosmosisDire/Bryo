@@ -86,10 +86,10 @@ public:
         
         if (!statements.empty()) {
             block->statements.size = (int)statements.size();
-            block->statements.values = (StatementNode**)allocator_.alloc_bytes(
-                sizeof(StatementNode*) * statements.size(), alignof(StatementNode*));
+            block->statements.values = (AstNode**)allocator_.alloc_bytes(
+                sizeof(AstNode*) * statements.size(), alignof(AstNode*));
             memcpy(block->statements.values, statements.data(), 
-                   sizeof(StatementNode*) * statements.size());
+                   sizeof(AstNode*) * statements.size());
         } else {
             block->statements.size = 0;
             block->statements.values = nullptr;
@@ -118,10 +118,10 @@ public:
         
         if (!statements.empty()) {
             unit->statements.size = (int)statements.size();
-            unit->statements.values = (StatementNode**)allocator_.alloc_bytes(
-                sizeof(StatementNode*) * statements.size(), alignof(StatementNode*));
+            unit->statements.values = (AstNode**)allocator_.alloc_bytes(
+                sizeof(AstNode*) * statements.size(), alignof(AstNode*));
             memcpy(unit->statements.values, statements.data(), 
-                   sizeof(StatementNode*) * statements.size());
+                   sizeof(AstNode*) * statements.size());
         } else {
             unit->statements.size = 0;
             unit->statements.values = nullptr;
