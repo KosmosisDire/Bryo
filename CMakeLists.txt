@@ -79,6 +79,7 @@ set(SOURCE_FILES
     src/parser/parser.cpp
     src/parser/expression_parser.cpp
     src/parser/statement_parser.cpp
+    src/parser/declaration_parser.cpp
     
     # Semantic Analyzer
     src/semantic/symbol_table.cpp
@@ -86,6 +87,7 @@ set(SOURCE_FILES
     # Code Generator
     src/codegen/codegen.cpp
     src/codegen/ir_builder.cpp
+    src/codegen/ir_command.cpp
     src/codegen/command_processor.cpp
     src/codegen/jit_engine.cpp
     
@@ -105,6 +107,7 @@ set(TEST_FILES
     tests/test_command_generation.cpp
     tests/test_ir_generation.cpp
     tests/test_jit_execution.cpp
+    tests/test_integration.cpp
 )
 
 # Main executable

@@ -1,6 +1,9 @@
 #include "parser/statement_parser.h"
 #include "parser/parser.h"
 #include "parser/expression_parser.h"
+#include "parser/declaration_parser.h"
+#include <iostream>
+#include <magic_enum.hpp>
 
 namespace Mycelium::Scripting::Lang {
 
@@ -20,9 +23,57 @@ ErrorNode* StatementParser::create_error(ErrorKind kind, const char* msg) {
 ParseResult<StatementNode> StatementParser::parse_statement() {
     auto& ctx = context();
     
-    // Handle variable declarations
+    // Handle variable declarations as statements
     if (ctx.check(TokenKind::Var)) {
-        return parse_variable_declaration();
+        auto decl_result = parser_->get_declaration_parser().parse_variable_declaration();
+        if (decl_result.is_success()) {
+            auto* var_decl = decl_result.get_node();
+            
+            // Handle semicolon
+            if (ctx.check(TokenKind::Semicolon)) {
+                auto* semicolon = parser_->get_allocator().alloc<TokenNode>();
+                semicolon->text = ctx.current().text;
+                semicolon->contains_errors = false;
+                var_decl->semicolon = semicolon;
+                ctx.advance();
+            } else {
+                create_error(ErrorKind::MissingToken, "Expected ';' after variable declaration");
+                var_decl->contains_errors = true;
+            }
+            
+            // Return as StatementNode - VariableDeclarationNode is a StatementNode
+            return ParseResult<StatementNode>::success(var_decl);
+        } else {
+            return ParseResult<StatementNode>::error(decl_result.get_error());
+        }
+    }
+    
+    // Check for typed variable declarations: Type name1, name2 = value;
+    // We need to lookahead to distinguish from expression statements
+    if (ctx.check(TokenKind::Identifier)) {
+        // Check if next token is also an identifier (Type name pattern)
+        if (ctx.peek().kind == TokenKind::Identifier) {
+            auto typed_decl_result = parser_->get_declaration_parser().parse_typed_variable_declaration();
+            if (typed_decl_result.is_success()) {
+                auto* var_decl = typed_decl_result.get_node();
+                
+                // Handle semicolon
+                if (ctx.check(TokenKind::Semicolon)) {
+                    auto* semicolon = parser_->get_allocator().alloc<TokenNode>();
+                    semicolon->text = ctx.current().text;
+                    semicolon->contains_errors = false;
+                    var_decl->semicolon = semicolon;
+                    ctx.advance();
+                } else {
+                    create_error(ErrorKind::MissingToken, "Expected ';' after variable declaration");
+                    var_decl->contains_errors = true;
+                }
+                
+                return ParseResult<StatementNode>::success(var_decl);
+            } else {
+                return ParseResult<StatementNode>::error(typed_decl_result.get_error());
+            }
+        }
     }
     
     // Handle control flow statements
@@ -32,6 +83,25 @@ ParseResult<StatementNode> StatementParser::parse_statement() {
     
     if (ctx.check(TokenKind::While)) {
         return parse_while_statement();
+    }
+    
+    if (ctx.check(TokenKind::For)) {
+        return parse_for_statement();
+    }
+    
+    // Handle return statements
+    if (ctx.check(TokenKind::Return)) {
+        return parse_return_statement();
+    }
+    
+    // Handle break statements  
+    if (ctx.check(TokenKind::Break)) {
+        return parse_break_statement();
+    }
+    
+    // Handle continue statements
+    if (ctx.check(TokenKind::Continue)) {
+        return parse_continue_statement();
     }
     
     // Handle block statements
@@ -64,63 +134,6 @@ ParseResult<StatementNode> StatementParser::parse_expression_statement() {
     return ParseResult<StatementNode>::error(expr_result.get_error());
 }
 
-// Variable declaration parsing
-ParseResult<StatementNode> StatementParser::parse_variable_declaration() {
-    auto& ctx = context();
-    
-    ctx.advance(); // consume 'var'
-    
-    if (!ctx.check(TokenKind::Identifier)) {
-        return ParseResult<StatementNode>::error(
-            create_error(ErrorKind::MissingToken, "Expected identifier after 'var'"));
-    }
-    
-    const Token& name_token = ctx.current();
-    ctx.advance();
-    
-    auto* var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
-    var_decl->contains_errors = false;  // Initialize, will update based on children
-    auto* name_node = parser_->get_allocator().alloc<IdentifierNode>();
-    name_node->name = name_token.text;
-    name_node->contains_errors = false;
-    var_decl->name = name_node;
-    
-    // Optional type annotation: var x: i32
-    if (parser_->match(TokenKind::Colon)) {
-        auto type_result = parser_->parse_type_expression();
-        if (type_result.is_success()) {
-            var_decl->type = type_result.get_node();
-        }
-    }
-    
-    // Optional initializer: var x = 5
-    if (parser_->match(TokenKind::Assign)) {
-        auto init_result = parser_->get_expression_parser().parse_expression();
-        if (init_result.is_success()) {
-            var_decl->initializer = init_result.get_node();
-        }
-    }
-    
-    parser_->expect(TokenKind::Semicolon, "Expected ';' after variable declaration");
-    
-    // Update error flag based on type and initializer
-    bool has_errors = false;
-    if (var_decl->type && ast_has_errors(var_decl->type)) has_errors = true;
-    if (var_decl->initializer && ast_has_errors(var_decl->initializer)) has_errors = true;
-    var_decl->contains_errors = has_errors;
-    
-    // Wrap in LocalVariableDeclarationNode as per AST design
-    auto* local_var_decl = parser_->get_allocator().alloc<LocalVariableDeclarationNode>();
-    // For now, we'll need to create a SizedArray for the declarators
-    // This is a simplified approach - in full implementation we'd handle multiple declarators
-    auto* declarators = parser_->get_allocator().alloc_array<VariableDeclarationNode*>(1);
-    declarators[0] = var_decl;
-    local_var_decl->declarators.values = declarators;
-    local_var_decl->declarators.size = 1;
-    local_var_decl->contains_errors = has_errors;  // Propagate errors
-    
-    return ParseResult<StatementNode>::success(local_var_decl);
-}
 
 // Block statement parsing
 ParseResult<StatementNode> StatementParser::parse_block_statement() {
@@ -241,8 +254,130 @@ ParseResult<StatementNode> StatementParser::parse_while_statement() {
 }
 
 ParseResult<StatementNode> StatementParser::parse_for_statement() {
-    return ParseResult<StatementNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "For statements not implemented yet"));
+    auto& ctx = context();
+    
+    ctx.advance(); // consume 'for'
+    
+    if (!parser_->match(TokenKind::LeftParen)) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::MissingToken, "Expected '(' after 'for'"));
+    }
+    
+    // Parse initializer (can be variable declaration or expression)
+    ParseResult<StatementNode> init_result = ParseResult<StatementNode>::success(nullptr);
+    if (!ctx.check(TokenKind::Semicolon)) {
+        if (ctx.check(TokenKind::Var)) {
+            auto var_result = parser_->get_declaration_parser().parse_variable_declaration();
+            if (var_result.is_success()) {
+                init_result = ParseResult<StatementNode>::success(var_result.get_node());
+            } else {
+                init_result = ParseResult<StatementNode>::error(var_result.get_error());
+            }
+        } else if (ctx.check(TokenKind::Identifier) && ctx.peek().kind == TokenKind::Identifier) {
+            // Typed variable declaration: Type name = value
+            auto typed_var_result = parser_->get_declaration_parser().parse_typed_variable_declaration();
+            if (typed_var_result.is_success()) {
+                init_result = ParseResult<StatementNode>::success(typed_var_result.get_node());
+            } else {
+                init_result = ParseResult<StatementNode>::error(typed_var_result.get_error());
+            }
+        } else {
+            // Parse just the expression, not an expression statement
+            auto expr_result = parser_->get_expression_parser().parse_expression();
+            if (expr_result.is_success()) {
+                // Wrap in ExpressionStatementNode for consistency
+                auto* expr_stmt = parser_->get_allocator().alloc<ExpressionStatementNode>();
+                expr_stmt->expression = expr_result.get_node();
+                expr_stmt->contains_errors = ast_has_errors(expr_result.get_ast_node());
+                init_result = ParseResult<StatementNode>::success(expr_stmt);
+            } else {
+                init_result = ParseResult<StatementNode>::error(expr_result.get_error());
+            }
+        }
+    } else {
+        // Empty initializer, still need to consume semicolon
+        ctx.advance();
+    }
+    
+    // Consume semicolon after initializer
+    if (!parser_->match(TokenKind::Semicolon)) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::MissingToken, "Expected ';' after for initializer"));
+    }
+    
+    // Parse condition expression (optional)
+    ParseResult<ExpressionNode> condition_result = ParseResult<ExpressionNode>::success(nullptr);
+    if (!ctx.check(TokenKind::Semicolon)) {
+        condition_result = parser_->get_expression_parser().parse_expression();
+    }
+    
+    if (!parser_->match(TokenKind::Semicolon)) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::MissingToken, "Expected ';' after for condition"));
+    }
+    
+    // Parse increment expressions (optional, can be multiple separated by commas)
+    std::vector<ExpressionNode*> incrementors;
+    while (!ctx.check(TokenKind::RightParen) && !ctx.at_end()) {
+        auto incr_result = parser_->get_expression_parser().parse_expression();
+        if (incr_result.is_success()) {
+            incrementors.push_back(incr_result.get_node());
+        } else {
+            // Error recovery: break on parse failure
+            break;
+        }
+        
+        // Check for comma separator
+        if (ctx.check(TokenKind::Comma)) {
+            ctx.advance();
+        } else if (!ctx.check(TokenKind::RightParen)) {
+            create_error(ErrorKind::MissingToken, "Expected ',' or ')' in for increment list");
+            break;
+        }
+    }
+    
+    if (!parser_->match(TokenKind::RightParen)) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::MissingToken, "Expected ')' after for clauses"));
+    }
+    
+    // Enter loop context for break/continue validation
+    auto loop_guard = ctx.save_context();
+    ctx.set_loop_context(true);
+    
+    // Parse body with loop context active
+    auto body_result = parse_statement();
+    
+    // Create for statement node
+    auto* for_stmt = parser_->get_allocator().alloc<ForStatementNode>();
+    for_stmt->initializer = init_result.is_success() ? init_result.get_node() : nullptr;
+    for_stmt->condition = condition_result.is_success() ? condition_result.get_node() : nullptr;
+    for_stmt->body = body_result.is_success() ? body_result.get_node() : nullptr;
+    
+    // Allocate incrementor array
+    if (!incrementors.empty()) {
+        auto* incr_array = parser_->get_allocator().alloc_array<ExpressionNode*>(incrementors.size());
+        for (size_t i = 0; i < incrementors.size(); ++i) {
+            incr_array[i] = incrementors[i];
+        }
+        for_stmt->incrementors.values = incr_array;
+        for_stmt->incrementors.size = static_cast<int>(incrementors.size());
+    }
+    
+    // Update error flag
+    bool has_errors = false;
+    if (for_stmt->initializer && ast_has_errors(for_stmt->initializer)) has_errors = true;
+    if (for_stmt->condition && ast_has_errors(for_stmt->condition)) has_errors = true;
+    if (for_stmt->body && ast_has_errors(for_stmt->body)) has_errors = true;
+    for (int i = 0; i < for_stmt->incrementors.size; ++i) {
+        if (ast_has_errors(for_stmt->incrementors[i])) {
+            has_errors = true;
+            break;
+        }
+    }
+    for_stmt->contains_errors = has_errors;
+    
+    return ParseResult<StatementNode>::success(for_stmt);
 }
 
 ParseResult<StatementNode> StatementParser::parse_for_in_statement() {
@@ -251,18 +386,78 @@ ParseResult<StatementNode> StatementParser::parse_for_in_statement() {
 }
 
 ParseResult<StatementNode> StatementParser::parse_return_statement() {
-    return ParseResult<StatementNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "Return statements not implemented yet"));
+    auto& ctx = context();
+    
+    // Check if we're in a function context
+    if (!ctx.in_function()) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::UnexpectedToken, "Return statement outside function"));
+    }
+    
+    ctx.advance(); // consume 'return'
+    
+    auto* return_stmt = parser_->get_allocator().alloc<ReturnStatementNode>();
+    return_stmt->contains_errors = false;
+    
+    // Optional expression
+    if (!ctx.check(TokenKind::Semicolon)) {
+        auto expr_result = parser_->get_expression_parser().parse_expression();
+        if (expr_result.is_success()) {
+            return_stmt->expression = expr_result.get_node();
+            if (ast_has_errors(return_stmt->expression)) {
+                return_stmt->contains_errors = true;
+            }
+        } else {
+            // Set expression to null since we can't cast ErrorNode to ExpressionNode
+            // The error will be captured in the error collection via get_error()
+            return_stmt->expression = nullptr;
+            return_stmt->contains_errors = true;
+        }
+    } else {
+        return_stmt->expression = nullptr; // void return
+    }
+    
+    parser_->expect(TokenKind::Semicolon, "Expected ';' after return statement");
+    
+    return ParseResult<StatementNode>::success(return_stmt);
 }
 
 ParseResult<StatementNode> StatementParser::parse_break_statement() {
-    return ParseResult<StatementNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "Break statements not implemented yet"));
+    auto& ctx = context();
+    
+    // Check if we're in a loop context
+    if (!ctx.in_loop()) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::UnexpectedToken, "Break statement outside loop"));
+    }
+    
+    ctx.advance(); // consume 'break'
+    
+    auto* break_stmt = parser_->get_allocator().alloc<BreakStatementNode>();
+    break_stmt->contains_errors = false;
+    
+    parser_->expect(TokenKind::Semicolon, "Expected ';' after break statement");
+    
+    return ParseResult<StatementNode>::success(break_stmt);
 }
 
 ParseResult<StatementNode> StatementParser::parse_continue_statement() {
-    return ParseResult<StatementNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "Continue statements not implemented yet"));
+    auto& ctx = context();
+    
+    // Check if we're in a loop context
+    if (!ctx.in_loop()) {
+        return ParseResult<StatementNode>::error(
+            create_error(ErrorKind::UnexpectedToken, "Continue statement outside loop"));
+    }
+    
+    ctx.advance(); // consume 'continue'
+    
+    auto* continue_stmt = parser_->get_allocator().alloc<ContinueStatementNode>();
+    continue_stmt->contains_errors = false;
+    
+    parser_->expect(TokenKind::Semicolon, "Expected ';' after continue statement");
+    
+    return ParseResult<StatementNode>::success(continue_stmt);
 }
 
 // Helper methods
@@ -274,5 +469,6 @@ ParseResult<AstNode> StatementParser::parse_for_variable() {
     return ParseResult<AstNode>::error(
         create_error(ErrorKind::UnexpectedToken, "For variable parsing not implemented yet"));
 }
+
 
 } // namespace Mycelium::Scripting::Lang

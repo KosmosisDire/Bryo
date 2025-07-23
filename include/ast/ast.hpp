@@ -59,17 +59,14 @@ namespace Mycelium::Scripting::Lang
     struct InterfaceDeclarationNode;
     struct EnumDeclarationNode;
     struct MemberDeclarationNode;
-    struct FieldDeclarationNode;
     struct FunctionDeclarationNode;
     struct ParameterNode;
     struct VariableDeclarationNode;
-    struct LocalVariableDeclarationNode;
     struct CompilationUnitNode;
 
     // Types
     struct TypeNameNode;
     struct QualifiedTypeNameNode;
-    struct PointerTypeNameNode;
     struct ArrayTypeNameNode;
     struct GenericTypeNameNode;
     struct GenericParameterNode;
@@ -187,8 +184,6 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(BreakStatementNode* node);
         virtual void visit(ContinueStatementNode* node);
         virtual void visit(EmptyStatementNode* node);
-        virtual void visit(LocalVariableDeclarationNode* node);
-
         // Declarations
         virtual void visit(DeclarationNode* node);
         virtual void visit(NamespaceDeclarationNode* node);
@@ -197,7 +192,6 @@ namespace Mycelium::Scripting::Lang
         virtual void visit(InterfaceDeclarationNode* node);
         virtual void visit(EnumDeclarationNode* node);
         virtual void visit(MemberDeclarationNode* node);
-        virtual void visit(FieldDeclarationNode* node);
         virtual void visit(FunctionDeclarationNode* node);
         virtual void visit(ParameterNode* node);
         virtual void visit(VariableDeclarationNode* node);
@@ -219,7 +213,6 @@ namespace Mycelium::Scripting::Lang
         // Types
         virtual void visit(TypeNameNode* node);
         virtual void visit(QualifiedTypeNameNode* node);
-        virtual void visit(PointerTypeNameNode* node);
         virtual void visit(ArrayTypeNameNode* node);
         virtual void visit(GenericTypeNameNode* node);
         
@@ -267,6 +260,7 @@ namespace Mycelium::Scripting::Lang
 
         static ErrorNode* create(ErrorKind k, const char* msg, const Token& token, AstAllocator& allocator) {
             auto* node = allocator.alloc<ErrorNode>();
+            node->tokenKind = token.kind;
             node->kind = k;
             node->error_message = msg;
             node->sourceStart = token.location.offset;
@@ -511,7 +505,7 @@ namespace Mycelium::Scripting::Lang
         AST_TYPE(ForStatementNode, StatementNode)
         TokenNode* forKeyword;
         TokenNode* openParen;
-        StatementNode* initializer; // LocalVariableDeclarationNode or ExpressionStatementNode
+        StatementNode* initializer; // VariableDeclarationNode or ExpressionStatementNode
         ExpressionNode* condition;
         TokenNode* firstSemicolon;
         SizedArray<ExpressionNode*> incrementors;
@@ -525,9 +519,11 @@ namespace Mycelium::Scripting::Lang
         AST_TYPE(ForInStatementNode, StatementNode)
         TokenNode* forKeyword;
         TokenNode* openParen;
-        VariableDeclarationNode* variable;  // var i or Type var
+        StatementNode* mainVariable;  // var i or Type var or just an identifier
         TokenNode* inKeyword;
         ExpressionNode* iterable;  // 0..10 or collection
+        TokenNode* atKeyword; // optional
+        StatementNode* indexVariable;  // var i or Type var or just an identifier, optional
         TokenNode* closeParen;
         StatementNode* body;
     };
@@ -569,13 +565,6 @@ namespace Mycelium::Scripting::Lang
         IdentifierNode* right;
     };
 
-    struct PointerTypeNameNode : TypeNameNode
-    {
-        AST_TYPE(PointerTypeNameNode, TypeNameNode)
-        TypeNameNode* elementType;
-        TokenNode* asterisk;
-    };
-
     struct ArrayTypeNameNode : TypeNameNode
     {
         AST_TYPE(ArrayTypeNameNode, TypeNameNode)
@@ -610,22 +599,15 @@ namespace Mycelium::Scripting::Lang
         ExpressionNode* defaultValue; // Optional, can be null
     };
 
-    // Note: This node is now only for non-members like parameters and locals.
     struct VariableDeclarationNode : DeclarationNode
     {
         AST_TYPE(VariableDeclarationNode, DeclarationNode)
-        // name inherited from DeclarationNode
-        TokenNode* colon; // optional
-        TypeNameNode* type; // optional for type inference
-        TokenNode* equalsToken;
-        ExpressionNode* initializer;
-    };
-
-    struct LocalVariableDeclarationNode : StatementNode
-    {
-        AST_TYPE(LocalVariableDeclarationNode, StatementNode)
-        // Wraps one or more variable declarations for a local scope
-        SizedArray<VariableDeclarationNode*> declarators;
+        TokenNode* varKeyword; // Optional, can be null
+        TypeNameNode* type; // Optional, can be null
+        // either the var keyword or type must be present
+        SizedArray<IdentifierNode*> names; // if only one name then use name otherwise use names
+        TokenNode* equalsToken; // Optional, can be null
+        ExpressionNode* initializer; // Optional, can be null
         TokenNode* semicolon;
     };
 
@@ -634,16 +616,6 @@ namespace Mycelium::Scripting::Lang
         AST_TYPE(MemberDeclarationNode, DeclarationNode)
     };
     
-    // FIX: Redesigned FieldDeclarationNode to be self-contained
-    struct FieldDeclarationNode : MemberDeclarationNode
-    {
-        AST_TYPE(FieldDeclarationNode, MemberDeclarationNode)
-        SizedArray<IdentifierNode*> names; // x, y, z: type syntax
-        TokenNode* colon;
-        TypeNameNode* type;
-        TokenNode* equalsToken; // optional
-        ExpressionNode* initializer; // optional
-    };
 
     struct GenericParameterNode : DeclarationNode
     {
@@ -670,8 +642,6 @@ namespace Mycelium::Scripting::Lang
     {
         AST_TYPE(TypeDeclarationNode, DeclarationNode)
         TokenNode* typeKeyword; // always "type"
-        // modifiers array has ref/static from DeclarationNode
-        // name inherited from DeclarationNode
         TokenNode* openBrace;
         SizedArray<AstNode*> members;  // Can contain MemberDeclarationNodes or ErrorNodes
         TokenNode* closeBrace;

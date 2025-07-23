@@ -4,24 +4,42 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
+#include "codegen/ir_command.hpp"
+#include "ast/ast.hpp"
 
 namespace Mycelium::Scripting::Lang {
+
+// Forward declaration
+class SymbolTable;
 
 enum class SymbolType {
     VARIABLE,
     FUNCTION,
     CLASS,
-    PARAMETER
+    PARAMETER,
+    ENUM
+};
+
+enum class TypeResolutionState {
+    UNRESOLVED,    // Type not yet determined
+    RESOLVING,     // Currently being resolved (for cycle detection)
+    RESOLVED       // Type fully resolved
 };
 
 struct Symbol {
     std::string name;
     SymbolType type;
-    std::string data_type;
+    IRType data_type;
+    std::string type_name;  // Original type name (e.g., "Shape", "string")
     int scope_level;
     
-    Symbol(const std::string& n, SymbolType t, const std::string& dt, int level)
-        : name(n), type(t), data_type(dt), scope_level(level) {}
+    // Type resolution support
+    TypeResolutionState resolution_state = TypeResolutionState::UNRESOLVED;
+    ExpressionNode* initializer_expression = nullptr;  // For type inference
+    std::vector<std::string> dependencies;  // Variables this symbol's type depends on
+    
+    Symbol(const std::string& n, SymbolType t, const IRType& dt, const std::string& tn, int level)
+        : name(n), type(t), data_type(dt), type_name(tn), scope_level(level) {}
 };
 
 struct Scope {
@@ -55,7 +73,17 @@ public:
     void enter_scope();  // For building phase
     void enter_named_scope(const std::string& scope_name);  // For building phase with name
     void exit_scope();   // For building phase
-    bool declare_symbol(const std::string& name, SymbolType type, const std::string& data_type);
+    bool declare_symbol(const std::string& name, SymbolType type, const IRType& data_type, const std::string& type_name = "");
+    bool declare_unresolved_symbol(const std::string& name, SymbolType type, ExpressionNode* initializer = nullptr);
+    
+    // === TYPE RESOLUTION API ===
+    bool resolve_all_types();  // Resolve all unresolved types
+    bool resolve_symbol_type(const std::string& name);  // Resolve specific symbol type
+    bool resolve_symbol_type_in_context(const std::string& name, int context_scope_id);  // Resolve in specific scope context
+    std::string infer_type_from_expression(ExpressionNode* expr);  // Type inference from expression
+    std::string infer_type_from_expression_in_context(ExpressionNode* expr, int context_scope_id);  // Type inference with scope context
+    std::vector<std::string> extract_dependencies(ExpressionNode* expr);  // Extract variable dependencies
+    std::shared_ptr<Symbol> lookup_symbol_in_context(const std::string& name, int context_scope_id);  // Lookup with scope context
     
     // === NAVIGATION API ===
     // Used during code generation/analysis phases
@@ -69,6 +97,7 @@ public:
     std::shared_ptr<Symbol> lookup_symbol(const std::string& name);
     std::shared_ptr<Symbol> lookup_symbol_current_scope(const std::string& name);
     std::shared_ptr<Symbol> lookup_symbol_in_scope(int scope_id, const std::string& name);
+    std::vector<std::shared_ptr<Symbol>> get_all_symbols_in_scope(int scope_id);
     
     bool symbol_exists(const std::string& name);
     bool symbol_exists_current_scope(const std::string& name);
@@ -82,6 +111,9 @@ public:
     void clear();
     void print_symbol_table() const;
     void print_navigation_state() const;
+    
+    // === TYPE CONVERSION ===
+    IRType string_to_ir_type(const std::string& type_str);
 };
 
 // Forward declaration

@@ -3,6 +3,7 @@
 #include <variant>
 #include <string>
 #include <cstdint>
+#include <memory>
 
 namespace Mycelium::Scripting::Lang {
 
@@ -17,12 +18,24 @@ enum class Op {
     Mul,
     Div,
     
+    // Logical operations
+    And,
+    Or,
+    Not,
+    
+    // Comparison operations
+    ICmp,           // Integer comparison (takes comparison predicate)
+    
     // Memory operations
     Alloca,
     Load,
     Store,
+    GEP,            // GetElementPtr for struct field access
     
     // Control flow
+    Label,          // Basic block label
+    Br,             // Unconditional branch
+    BrCond,         // Conditional branch
     Ret,
     RetVoid,
     
@@ -31,6 +44,23 @@ enum class Op {
     FunctionEnd,
     Call
 };
+
+// Comparison predicates for ICmp
+enum class ICmpPredicate {
+    Eq,     // ==
+    Ne,     // !=
+    Slt,    // <  (signed less than)
+    Sle,    // <= (signed less than or equal)
+    Sgt,    // >  (signed greater than)
+    Sge,    // >= (signed greater than or equal)
+    Ult,    // <  (unsigned less than)
+    Ule,    // <= (unsigned less than or equal)
+    Ugt,    // >  (unsigned greater than)
+    Uge     // >= (unsigned greater than or equal)
+};
+
+// Forward declaration
+struct StructLayout;
 
 // Simple type representation (opaque pointers)
 struct IRType {
@@ -43,8 +73,15 @@ struct IRType {
         Bool,
         F32,
         F64,
-        Ptr
+        Ptr,
+        Struct
     } kind;
+    
+    // For struct types, contains layout information
+    std::shared_ptr<StructLayout> struct_layout;
+    
+    // For pointer types, the pointee type
+    std::shared_ptr<IRType> pointee_type;
     
     IRType(Kind k = Kind::Void) : kind(k) {}
     
@@ -58,25 +95,37 @@ struct IRType {
     static IRType f64() { return {Kind::F64}; }
     static IRType void_() { return {Kind::Void}; }
     static IRType ptr() { return {Kind::Ptr}; }
+    static IRType ptr_to(IRType pointee);
+    static IRType struct_(std::shared_ptr<StructLayout> layout);
     
-    bool operator==(const IRType& other) const { return kind == other.kind; }
-    bool operator!=(const IRType& other) const { return kind != other.kind; }
+    bool operator==(const IRType& other) const;
+    bool operator!=(const IRType& other) const { return !(*this == other); }
+    
+    // Get size of type in bytes
+    size_t size_in_bytes() const;
+    
+    // Get alignment requirement in bytes
+    size_t alignment() const;
     
     // For debugging/printing
-    const char* to_string() const {
-        switch (kind) {
-            case Kind::Void: return "void";
-            case Kind::I32: return "i32";
-            case Kind::I64: return "i64";
-            case Kind::I8: return "i8";
-            case Kind::I16: return "i16";
-            case Kind::Bool: return "i1";
-            case Kind::F32: return "f32";
-            case Kind::F64: return "f64";
-            case Kind::Ptr: return "ptr";
-            default: return "unknown";
-        }
-    }
+    std::string to_string() const;
+};
+
+// Struct layout information
+struct StructLayout {
+    struct Field {
+        std::string name;
+        IRType type;
+        size_t offset;  // Byte offset from struct start
+    };
+    
+    std::string name;  // Struct type name
+    std::vector<Field> fields;
+    size_t total_size;
+    size_t alignment;
+    
+    // Calculate layout from fields (sets offsets, total_size, alignment)
+    void calculate_layout();
 };
 
 // Lightweight value reference
@@ -97,18 +146,22 @@ struct Command {
     ValueRef result;
     std::vector<ValueRef> args;
     
-    // Immediate data for constants and names
+    // Immediate data for constants, names, and operation-specific data
     std::variant<
         std::monostate,    // No data
         int64_t,           // Integer constants
         bool,              // Boolean constants
         double,            // Float constants
-        std::string        // Names (functions, types)
+        std::string,       // Names (functions, types, labels)
+        ICmpPredicate      // Comparison predicates
     > data;
     
     Command() = default;
     Command(Op operation, ValueRef res, std::vector<ValueRef> arguments)
         : op(operation), result(res), args(std::move(arguments)) {}
+    
+    // Convert command to readable string for debugging
+    std::string to_string() const;
 };
 
 } // namespace Mycelium::Scripting::Lang

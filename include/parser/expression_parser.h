@@ -42,10 +42,20 @@ private:
     
     // Literal parsing methods
     ParseResult<ExpressionNode> parse_integer_literal();
+    ParseResult<ExpressionNode> parse_float_literal();
+    ParseResult<ExpressionNode> parse_double_literal();
     ParseResult<ExpressionNode> parse_string_literal();
     ParseResult<ExpressionNode> parse_boolean_literal();
-    ParseResult<ExpressionNode> parse_identifier();
+    ParseResult<ExpressionNode> parse_identifier_or_call();
     ParseResult<ExpressionNode> parse_parenthesized_expression();
+    
+    // Unary expression parsing
+    ParseResult<ExpressionNode> parse_unary_expression();
+    
+    // Postfix expression parsing helpers
+    ParseResult<ExpressionNode> parse_call_suffix(ExpressionNode* target);
+    ParseResult<ExpressionNode> parse_member_access_suffix(ExpressionNode* target);
+    ParseResult<ExpressionNode> parse_indexer_suffix(ExpressionNode* target);
     
     // Operator precedence
     int get_precedence(TokenKind op);

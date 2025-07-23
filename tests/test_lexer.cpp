@@ -389,7 +389,7 @@ fn test() {
         TokenStream stream = lexer.tokenize_all();
         
         std::vector<TokenKind> expected_error_recovery = {
-            TokenKind::Identifier, TokenKind::At, TokenKind::Identifier, TokenKind::Hash,
+            TokenKind::Identifier, TokenKind::AtSymbol, TokenKind::Identifier, TokenKind::Hash,
             TokenKind::Identifier, TokenKind::Dollar, TokenKind::Identifier
         };
         
@@ -399,7 +399,6 @@ fn test() {
     
     return TestResult(true);
 }
-
 // Test all lexer features combined in a realistic code sample
 TestResult test_lexer_all_features() {
     std::string source = R"(
@@ -740,6 +739,13 @@ fn Main()
         Console.Log("Index: " + i.ToString());
     }
 
+    // for in with an index
+    var array = [2,56,2,5,7,2,3,6,7];
+    for (var el in array at var i)
+    {
+        // access the element with el and index with i
+    }
+
 	while (running)
     {
         someVar++;
@@ -985,6 +991,10 @@ Main();
         TokenKind::For, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::Identifier, TokenKind::Assign, TokenKind::IntegerLiteral, TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Less, TokenKind::IntegerLiteral, TokenKind::Semicolon, TokenKind::Identifier, TokenKind::Increment, TokenKind::RightParen,
         TokenKind::LeftBrace,
         TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::StringLiteral, TokenKind::Plus, TokenKind::Identifier, TokenKind::Dot, TokenKind::Identifier, TokenKind::LeftParen, TokenKind::RightParen, TokenKind::RightParen, TokenKind::Semicolon,
+        TokenKind::RightBrace,
+        TokenKind::Var, TokenKind::Identifier, TokenKind::Assign, TokenKind::LeftBracket, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::Comma, TokenKind::IntegerLiteral, TokenKind::RightBracket, TokenKind::Semicolon,
+        TokenKind::For, TokenKind::LeftParen, TokenKind::Var, TokenKind::Identifier, TokenKind::In, TokenKind::Identifier, TokenKind::At, TokenKind::Var, TokenKind::Identifier, TokenKind::RightParen,
+        TokenKind::LeftBrace,
         TokenKind::RightBrace,
         TokenKind::While, TokenKind::LeftParen, TokenKind::Identifier, TokenKind::RightParen,
         TokenKind::LeftBrace,

@@ -5,6 +5,8 @@
 #include "token_stream.hpp"
 #include <vector>
 #include <memory>
+#include <iostream>
+#include <common/logger.hpp>
 
 namespace Mycelium::Scripting::Lang {
 
@@ -50,6 +52,13 @@ public:
     auto end() const { return diagnostics_.end(); }
     size_t size() const { return diagnostics_.size(); }
     bool empty() const { return diagnostics_.empty(); }
+
+    void print()
+    {
+        for (const auto& diag : diagnostics_) {
+            LOG_ERROR(diag.format(), LogCategory::PARSER);
+        }
+    }
 };
 
 // High-performance ParseContext with RAII guards
@@ -215,11 +224,42 @@ public:
         context_.advance();
         
         auto* type_name = allocator_.alloc<TypeNameNode>();
+        type_name->tokenKind = type_token.kind;
         type_name->contains_errors = false;
         auto* identifier = allocator_.alloc<IdentifierNode>();
+        identifier->tokenKind = TokenKind::Identifier;
         identifier->name = type_token.text;
         identifier->contains_errors = false;
         type_name->identifier = identifier;
+        
+        // Check for array type suffix []
+        if (context_.check(TokenKind::LeftBracket)) {
+            context_.advance(); // consume [
+            
+            // For now, we only support empty brackets [] for dynamic arrays
+            // Later we can add support for fixed size arrays like [5]
+            if (!context_.check(TokenKind::RightBracket)) {
+                // Skip to closing bracket
+                while (!context_.check(TokenKind::RightBracket) && !context_.at_end()) {
+                    context_.advance();
+                }
+            }
+            
+            if (context_.check(TokenKind::RightBracket)) {
+                context_.advance(); // consume ]
+                
+                // Create ArrayTypeNameNode
+                auto* array_type = allocator_.alloc<ArrayTypeNameNode>();
+                array_type->tokenKind = TokenKind::Identifier;
+                array_type->contains_errors = false;
+                array_type->elementType = type_name;
+                
+                return ParseResult<TypeNameNode>::success(array_type);
+            } else {
+                return ParseResult<TypeNameNode>::error(
+                    create_error(ErrorKind::MissingToken, "Expected ']' after '['"));
+            }
+        }
         
         return ParseResult<TypeNameNode>::success(type_name);
     }
@@ -229,11 +269,12 @@ public:
     ParseContext& get_context() { return context_; }
     DiagnosticCollection& get_diagnostics() { return diagnostics_; }
     SimpleRecovery& get_recovery() { return recovery_; }
-    ExpressionParser& get_expression_parser() { return *expr_parser_; }
-    StatementParser& get_statement_parser() { return *stmt_parser_; }
+    ExpressionParser& get_expression_parser() const { return *expr_parser_; }
+    StatementParser& get_statement_parser() const { return *stmt_parser_; }
+    DeclarationParser& get_declaration_parser() const { return *decl_parser_; }
     
     // Direct error creation for helper parsers
-    ErrorNode* create_error(ErrorKind kind, const char* msg) {
+    ErrorNode* create_error(const ErrorKind kind, const char* msg) {
         auto* error = recovery_.create_error(kind, msg, context_, allocator_);
         diagnostics_.add(Diagnostic::from_error_node(error));
         return error;

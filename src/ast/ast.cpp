@@ -149,14 +149,12 @@ namespace Mycelium::Scripting::Lang
     AST_DECL_IMPL(ReturnStatementNode, StatementNode)
     AST_DECL_IMPL(BreakStatementNode, StatementNode)
     AST_DECL_IMPL(ContinueStatementNode, StatementNode)
-    AST_DECL_IMPL(LocalVariableDeclarationNode, StatementNode)
     AST_DECL_IMPL(UsingDirectiveNode, StatementNode)
 
     AST_DECL_IMPL(DeclarationNode, StatementNode)
     AST_DECL_IMPL(ParameterNode, DeclarationNode)
     AST_DECL_IMPL(VariableDeclarationNode, DeclarationNode)
     AST_DECL_IMPL(MemberDeclarationNode, DeclarationNode)
-    AST_DECL_IMPL(FieldDeclarationNode, MemberDeclarationNode)
     AST_DECL_IMPL(GenericParameterNode, DeclarationNode)
     AST_DECL_IMPL(FunctionDeclarationNode, MemberDeclarationNode)
     AST_DECL_IMPL(PropertyDeclarationNode, MemberDeclarationNode)
@@ -181,7 +179,6 @@ namespace Mycelium::Scripting::Lang
 
     AST_DECL_IMPL(TypeNameNode, AstNode)
     AST_DECL_IMPL(QualifiedTypeNameNode, TypeNameNode)
-    AST_DECL_IMPL(PointerTypeNameNode, TypeNameNode)
     AST_DECL_IMPL(ArrayTypeNameNode, TypeNameNode)
     AST_DECL_IMPL(GenericTypeNameNode, TypeNameNode)
 
@@ -228,7 +225,6 @@ namespace Mycelium::Scripting::Lang
     void ReturnStatementNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ReturnStatementNode*>(node)); }
     void BreakStatementNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<BreakStatementNode*>(node)); }
     void ContinueStatementNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ContinueStatementNode*>(node)); }
-    void LocalVariableDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<LocalVariableDeclarationNode*>(node)); }
     void UsingDirectiveNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<UsingDirectiveNode*>(node)); }
 
     // Declarations
@@ -238,7 +234,6 @@ namespace Mycelium::Scripting::Lang
     void InterfaceDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<InterfaceDeclarationNode*>(node)); }
     void EnumDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<EnumDeclarationNode*>(node)); }
     void MemberDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<MemberDeclarationNode*>(node)); }
-    void FieldDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<FieldDeclarationNode*>(node)); }
     void FunctionDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<FunctionDeclarationNode*>(node)); }
     void PropertyDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<PropertyDeclarationNode*>(node)); }
     void ConstructorDeclarationNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ConstructorDeclarationNode*>(node)); }
@@ -262,7 +257,6 @@ namespace Mycelium::Scripting::Lang
     // Types
     void TypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<TypeNameNode*>(node)); }
     void QualifiedTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<QualifiedTypeNameNode*>(node)); }
-    void PointerTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<PointerTypeNameNode*>(node)); }
     void ArrayTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ArrayTypeNameNode*>(node)); }
     void GenericTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<GenericTypeNameNode*>(node)); }
 
@@ -308,7 +302,6 @@ namespace Mycelium::Scripting::Lang
     // Type Names
     DEF_VISITOR_IMPL(TypeNameNode, AstNode)
     DEF_VISITOR_IMPL(QualifiedTypeNameNode, TypeNameNode)
-    DEF_VISITOR_IMPL(PointerTypeNameNode, TypeNameNode)
     DEF_VISITOR_IMPL(ArrayTypeNameNode, TypeNameNode)
     DEF_VISITOR_IMPL(GenericTypeNameNode, TypeNameNode)
 
@@ -323,7 +316,6 @@ namespace Mycelium::Scripting::Lang
     DEF_VISITOR_IMPL(ReturnStatementNode, StatementNode)
     DEF_VISITOR_IMPL(BreakStatementNode, StatementNode)
     DEF_VISITOR_IMPL(ContinueStatementNode, StatementNode)
-    DEF_VISITOR_IMPL(LocalVariableDeclarationNode, StatementNode)
     DEF_VISITOR_IMPL(UsingDirectiveNode, StatementNode)
 
     // Declarations
@@ -333,7 +325,6 @@ namespace Mycelium::Scripting::Lang
     DEF_VISITOR_IMPL(InterfaceDeclarationNode, DeclarationNode)
     DEF_VISITOR_IMPL(EnumDeclarationNode, DeclarationNode)
     DEF_VISITOR_IMPL(MemberDeclarationNode, DeclarationNode)
-    DEF_VISITOR_IMPL(FieldDeclarationNode, MemberDeclarationNode)
     DEF_VISITOR_IMPL(FunctionDeclarationNode, MemberDeclarationNode)
     DEF_VISITOR_IMPL(PropertyDeclarationNode, MemberDeclarationNode)
     DEF_VISITOR_IMPL(ConstructorDeclarationNode, MemberDeclarationNode)
@@ -403,7 +394,7 @@ namespace Mycelium::Scripting::Lang
     
     void StructuralVisitor::visit(ForInStatementNode* node) {
         // Default implementation - visit children
-        if (node->variable) visit(node->variable);
+        if (node->mainVariable) visit(node->mainVariable);
         if (node->iterable) visit(node->iterable);
         if (node->body) visit(node->body);
     }

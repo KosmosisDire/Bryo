@@ -111,12 +111,70 @@ TestResult test_void_function_generation() {
     return TestResult(true);
 }
 
+TestResult test_function_call_return_type() {
+    AstAllocator allocator;
+    TestASTBuilder builder(allocator);
+    SymbolTable symbol_table;
+    
+    // Create two functions: one returning i32, one returning void
+    auto return_42 = builder.create_return_statement(builder.create_int_literal(42));
+    auto func1_body = builder.create_block_statement({return_42});
+    auto func1 = builder.create_simple_function("get_number", "i32", func1_body);
+    
+    auto func2_body = builder.create_block_statement({});
+    auto func2 = builder.create_simple_function("do_nothing", "void", func2_body);
+    
+    // Create a main function that calls both
+    auto call1 = builder.create_call_expression("get_number");
+    auto call2 = builder.create_call_expression("do_nothing");
+    auto return_call1 = builder.create_return_statement(call1);
+    auto expr_stmt = allocator.alloc<ExpressionStatementNode>();
+    expr_stmt->expression = call2;
+    
+    auto main_body = builder.create_block_statement({expr_stmt, return_call1});
+    auto main_func = builder.create_simple_function("main", "i32", main_body);
+    
+    auto unit = builder.create_compilation_unit({func1, func2, main_func});
+    
+    // Build symbol table
+    build_symbol_table(symbol_table, unit);
+    
+    // Generate commands
+    CodeGenerator generator(symbol_table);
+    auto commands = generator.generate_code(unit);
+    
+    ASSERT_NOT_EMPTY(commands, "Should generate commands for function calls");
+    
+    // Check that we have Call commands
+    int call_count = 0;
+    for (const auto& cmd : commands) {
+        if (cmd.op == Op::Call) {
+            call_count++;
+            // Verify that the call has the correct return type
+            // The first call should be to do_nothing (void)
+            // The second call should be to get_number (i32)
+            if (call_count == 1) {
+                ASSERT_EQ(cmd.result.type.kind, IRType::Kind::Void, 
+                         "First call (do_nothing) should have void return type");
+            } else if (call_count == 2) {
+                ASSERT_EQ(cmd.result.type.kind, IRType::Kind::I32, 
+                         "Second call (get_number) should have i32 return type");
+            }
+        }
+    }
+    
+    ASSERT_EQ(call_count, 2, "Should generate exactly 2 Call commands");
+    
+    return TestResult(true, "Function call return type test successful");
+}
+
 void run_command_generation_tests() {
     TestSuite suite("Command Generation Tests");
     
     suite.add_test("Literal Generation", test_literal_generation);
     suite.add_test("Binary Expression Generation", test_binary_expression_generation);
     suite.add_test("Void Function Generation", test_void_function_generation);
+    suite.add_test("Function Call Return Type", test_function_call_return_type);
     
     suite.run_all();
 }

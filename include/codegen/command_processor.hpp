@@ -13,6 +13,7 @@ namespace llvm {
     class IRBuilderDefaultInserter;
     class Value;
     class Type;
+    class StructType;
     class Function;
     class BasicBlock;
 }
@@ -32,11 +33,24 @@ private:
     llvm::Function* current_function_;
     llvm::BasicBlock* current_block_;
     
+    // Basic block tracking for control flow
+    std::unordered_map<std::string, llvm::BasicBlock*> block_map_;
+    const std::vector<Command>* commands_;  // Commands for two-pass processing
+    
+    // Struct type caching to prevent duplicates
+    std::unordered_map<std::string, llvm::StructType*> struct_type_cache_;
+    
+    // Parameter tracking
+    int param_count_ = 0;
+    int current_alloca_index_ = 0;
+    
     // Type conversion
     llvm::Type* to_llvm_type(IRType type);
     
     // Command processing
-    void process_command(const Command& cmd);
+    void create_basic_blocks(const std::vector<Command>& commands);  // Pass 1: Create all BasicBlocks
+    void create_function_basic_blocks();                             // Create BasicBlocks for current function
+    void process_command(const Command& cmd);                        // Pass 2: Process individual commands
     llvm::Value* get_value(int id);
     
 public:

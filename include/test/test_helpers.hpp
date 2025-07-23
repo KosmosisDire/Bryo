@@ -74,6 +74,25 @@ public:
         return binary;
     }
     
+    CallExpressionNode* create_call_expression(const std::string& func_name,
+                                               const std::vector<ExpressionNode*>& args = {}) {
+        auto call = allocator_.alloc<CallExpressionNode>();
+        call->target = create_identifier_expression(func_name);
+        
+        if (!args.empty()) {
+            call->arguments.size = (int)args.size();
+            call->arguments.values = (AstNode**)allocator_.alloc_bytes(
+                sizeof(AstNode*) * args.size(), alignof(AstNode*));
+            memcpy(call->arguments.values, args.data(), 
+                   sizeof(AstNode*) * args.size());
+        } else {
+            call->arguments.size = 0;
+            call->arguments.values = nullptr;
+        }
+        
+        return call;
+    }
+    
     // Create statement nodes
     ReturnStatementNode* create_return_statement(ExpressionNode* expr = nullptr) {
         auto ret = allocator_.alloc<ReturnStatementNode>();

@@ -34,7 +34,6 @@ public:
     ParseResult<StatementNode> parse_statement();
     
     // Specific statement type parsers
-    ParseResult<StatementNode> parse_variable_declaration();
     ParseResult<StatementNode> parse_block_statement();
     ParseResult<StatementNode> parse_expression_statement();
     

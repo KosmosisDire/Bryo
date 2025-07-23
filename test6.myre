@@ -324,10 +324,17 @@ fn Main()
     }
 
     // subarray with a range
-    for (var i in Enemy.enemies[5..10 by 2])
+    for (var e in Enemy.enemies[5..10 by 2])
     {
-        i.PrintStatus();
-        Console.Log("Enemy damage: " + i.GetDamage().ToString());
+        e.PrintStatus();
+        Console.Log("Enemy damage: " + e.GetDamage().ToString());
+    }
+
+    // for in with an index
+    var array = [2,56,2,5,7,2,3,6,7];
+    for (var el in array at var i)
+    {
+        // access the element with el and index with i
     }
 
     for (i32 i = 0; i < 10; i++)

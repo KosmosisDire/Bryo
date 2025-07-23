@@ -17,7 +17,37 @@ ErrorNode* ExpressionParser::create_error(ErrorKind kind, const char* msg) {
 
 // Main expression parsing entry point
 ParseResult<ExpressionNode> ExpressionParser::parse_expression(int min_precedence) {
-    return parse_binary_expression(min_precedence);
+    // Handle assignment expressions first (right-associative, lowest precedence)
+    auto left_result = parse_binary_expression(min_precedence);
+    if (!left_result.is_success()) {
+        return left_result;
+    }
+    
+    auto* left = left_result.get_node();
+    
+    // Check for assignment operators
+    if (context().check(TokenKind::Assign)) {
+        const Token& assign_token = context().current();
+        context().advance(); // consume '='
+        
+        // Parse right-hand side (right-associative)
+        auto right_result = parse_expression(0); // Start from lowest precedence for right-associativity
+        
+        if (right_result.is_fatal()) {
+            auto* error = create_error(ErrorKind::MissingToken, "Expected expression after '='");
+            return ParseResult<ExpressionNode>::error(error);
+        }
+        
+        auto* assign_expr = parser_->get_allocator().alloc<AssignmentExpressionNode>();
+        assign_expr->target = left;
+        assign_expr->source = right_result.get_node();
+        assign_expr->opKind = assign_token.to_assignment_operator_kind();
+        assign_expr->contains_errors = ast_has_errors(left) || ast_has_errors(right_result.get_node());
+        
+        return ParseResult<ExpressionNode>::success(assign_expr);
+    }
+    
+    return left_result;
 }
 
 // Pratt parser implementation for binary expressions
@@ -62,12 +92,26 @@ ParseResult<ExpressionNode> ExpressionParser::parse_binary_expression(int min_pr
     return ParseResult<ExpressionNode>::success(left);
 }
 
-// Primary expression parsing - handles literals, identifiers, parentheses
+// Primary expression parsing - handles literals, identifiers, parentheses, unary expressions
 ParseResult<ExpressionNode> ExpressionParser::parse_primary() {
     auto& ctx = context();
     
+    // Handle unary expressions first
+    if (ctx.check(TokenKind::Not) || ctx.check(TokenKind::Minus) || 
+        ctx.check(TokenKind::Increment) || ctx.check(TokenKind::Decrement)) {
+        return parse_unary_expression();
+    }
+    
     if (ctx.check(TokenKind::IntegerLiteral)) {
         return parse_integer_literal();
+    }
+    
+    if (ctx.check(TokenKind::FloatLiteral)) {
+        return parse_float_literal();
+    }
+    
+    if (ctx.check(TokenKind::DoubleLiteral)) {
+        return parse_double_literal();
     }
     
     if (ctx.check(TokenKind::StringLiteral)) {
@@ -79,11 +123,15 @@ ParseResult<ExpressionNode> ExpressionParser::parse_primary() {
     }
     
     if (ctx.check(TokenKind::Identifier)) {
-        return parse_identifier();
+        return parse_identifier_or_call();
     }
     
     if (ctx.check(TokenKind::LeftParen)) {
         return parse_parenthesized_expression();
+    }
+    
+    if (ctx.check(TokenKind::New)) {
+        return parse_new_expression();
     }
     
     return ParseResult<ExpressionNode>::error(
@@ -139,7 +187,58 @@ ParseResult<ExpressionNode> ExpressionParser::parse_boolean_literal() {
     return ParseResult<ExpressionNode>::success(literal);
 }
 
-ParseResult<ExpressionNode> ExpressionParser::parse_identifier() {
+ParseResult<ExpressionNode> ExpressionParser::parse_float_literal() {
+    const Token& token = context().current();
+    context().advance();
+    
+    auto* literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
+    literal->kind = LiteralKind::Float;
+    literal->contains_errors = false;
+    
+    auto* token_node = parser_->get_allocator().alloc<TokenNode>();
+    token_node->text = token.text;
+    token_node->contains_errors = false;
+    literal->token = token_node;
+    
+    return ParseResult<ExpressionNode>::success(literal);
+}
+
+ParseResult<ExpressionNode> ExpressionParser::parse_double_literal() {
+    const Token& token = context().current();
+    context().advance();
+    
+    auto* literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
+    literal->kind = LiteralKind::Double;
+    literal->contains_errors = false;
+    
+    auto* token_node = parser_->get_allocator().alloc<TokenNode>();
+    token_node->text = token.text;
+    token_node->contains_errors = false;
+    literal->token = token_node;
+    
+    return ParseResult<ExpressionNode>::success(literal);
+}
+
+ParseResult<ExpressionNode> ExpressionParser::parse_unary_expression() {
+    const Token& op_token = context().current();
+    context().advance(); // consume unary operator
+    
+    auto operand_result = parse_primary();
+    if (operand_result.is_fatal()) {
+        auto* error = create_error(ErrorKind::MissingToken, "Expected operand after unary operator");
+        return ParseResult<ExpressionNode>::error(error);
+    }
+    
+    auto* unary_expr = parser_->get_allocator().alloc<UnaryExpressionNode>();
+    unary_expr->operand = operand_result.get_node();
+    unary_expr->opKind = op_token.to_unary_operator_kind();
+    unary_expr->isPostfix = false;
+    unary_expr->contains_errors = ast_has_errors(operand_result.get_node());
+    
+    return ParseResult<ExpressionNode>::success(unary_expr);
+}
+
+ParseResult<ExpressionNode> ExpressionParser::parse_identifier_or_call() {
     const Token& token = context().current();
     context().advance();
     
@@ -150,7 +249,44 @@ ParseResult<ExpressionNode> ExpressionParser::parse_identifier() {
     identifier->contains_errors = false;
     identifier_expr->identifier = identifier;
     
-    return ParseResult<ExpressionNode>::success(identifier_expr);
+    // Start with the identifier, then handle postfix operations
+    ExpressionNode* current = identifier_expr;
+    
+    // Handle postfix operations: calls, member access, array indexing, increment/decrement
+    while (true) {
+        if (context().check(TokenKind::LeftParen)) {
+            // Function call: expr()
+            auto call_result = parse_call_suffix(current);
+            if (!call_result.is_success()) break;
+            current = call_result.get_node();
+        } else if (context().check(TokenKind::Dot)) {
+            // Member access: expr.member
+            auto member_result = parse_member_access_suffix(current);
+            if (!member_result.is_success()) break;
+            current = member_result.get_node();
+        } else if (context().check(TokenKind::LeftBracket)) {
+            // Array indexing: expr[index]
+            auto index_result = parse_indexer_suffix(current);
+            if (!index_result.is_success()) break;
+            current = index_result.get_node();
+        } else if (context().check(TokenKind::Increment) || context().check(TokenKind::Decrement)) {
+            // Postfix increment/decrement: expr++ or expr--
+            const Token& op_token = context().current();
+            context().advance(); // consume ++ or --
+            
+            auto* unary_expr = parser_->get_allocator().alloc<UnaryExpressionNode>();
+            unary_expr->operand = current;
+            unary_expr->opKind = op_token.to_unary_operator_kind();
+            unary_expr->isPostfix = true;
+            unary_expr->contains_errors = ast_has_errors(current);
+            
+            current = unary_expr;
+        } else {
+            break; // No more postfix operations
+        }
+    }
+    
+    return ParseResult<ExpressionNode>::success(current);
 }
 
 ParseResult<ExpressionNode> ExpressionParser::parse_parenthesized_expression() {
@@ -186,20 +322,155 @@ int ExpressionParser::get_precedence(TokenKind op) {
 }
 
 
-// Future expression types (placeholders for now)
-ParseResult<ExpressionNode> ExpressionParser::parse_call_expression() {
-    return ParseResult<ExpressionNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "Call expressions not implemented yet"));
+// Postfix expression parsing helpers
+ParseResult<ExpressionNode> ExpressionParser::parse_call_suffix(ExpressionNode* target) {
+    context().advance(); // consume '('
+    
+    auto* call_expr = parser_->get_allocator().alloc<CallExpressionNode>();
+    call_expr->target = target;
+    call_expr->contains_errors = ast_has_errors(target);
+    
+    std::vector<AstNode*> arguments;
+    
+    // Parse argument list
+    while (!context().check(TokenKind::RightParen) && !context().at_end()) {
+        auto arg_result = parse_expression();
+        
+        if (arg_result.is_fatal()) {
+            // Error recovery: add error node and try to continue
+            auto* error = create_error(ErrorKind::UnexpectedToken, "Invalid argument in call");
+            arguments.push_back(error);
+            call_expr->contains_errors = true;
+            
+            // Try to recover to next argument or end of call
+            parser_->get_recovery().recover_to_safe_point(context());
+            break;
+        }
+        
+        arguments.push_back(arg_result.get_ast_node());
+        if (ast_has_errors(arg_result.get_ast_node())) {
+            call_expr->contains_errors = true;
+        }
+        
+        // Check for comma separator
+        if (context().check(TokenKind::Comma)) {
+            context().advance();
+        } else if (!context().check(TokenKind::RightParen)) {
+            create_error(ErrorKind::MissingToken, "Expected ',' or ')' in argument list");
+            call_expr->contains_errors = true;
+            break;
+        }
+    }
+    
+    parser_->expect(TokenKind::RightParen, "Expected ')' to close function call");
+    
+    // Allocate argument array
+    if (!arguments.empty()) {
+        auto* arg_array = parser_->get_allocator().alloc_array<AstNode*>(arguments.size());
+        for (size_t i = 0; i < arguments.size(); ++i) {
+            arg_array[i] = arguments[i];
+        }
+        call_expr->arguments.values = arg_array;
+        call_expr->arguments.size = static_cast<int>(arguments.size());
+    }
+    
+    return ParseResult<ExpressionNode>::success(call_expr);
 }
 
-ParseResult<ExpressionNode> ExpressionParser::parse_member_access() {
-    return ParseResult<ExpressionNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "Member access not implemented yet"));
+ParseResult<ExpressionNode> ExpressionParser::parse_member_access_suffix(ExpressionNode* target) {
+    context().advance(); // consume '.'
+    
+    if (!context().check(TokenKind::Identifier)) {
+        auto* error = create_error(ErrorKind::MissingToken, "Expected identifier after '.'");
+        auto* member_expr = parser_->get_allocator().alloc<MemberAccessExpressionNode>();
+        member_expr->target = target;
+        member_expr->member = nullptr;
+        member_expr->contains_errors = true;
+        return ParseResult<ExpressionNode>::success(member_expr);
+    }
+    
+    const Token& member_token = context().current();
+    context().advance();
+    
+    auto* member_expr = parser_->get_allocator().alloc<MemberAccessExpressionNode>();
+    member_expr->target = target;
+    
+    auto* member_identifier = parser_->get_allocator().alloc<IdentifierNode>();
+    member_identifier->name = member_token.text;
+    member_identifier->contains_errors = false;
+    member_expr->member = member_identifier;
+    
+    member_expr->contains_errors = ast_has_errors(target);
+    
+    return ParseResult<ExpressionNode>::success(member_expr);
 }
 
+ParseResult<ExpressionNode> ExpressionParser::parse_indexer_suffix(ExpressionNode* target) {
+    context().advance(); // consume '['
+    
+    auto index_result = parse_expression();
+    if (index_result.is_fatal()) {
+        auto* error = create_error(ErrorKind::MissingToken, "Expected index expression");
+        return ParseResult<ExpressionNode>::error(error);
+    }
+    
+    parser_->expect(TokenKind::RightBracket, "Expected ']' after index expression");
+    
+    auto* indexer_expr = parser_->get_allocator().alloc<IndexerExpressionNode>();
+    indexer_expr->target = target;
+    indexer_expr->index = index_result.get_node();
+    indexer_expr->contains_errors = ast_has_errors(target) || ast_has_errors(index_result.get_node());
+    
+    return ParseResult<ExpressionNode>::success(indexer_expr);
+}
+
+// Parse new expressions: new TypeName() or new TypeName
 ParseResult<ExpressionNode> ExpressionParser::parse_new_expression() {
-    return ParseResult<ExpressionNode>::error(
-        create_error(ErrorKind::UnexpectedToken, "New expressions not implemented yet"));
+    const Token& new_token = context().current();
+    context().advance(); // consume 'new'
+    
+    // Parse the type name
+    auto type_result = parser_->parse_type_expression();
+    if (!type_result.is_success()) {
+        auto* error = create_error(ErrorKind::MissingToken, "Expected type name after 'new'");
+        return ParseResult<ExpressionNode>::error(error);
+    }
+    
+    auto* new_expr = parser_->get_allocator().alloc<NewExpressionNode>();
+    new_expr->contains_errors = ast_has_errors(type_result.get_node());
+    
+    // Create token node for the 'new' keyword
+    auto* new_keyword = parser_->get_allocator().alloc<TokenNode>();
+    new_keyword->text = new_token.text;
+    new_keyword->tokenKind = new_token.kind;
+    new_keyword->contains_errors = false;
+    new_expr->newKeyword = new_keyword;
+    
+    new_expr->type = type_result.get_node();
+    
+    // Check for optional constructor call: ()
+    if (context().check(TokenKind::LeftParen)) {
+        // Parse constructor call as a call expression with the type as target
+        // For now, we'll create a simple call expression
+        auto call_result = parse_call_suffix(nullptr); // We'll fix the target afterwards
+        if (call_result.is_success()) {
+            auto* call_expr = static_cast<CallExpressionNode*>(call_result.get_node());
+            call_expr->target = nullptr; // Constructor calls don't have a target expression
+            new_expr->constructorCall = call_expr;
+            if (ast_has_errors(call_expr)) {
+                new_expr->contains_errors = true;
+            }
+        } else {
+            // Failed to parse constructor call - treat as error
+            new_expr->contains_errors = true;
+            new_expr->constructorCall = nullptr;
+        }
+    } else {
+        // No constructor call
+        new_expr->constructorCall = nullptr;
+    }
+    
+    return ParseResult<ExpressionNode>::success(new_expr);
 }
 
 ParseResult<ExpressionNode> ExpressionParser::parse_match_expression() {

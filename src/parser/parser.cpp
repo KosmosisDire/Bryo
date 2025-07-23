@@ -1,23 +1,10 @@
 #include "parser/parser.h"
 #include "parser/expression_parser.h"
 #include "parser/statement_parser.h"
+#include "parser/declaration_parser.h"
 #include "ast/ast_allocator.hpp"
 
 namespace Mycelium::Scripting::Lang {
-
-class DeclarationParser {
-public:
-    DeclarationParser(Parser* parser) : parser_(parser) {}
-    
-    ParseResult<DeclarationNode> parse_declaration() {
-        // Placeholder for now
-        return ParseResult<DeclarationNode>::error(
-            parser_->create_error(ErrorKind::UnexpectedToken, "Declaration parsing not implemented yet"));
-    }
-    
-private:
-    Parser* parser_;
-};
 
 Parser::Parser(TokenStream& tokens) 
     : context_(tokens), 
@@ -83,8 +70,40 @@ ParseResult<CompilationUnitNode> Parser::parse() {
 }
 
 ParseResult<StatementNode> Parser::parse_top_level_construct() {
-    // For now, just parse as statements
-    // Later we'll add declaration parsing
+    auto& ctx = context_;
+    
+    // Try parsing as declaration first (using, namespace, fn, type, enum)
+    if (ctx.check(TokenKind::Using) || 
+        ctx.check(TokenKind::Namespace) ||
+        ctx.check(TokenKind::Fn) ||
+        ctx.check(TokenKind::Type) ||
+        ctx.check(TokenKind::Enum) ||
+        ctx.check(TokenKind::Public) ||
+        ctx.check(TokenKind::Private) ||
+        ctx.check(TokenKind::Protected) ||
+        ctx.check(TokenKind::Static) ||
+        ctx.check(TokenKind::Ref)) {
+        
+        // Handle using directive specially since it's a StatementNode
+        if (ctx.check(TokenKind::Using)) {
+            return decl_parser_->parse_using_directive();
+        }
+        
+        auto decl_result = decl_parser_->parse_declaration();
+        
+        // DeclarationNode* is automatically StatementNode* due to inheritance
+        if (decl_result.is_success()) {
+            auto* decl = decl_result.get_node();
+            return ParseResult<StatementNode>::success(static_cast<StatementNode*>(decl));
+        } else if (decl_result.is_error()) {
+            auto* error = decl_result.get_error();
+            return ParseResult<StatementNode>::error(error);
+        } else {
+            return ParseResult<StatementNode>::fatal();
+        }
+    }
+    
+    // Otherwise parse as executable statement (var, if, while, for, expressions, etc.)
     return get_statement_parser().parse_statement();
 }
 

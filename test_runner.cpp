@@ -17,6 +17,7 @@ void run_recursive_parser_tests();
 void run_command_generation_tests();
 void run_ir_generation_tests();
 void run_jit_execution_tests();
+void run_integration_tests();
 
 int main() {
     // Initialize logger for test output
@@ -50,6 +51,9 @@ int main() {
     
     LOG_INFO("🧪 Running JIT Execution Tests...", LogCategory::TEST);
     run_jit_execution_tests();
+    
+    LOG_INFO("🧪 Running Integration Tests...", LogCategory::TEST);
+    run_integration_tests();
     
     // Print comprehensive final summary
     TestTracker::instance().print_final_summary();

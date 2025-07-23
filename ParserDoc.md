@@ -218,6 +218,7 @@ struct ErrorNode : AstNode {
     
     static ErrorNode* create(ErrorKind k, const char* msg, Token token, AstAllocator& allocator) {
         auto* node = allocator.alloc<ErrorNode>();
+        node->tokenKind = TokenKind::Invalid;
         node->kind = k;
         node->error_message = msg;
         node->sourceStart = token.sourceStart;

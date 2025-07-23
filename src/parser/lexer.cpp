@@ -581,7 +581,7 @@ Token Lexer::scan_operator_or_punctuation() {
             return make_token(TokenKind::Underscore, 1);
             
         case '@':
-            return make_token(TokenKind::At, 1);
+            return make_token(TokenKind::AtSymbol, 1);
             
         case '#':
             return make_token(TokenKind::Hash, 1);
