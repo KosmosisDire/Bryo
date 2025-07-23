@@ -1,0 +1,173 @@
+type GameCharacter {
+    var health = 100;
+    var mana = 50;
+    var level = 1;
+    var alive = true;
+    
+    fn isAlive(): bool {
+        return alive && health > 0;
+    }
+    
+    fn getHealth(): i32 {
+        return health;
+    }
+    
+    fn takeDamage(i32 damage): bool {
+        if (isAlive()) {
+            health = health - damage;
+            if (health <= 0) {
+                alive = false;
+                return true;  // character died
+            }
+            return false;  // still alive
+        }
+        return false;  // already dead
+    }
+    
+    fn heal(i32 amount): i32 {
+        if (isAlive()) {
+            health = health + amount;
+            if (health > 100) {
+                health = 100;  // cap at 100
+            }
+        }
+        return getHealth();  // Call another member function
+    }
+    
+    fn castSpell(i32 manaCost): bool {
+        if (isAlive() && mana >= manaCost) {
+            mana = mana - manaCost;
+            return true;
+        }
+        return false;
+    }
+    
+    fn combatRound(): i32 {
+        var damage = 0;
+        
+        if (isAlive()) {
+            // Cast healing spell if low health
+            if (getHealth() < 30 && mana >= 10) {
+                if (castSpell(10)) {
+                    heal(25);
+                }
+            }
+            
+            // Take damage from enemy
+            var enemyDamage = 20;
+            var died = takeDamage(enemyDamage);
+            damage = enemyDamage;
+            
+            if (died) {
+                return damage;
+            }
+            
+            // Counter attack
+            if (castSpell(5)) {
+                damage = damage + 10;  // bonus damage dealt
+            }
+        }
+        
+        return damage;
+    }
+}
+
+type Shop {
+    var gold = 100;
+    var items = 0;
+    var maxItems = 5;
+    
+    fn canAfford(i32 cost): bool {
+        return gold >= cost;
+    }
+    
+    fn hasSpace(): bool {
+        return items < maxItems;
+    }
+    
+    fn buyItem(i32 cost): bool {
+        if (canAfford(cost) && hasSpace()) {
+            gold = gold - cost;
+            items = items + 1;
+            return true;
+        }
+        return false;
+    }
+    
+    fn sellItem(i32 value): bool {
+        if (items > 0) {
+            gold = gold + value;
+            items = items - 1;
+            return true;
+        }
+        return false;
+    }
+    
+    fn getGold(): i32 {
+        return gold;
+    }
+    
+    fn trade(): i32 {
+        var profit = 0;
+        
+        // Buy cheap items
+        if (buyItem(20)) {
+            profit = profit - 20;
+        }
+        
+        if (buyItem(25)) {
+            profit = profit - 25;
+        }
+        
+        // Sell for higher price
+        if (sellItem(35)) {
+            profit = profit + 35;
+        }
+        
+        if (sellItem(40)) {
+            profit = profit + 40;
+        }
+        
+        return profit;
+    }
+}
+
+fn main(): i32 {
+    var character = new GameCharacter();
+    var shop = new Shop();
+    
+    var totalScore = 0;
+    
+    // Test initial health
+    var initialHealth = character.getHealth();
+    totalScore = totalScore + initialHealth;  // +100
+    
+    // Test combat with member function calls
+    var combatDamage = character.combatRound();
+    totalScore = totalScore + combatDamage;
+    
+    // Test healing after combat
+    if (character.isAlive()) {
+        var healResult = character.heal(30);
+        totalScore = totalScore + healResult;
+    }
+    
+    // Test shop trading
+    var shopProfit = shop.trade();
+    totalScore = totalScore + shopProfit;
+    
+    var finalGold = shop.getGold();
+    totalScore = totalScore + finalGold;
+    
+    // Test more combat if character is alive
+    if (character.isAlive()) {
+        var secondCombat = character.combatRound();
+        totalScore = totalScore + secondCombat;
+        
+        // Final health check
+        var finalHealth = character.getHealth();
+        totalScore = totalScore + finalHealth;
+    }
+    
+    return totalScore;
+}

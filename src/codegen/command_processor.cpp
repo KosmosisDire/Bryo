@@ -381,34 +381,51 @@ void CommandProcessor::process_command(const Command& cmd) {
         
         case Op::Label: {
             if (auto* label_name = std::get_if<std::string>(&cmd.data)) {
-                // BasicBlock already created in Pass 1, just set insert point
+                // Create BasicBlock on-demand if it doesn't exist
                 auto it = block_map_.find(*label_name);
-                if (it != block_map_.end()) {
-                    // Before switching to the new block, ensure the current block has a terminator
-                    if (current_block_ && current_block_->getTerminator() == nullptr) {
-                        // Add an unreachable instruction to blocks that don't have explicit terminators
-                        builder_->CreateUnreachable();
-                        LOG_DEBUG("Added unreachable terminator to previous block", LogCategory::CODEGEN);
+                if (it == block_map_.end()) {
+                    // Create new BasicBlock for this label
+                    if (current_function_) {
+                        llvm::BasicBlock* block = llvm::BasicBlock::Create(*context_, *label_name, current_function_);
+                        block_map_[*label_name] = block;
+                        LOG_DEBUG("Created BasicBlock on-demand for label '" + *label_name + "'", LogCategory::CODEGEN);
+                        it = block_map_.find(*label_name);
+                    } else {
+                        std::cerr << "Error: No current function when creating label '" << *label_name << "'" << std::endl;
+                        break;
                     }
-                    
-                    current_block_ = it->second;
-                    builder_->SetInsertPoint(current_block_);
-                    LOG_DEBUG("Pass 2: Set insert point to label '" + *label_name + "'", LogCategory::CODEGEN);
-                } else {
-                    std::cerr << "Error: Label '" << *label_name << "' not found in block map" << std::endl;
                 }
+                
+                // Before switching to the new block, ensure the current block has a terminator
+                if (current_block_ && current_block_->getTerminator() == nullptr) {
+                    // Add an unreachable instruction to blocks that don't have explicit terminators
+                    builder_->CreateUnreachable();
+                    LOG_DEBUG("Added unreachable terminator to previous block", LogCategory::CODEGEN);
+                }
+                
+                current_block_ = it->second;
+                builder_->SetInsertPoint(current_block_);
+                LOG_DEBUG("Set insert point to label '" + *label_name + "'", LogCategory::CODEGEN);
             }
             break;
         }
         
         case Op::Br: {
             if (auto* target_label = std::get_if<std::string>(&cmd.data)) {
+                // Create BasicBlock on-demand if it doesn't exist
                 auto it = block_map_.find(*target_label);
-                if (it != block_map_.end()) {
-                    builder_->CreateBr(it->second);
-                } else {
-                    std::cerr << "Unknown label for branch: " << *target_label << std::endl;
+                if (it == block_map_.end()) {
+                    if (current_function_) {
+                        llvm::BasicBlock* block = llvm::BasicBlock::Create(*context_, *target_label, current_function_);
+                        block_map_[*target_label] = block;
+                        LOG_DEBUG("Created BasicBlock on-demand for branch target '" + *target_label + "'", LogCategory::CODEGEN);
+                        it = block_map_.find(*target_label);
+                    } else {
+                        std::cerr << "Error: No current function when creating branch target '" << *target_label << "'" << std::endl;
+                        break;
+                    }
                 }
+                builder_->CreateBr(it->second);
             }
             break;
         }
@@ -420,16 +437,36 @@ void CommandProcessor::process_command(const Command& cmd) {
                     std::string true_label = labels->substr(0, comma);
                     std::string false_label = labels->substr(comma + 1);
                     
+                    // Create BasicBlocks on-demand if they don't exist
                     auto true_it = block_map_.find(true_label);
-                    auto false_it = block_map_.find(false_label);
-                    
-                    if (true_it != block_map_.end() && false_it != block_map_.end()) {
-                        llvm::Value* condition = get_value(cmd.args[0].id);
-                        if (condition) {
-                            builder_->CreateCondBr(condition, true_it->second, false_it->second);
+                    if (true_it == block_map_.end()) {
+                        if (current_function_) {
+                            llvm::BasicBlock* block = llvm::BasicBlock::Create(*context_, true_label, current_function_);
+                            block_map_[true_label] = block;
+                            LOG_DEBUG("Created BasicBlock on-demand for conditional branch true target '" + true_label + "'", LogCategory::CODEGEN);
+                            true_it = block_map_.find(true_label);
+                        } else {
+                            std::cerr << "Error: No current function when creating conditional branch true target '" << true_label << "'" << std::endl;
+                            break;
                         }
-                    } else {
-                        std::cerr << "Unknown labels for conditional branch: " << true_label << ", " << false_label << std::endl;
+                    }
+                    
+                    auto false_it = block_map_.find(false_label);
+                    if (false_it == block_map_.end()) {
+                        if (current_function_) {
+                            llvm::BasicBlock* block = llvm::BasicBlock::Create(*context_, false_label, current_function_);
+                            block_map_[false_label] = block;
+                            LOG_DEBUG("Created BasicBlock on-demand for conditional branch false target '" + false_label + "'", LogCategory::CODEGEN);
+                            false_it = block_map_.find(false_label);
+                        } else {
+                            std::cerr << "Error: No current function when creating conditional branch false target '" << false_label << "'" << std::endl;
+                            break;
+                        }
+                    }
+                    
+                    llvm::Value* condition = get_value(cmd.args[0].id);
+                    if (condition) {
+                        builder_->CreateCondBr(condition, true_it->second, false_it->second);
                     }
                 }
             }
@@ -555,8 +592,8 @@ void CommandProcessor::process_command(const Command& cmd) {
                         param_count_ = param_types.size();
                         current_alloca_index_ = 0;
                         
-                        // Create all BasicBlocks for this function to handle forward references
-                        create_function_basic_blocks();
+                        // Don't pre-create basic blocks - create them on-demand when referenced
+                        // create_function_basic_blocks();
                     }
                 }
             }
@@ -610,6 +647,8 @@ void CommandProcessor::process(const std::vector<Command>& commands) {
     
     // Store commands for two-pass processing
     commands_ = &commands;
+    
+    // Debug logging removed - fix is working
     
     // Process all commands (BasicBlocks will be created when we hit FunctionBegin)
     for (const auto& cmd : commands) {

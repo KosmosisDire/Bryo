@@ -2,12 +2,13 @@
 #include "ast/ast_rtti.hpp"
 #include "common/logger.hpp"
 #include <iostream>
+#include <algorithm>
 
 namespace Mycelium::Scripting::Lang {
 
 
 CodeGenerator::CodeGenerator(SymbolTable& table) 
-    : symbol_table_(table), current_value_(ValueRef::invalid()) {
+    : symbol_table_(table), current_value_(ValueRef::invalid()), current_function_name_(""), current_if_counter_(0), current_while_counter_(0) {
 }
 
 
@@ -294,6 +295,11 @@ void CodeGenerator::visit(FunctionDeclarationNode* node) {
     // Look up function in symbol table
     std::string func_name = std::string(node->name->name);
     auto func_symbol = symbol_table_.lookup_symbol(func_name);
+    
+    // Set current function name and reset counters for unique label generation
+    current_function_name_ = func_name;
+    current_if_counter_ = 0;
+    current_while_counter_ = 0;
     
     IRType return_type = IRType::void_(); // Default to void
     if (func_symbol && func_symbol->type == SymbolType::FUNCTION) {
@@ -618,12 +624,17 @@ void CodeGenerator::visit(IfStatementNode* node) {
     // end_label:
     //   <continue>
     
-    // Create basic block labels (use global counter for unique names across all functions)
-    static int global_if_counter = 0;
-    int if_id = global_if_counter++;
-    std::string then_label = "if_then_" + std::to_string(if_id);
-    std::string else_label = "if_else_" + std::to_string(if_id);
-    std::string end_label = "if_end_" + std::to_string(if_id);
+    // Create basic block labels with function-scoped naming for uniqueness
+    int if_id = current_if_counter_++;
+    std::string func_prefix = current_function_name_.empty() ? "global" : current_function_name_;
+    
+    // Replace :: with _ to make valid LLVM labels
+    std::string safe_func_prefix = func_prefix;
+    std::replace(safe_func_prefix.begin(), safe_func_prefix.end(), ':', '_');
+    
+    std::string then_label = safe_func_prefix + "_if_then_" + std::to_string(if_id);
+    std::string else_label = safe_func_prefix + "_if_else_" + std::to_string(if_id);
+    std::string end_label = safe_func_prefix + "_if_end_" + std::to_string(if_id);
     
     // Evaluate the condition
     if (node->condition) {
@@ -687,12 +698,17 @@ void CodeGenerator::visit(WhileStatementNode* node) {
     // while_exit:
     //   <continue>
     
-    // Create basic block labels (use global counter for unique names across all functions)
-    static int global_while_counter = 0;
-    int while_id = global_while_counter++;
-    std::string header_label = "while_header_" + std::to_string(while_id);
-    std::string body_label = "while_body_" + std::to_string(while_id);
-    std::string exit_label = "while_exit_" + std::to_string(while_id);
+    // Create basic block labels with function-scoped naming for uniqueness
+    int while_id = current_while_counter_++;
+    std::string func_prefix = current_function_name_.empty() ? "global" : current_function_name_;
+    
+    // Replace :: with _ to make valid LLVM labels
+    std::string safe_func_prefix = func_prefix;
+    std::replace(safe_func_prefix.begin(), safe_func_prefix.end(), ':', '_');
+    
+    std::string header_label = safe_func_prefix + "_while_header_" + std::to_string(while_id);
+    std::string body_label = safe_func_prefix + "_while_body_" + std::to_string(while_id);
+    std::string exit_label = safe_func_prefix + "_while_exit_" + std::to_string(while_id);
     
     // Branch to while header
     ir_builder_->br(header_label);
@@ -1189,6 +1205,11 @@ void CodeGenerator::visit_member_function(FunctionDeclarationNode* node, const s
     
     // Create mangled name for member function to avoid conflicts with global functions
     std::string mangled_name = owner_type + "::" + func_name;
+    
+    // Set current function name and reset counters for unique label generation
+    current_function_name_ = mangled_name;
+    current_if_counter_ = 0;
+    current_while_counter_ = 0;
     
     // Look up member function in symbol table using the qualified scope name
     std::string member_func_scope_name = owner_type + "::" + func_name;

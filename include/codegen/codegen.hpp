@@ -21,6 +21,9 @@ private:
     std::unique_ptr<IRBuilder> ir_builder_;
     std::unordered_map<std::string, VariableInfo> local_vars_;
     ValueRef current_value_;  // Result of last expression
+    std::string current_function_name_;  // Current function being processed
+    int current_if_counter_;  // Per-function if statement counter
+    int current_while_counter_;  // Per-function while statement counter
 
 public:
     CodeGenerator(SymbolTable& table);
