@@ -4,7 +4,7 @@
 #include <string>
 #include <cstdint>
 
-namespace Mycelium::Scripting::Lang
+namespace Myre
 {
     // Forward declarations
     struct AstNode;
@@ -87,4 +87,4 @@ namespace Mycelium::Scripting::Lang
     // Get human-readable type name from type ID
     const char* get_type_name_from_id(uint8_t type_id);
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

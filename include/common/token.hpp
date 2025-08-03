@@ -5,50 +5,10 @@
 #include <vector>
 #include <cstdint>
 #include <array>
+#include "source_location.hpp"
 
-namespace Mycelium::Scripting
+namespace Myre
 {
-    // Source location with absolute positioning
-    struct SourceLocation
-    {
-        uint32_t offset; // Byte offset in source file
-        uint32_t line;   // 1-based line number
-        uint32_t column; // 1-based column number
-
-        SourceLocation() : offset(0), line(1), column(1) {}
-        SourceLocation(uint32_t off, uint32_t ln, uint32_t col)
-            : offset(off), line(ln), column(col) {}
-
-        SourceLocation operator+(uint32_t delta) const
-        {
-            return SourceLocation(offset + delta, line, column + delta);
-        }
-
-        bool operator==(const SourceLocation &other) const
-        {
-            return offset == other.offset && line == other.line && column == other.column;
-        }
-    };
-
-    // Source range for diagnostics
-    struct SourceRange
-    {
-        SourceLocation start;
-        SourceLocation end;
-
-        SourceRange() = default;
-        SourceRange(SourceLocation start_loc, SourceLocation end_loc)
-            : start(start_loc), end(end_loc) {}
-        SourceRange(SourceLocation loc, uint32_t width)
-            : start(loc), end(loc + width) {}
-
-        uint32_t length() const { return end.offset - start.offset; }
-        bool contains(SourceLocation loc) const
-        {
-            return loc.offset >= start.offset && loc.offset < end.offset;
-        }
-    };
-
     // Token kinds - all possible tokens in Mycelium language
     enum class TokenKind
     {
@@ -190,7 +150,7 @@ namespace Mycelium::Scripting
         Semicolon,    // ;
         Comma,        // ,
         Underscore,   // _
-        AtSymbol,           // @
+        AtSymbol,     // @
         Hash,         // #
         Dollar,       // $
     };
@@ -347,145 +307,144 @@ namespace Mycelium::Scripting
         Trivia(TriviaKind k, uint32_t w) : kind(k), width(w) {}
     };
 
-    
     inline std::string_view to_string(TokenKind kind)
     {
         // Special cases for punctuation to return the actual symbol
-            switch (kind)
-            {
-                // Operators - Arithmetic
-                case TokenKind::Plus:
-                    return "+";
-                case TokenKind::Minus:
-                    return "-";
-                case TokenKind::Asterisk:
-                    return "*";
-                case TokenKind::Slash:
-                    return "/";
-                case TokenKind::Percent:
-                    return "%";
+        switch (kind)
+        {
+        // Operators - Arithmetic
+        case TokenKind::Plus:
+            return "+";
+        case TokenKind::Minus:
+            return "-";
+        case TokenKind::Asterisk:
+            return "*";
+        case TokenKind::Slash:
+            return "/";
+        case TokenKind::Percent:
+            return "%";
 
-                // Operators - Assignment
-                case TokenKind::Assign:
-                    return "=";
-                case TokenKind::PlusAssign:
-                    return "+=";
-                case TokenKind::MinusAssign:
-                    return "-=";
-                case TokenKind::StarAssign:
-                    return "*=";
-                case TokenKind::SlashAssign:
-                    return "/=";
-                case TokenKind::PercentAssign:
-                    return "%=";
-                case TokenKind::AndAssign:
-                    return "&=";
-                case TokenKind::OrAssign:
-                    return "|=";
-                case TokenKind::XorAssign:
-                    return "^=";
-                case TokenKind::LeftShiftAssign:
-                    return "<<=";
-                case TokenKind::RightShiftAssign:
-                    return ">>=";
-                case TokenKind::NullCoalesceAssign:
-                    return "??=";
+        // Operators - Assignment
+        case TokenKind::Assign:
+            return "=";
+        case TokenKind::PlusAssign:
+            return "+=";
+        case TokenKind::MinusAssign:
+            return "-=";
+        case TokenKind::StarAssign:
+            return "*=";
+        case TokenKind::SlashAssign:
+            return "/=";
+        case TokenKind::PercentAssign:
+            return "%=";
+        case TokenKind::AndAssign:
+            return "&=";
+        case TokenKind::OrAssign:
+            return "|=";
+        case TokenKind::XorAssign:
+            return "^=";
+        case TokenKind::LeftShiftAssign:
+            return "<<=";
+        case TokenKind::RightShiftAssign:
+            return ">>=";
+        case TokenKind::NullCoalesceAssign:
+            return "??=";
 
-                // Operators - Comparison
-                case TokenKind::Equal:
-                    return "==";
-                case TokenKind::NotEqual:
-                    return "!=";
-                case TokenKind::Less:
-                    return "<";
-                case TokenKind::LessEqual:
-                    return "<=";
-                case TokenKind::Greater:
-                    return ">";
-                case TokenKind::GreaterEqual:
-                    return ">=";
+        // Operators - Comparison
+        case TokenKind::Equal:
+            return "==";
+        case TokenKind::NotEqual:
+            return "!=";
+        case TokenKind::Less:
+            return "<";
+        case TokenKind::LessEqual:
+            return "<=";
+        case TokenKind::Greater:
+            return ">";
+        case TokenKind::GreaterEqual:
+            return ">=";
 
-                // Operators - Logical
-                case TokenKind::And:
-                    return "&&";
-                case TokenKind::Or:
-                    return "||";
-                case TokenKind::Not:
-                    return "!";
+        // Operators - Logical
+        case TokenKind::And:
+            return "&&";
+        case TokenKind::Or:
+            return "||";
+        case TokenKind::Not:
+            return "!";
 
-                // Operators - Bitwise
-                case TokenKind::BitwiseAnd:
-                    return "&";
-                case TokenKind::BitwiseOr:
-                    return "|";
-                case TokenKind::BitwiseXor:
-                    return "^";
-                case TokenKind::BitwiseNot:
-                    return "~";
-                case TokenKind::LeftShift:
-                    return "<<";
-                case TokenKind::RightShift:
-                    return ">>";
+        // Operators - Bitwise
+        case TokenKind::BitwiseAnd:
+            return "&";
+        case TokenKind::BitwiseOr:
+            return "|";
+        case TokenKind::BitwiseXor:
+            return "^";
+        case TokenKind::BitwiseNot:
+            return "~";
+        case TokenKind::LeftShift:
+            return "<<";
+        case TokenKind::RightShift:
+            return ">>";
 
-                // Operators - Unary
-                case TokenKind::Increment:
-                    return "++";
-                case TokenKind::Decrement:
-                    return "--";
+        // Operators - Unary
+        case TokenKind::Increment:
+            return "++";
+        case TokenKind::Decrement:
+            return "--";
 
-                // Operators - Other
-                case TokenKind::Question:
-                    return "?";
-                case TokenKind::Colon:
-                    return ":";
-                case TokenKind::DoubleColon:
-                    return "::";
-                case TokenKind::Arrow:
-                    return "->";
-                case TokenKind::FatArrow:
-                    return "=>";
-                case TokenKind::Dot:
-                    return ".";
-                case TokenKind::DotDotEquals:
-                    return "..=";
-                case TokenKind::DotDot:
-                    return "..";
-                case TokenKind::NullCoalesce:
-                    return "??";
+        // Operators - Other
+        case TokenKind::Question:
+            return "?";
+        case TokenKind::Colon:
+            return ":";
+        case TokenKind::DoubleColon:
+            return "::";
+        case TokenKind::Arrow:
+            return "->";
+        case TokenKind::FatArrow:
+            return "=>";
+        case TokenKind::Dot:
+            return ".";
+        case TokenKind::DotDotEquals:
+            return "..=";
+        case TokenKind::DotDot:
+            return "..";
+        case TokenKind::NullCoalesce:
+            return "??";
 
-                // Punctuation
-                case TokenKind::LeftParen:
-                    return "(";
-                case TokenKind::RightParen:
-                    return ")";
-                case TokenKind::LeftBrace:
-                    return "{";
-                case TokenKind::RightBrace:
-                    return "}";
-                case TokenKind::LeftBracket:
-                    return "[";
-                case TokenKind::RightBracket:
-                    return "]";
-                case TokenKind::Semicolon:
-                    return ";";
-                case TokenKind::Comma:
-                    return ",";
-                case TokenKind::Underscore:
-                    return "_";
-                case TokenKind::AtSymbol:
-                    return "@";
-                case TokenKind::Hash:
-                    return "#";
-                case TokenKind::Dollar:
-                    return "$";
+        // Punctuation
+        case TokenKind::LeftParen:
+            return "(";
+        case TokenKind::RightParen:
+            return ")";
+        case TokenKind::LeftBrace:
+            return "{";
+        case TokenKind::RightBrace:
+            return "}";
+        case TokenKind::LeftBracket:
+            return "[";
+        case TokenKind::RightBracket:
+            return "]";
+        case TokenKind::Semicolon:
+            return ";";
+        case TokenKind::Comma:
+            return ",";
+        case TokenKind::Underscore:
+            return "_";
+        case TokenKind::AtSymbol:
+            return "@";
+        case TokenKind::Hash:
+            return "#";
+        case TokenKind::Dollar:
+            return "$";
 
-                // Default to enum name for keywords and other tokens
-                default:
-                {
-                    auto name = magic_enum::enum_name(kind);
-                    return name.empty() ? "unknown token" : name;
-                }
-            }
+        // Default to enum name for keywords and other tokens
+        default:
+        {
+            auto name = magic_enum::enum_name(kind);
+            return name.empty() ? "unknown token" : name;
+        }
+        }
     }
 
     inline std::string_view to_string(TriviaKind kind)
@@ -498,21 +457,31 @@ namespace Mycelium::Scripting
     {
         switch (kind)
         {
-            case UnaryOperatorKind::Plus:           return "+";
-            case UnaryOperatorKind::Minus:          return "-";
-            case UnaryOperatorKind::Not:            return "!";
-            case UnaryOperatorKind::BitwiseNot:     return "~";
-            case UnaryOperatorKind::PreIncrement:   return "++";
-            case UnaryOperatorKind::PreDecrement:   return "--";
-            case UnaryOperatorKind::PostIncrement:  return "++";
-            case UnaryOperatorKind::PostDecrement:  return "--";
-            case UnaryOperatorKind::AddressOf:      return "&";
-            case UnaryOperatorKind::Dereference:    return "*";
-            default:
-            {
-                auto name = magic_enum::enum_name(kind);
-                return name.empty() ? "unknown unary operator" : name;
-            }
+        case UnaryOperatorKind::Plus:
+            return "+";
+        case UnaryOperatorKind::Minus:
+            return "-";
+        case UnaryOperatorKind::Not:
+            return "!";
+        case UnaryOperatorKind::BitwiseNot:
+            return "~";
+        case UnaryOperatorKind::PreIncrement:
+            return "++";
+        case UnaryOperatorKind::PreDecrement:
+            return "--";
+        case UnaryOperatorKind::PostIncrement:
+            return "++";
+        case UnaryOperatorKind::PostDecrement:
+            return "--";
+        case UnaryOperatorKind::AddressOf:
+            return "&";
+        case UnaryOperatorKind::Dereference:
+            return "*";
+        default:
+        {
+            auto name = magic_enum::enum_name(kind);
+            return name.empty() ? "unknown unary operator" : name;
+        }
         }
     }
 
@@ -520,30 +489,49 @@ namespace Mycelium::Scripting
     {
         switch (kind)
         {
-            case BinaryOperatorKind::Add:               return "+";
-            case BinaryOperatorKind::Subtract:          return "-";
-            case BinaryOperatorKind::Multiply:          return "*";
-            case BinaryOperatorKind::Divide:            return "/";
-            case BinaryOperatorKind::Modulo:            return "%";
-            case BinaryOperatorKind::Equals:            return "==";
-            case BinaryOperatorKind::NotEquals:         return "!=";
-            case BinaryOperatorKind::LessThan:          return "<";
-            case BinaryOperatorKind::GreaterThan:       return ">";
-            case BinaryOperatorKind::LessThanOrEqual:   return "<=";
-            case BinaryOperatorKind::GreaterThanOrEqual:return ">=";
-            case BinaryOperatorKind::LogicalAnd:        return "&&";
-            case BinaryOperatorKind::LogicalOr:         return "||";
-            case BinaryOperatorKind::BitwiseAnd:        return "&";
-            case BinaryOperatorKind::BitwiseOr:         return "|";
-            case BinaryOperatorKind::BitwiseXor:        return "^";
-            case BinaryOperatorKind::LeftShift:         return "<<";
-            case BinaryOperatorKind::RightShift:        return ">>";
-            case BinaryOperatorKind::Coalesce:          return "??";
-            default:
-            {
-                auto name = magic_enum::enum_name(kind);
-                return name.empty() ? "unknown binary operator" : name;
-            }
+        case BinaryOperatorKind::Add:
+            return "+";
+        case BinaryOperatorKind::Subtract:
+            return "-";
+        case BinaryOperatorKind::Multiply:
+            return "*";
+        case BinaryOperatorKind::Divide:
+            return "/";
+        case BinaryOperatorKind::Modulo:
+            return "%";
+        case BinaryOperatorKind::Equals:
+            return "==";
+        case BinaryOperatorKind::NotEquals:
+            return "!=";
+        case BinaryOperatorKind::LessThan:
+            return "<";
+        case BinaryOperatorKind::GreaterThan:
+            return ">";
+        case BinaryOperatorKind::LessThanOrEqual:
+            return "<=";
+        case BinaryOperatorKind::GreaterThanOrEqual:
+            return ">=";
+        case BinaryOperatorKind::LogicalAnd:
+            return "&&";
+        case BinaryOperatorKind::LogicalOr:
+            return "||";
+        case BinaryOperatorKind::BitwiseAnd:
+            return "&";
+        case BinaryOperatorKind::BitwiseOr:
+            return "|";
+        case BinaryOperatorKind::BitwiseXor:
+            return "^";
+        case BinaryOperatorKind::LeftShift:
+            return "<<";
+        case BinaryOperatorKind::RightShift:
+            return ">>";
+        case BinaryOperatorKind::Coalesce:
+            return "??";
+        default:
+        {
+            auto name = magic_enum::enum_name(kind);
+            return name.empty() ? "unknown binary operator" : name;
+        }
         }
     }
 
@@ -551,23 +539,35 @@ namespace Mycelium::Scripting
     {
         switch (kind)
         {
-            case AssignmentOperatorKind::Assign:        return "=";
-            case AssignmentOperatorKind::Add:           return "+=";
-            case AssignmentOperatorKind::Subtract:      return "-=";
-            case AssignmentOperatorKind::Multiply:      return "*=";
-            case AssignmentOperatorKind::Divide:        return "/=";
-            case AssignmentOperatorKind::Modulo:        return "%=";
-            case AssignmentOperatorKind::And:           return "&=";
-            case AssignmentOperatorKind::Or:            return "|=";
-            case AssignmentOperatorKind::Xor:           return "^=";
-            case AssignmentOperatorKind::LeftShift:     return "<<=";
-            case AssignmentOperatorKind::RightShift:    return ">>=";
-            case AssignmentOperatorKind::Coalesce:      return "??=";
-            default:
-            {
-                auto name = magic_enum::enum_name(kind);
-                return name.empty() ? "unknown assignment operator" : name;
-            }
+        case AssignmentOperatorKind::Assign:
+            return "=";
+        case AssignmentOperatorKind::Add:
+            return "+=";
+        case AssignmentOperatorKind::Subtract:
+            return "-=";
+        case AssignmentOperatorKind::Multiply:
+            return "*=";
+        case AssignmentOperatorKind::Divide:
+            return "/=";
+        case AssignmentOperatorKind::Modulo:
+            return "%=";
+        case AssignmentOperatorKind::And:
+            return "&=";
+        case AssignmentOperatorKind::Or:
+            return "|=";
+        case AssignmentOperatorKind::Xor:
+            return "^=";
+        case AssignmentOperatorKind::LeftShift:
+            return "<<=";
+        case AssignmentOperatorKind::RightShift:
+            return ">>=";
+        case AssignmentOperatorKind::Coalesce:
+            return "??=";
+        default:
+        {
+            auto name = magic_enum::enum_name(kind);
+            return name.empty() ? "unknown assignment operator" : name;
+        }
         }
     }
 
@@ -583,54 +583,24 @@ namespace Mycelium::Scripting
         return name.empty() ? "unknown literal" : name;
     }
 
-
     // Main token structure with absolute position and relative trivia
     struct Token
     {
         std::string_view text;               // Text of the token (for debugging)
         TokenKind kind;                      // What type of token
-        SourceLocation location;             // Absolute position in source
-        uint32_t width;                      // Character width of token itself
+        SourceRange location;             // Absolute position in source
         std::vector<Trivia> leading_trivia;  // Whitespace/comments before token
         std::vector<Trivia> trailing_trivia; // Whitespace/comments after token
 
-        Token() : kind(TokenKind::None), width(0) {}
+        Token() : kind(TokenKind::None) {}
 
-        Token(TokenKind kind, SourceLocation location, uint32_t width, std::string_view source)
-            : kind(kind), location(location), width(width)
+        Token(TokenKind kind, SourceRange location, std::string_view source)
+            : kind(kind), location(location)
         {
-            if (width > 0 && location.offset + width <= source.size())
-                text = source.substr(location.offset, width);
+            if (location.end_offset() <= source.size())
+                text = source.substr(location.start.offset, location.width);
             else
                 text = {};
-        }
-
-        // Get the source range covered by this token (excluding trivia)
-        SourceRange range() const
-        {
-            return SourceRange(location, width);
-        }
-
-        // Get the full range including leading and trailing trivia
-        SourceRange full_range() const
-        {
-            uint32_t leading_width = 0;
-            for (const auto &trivia : leading_trivia)
-            {
-                leading_width += trivia.width;
-            }
-
-            uint32_t trailing_width = 0;
-            for (const auto &trivia : trailing_trivia)
-            {
-                trailing_width += trivia.width;
-            }
-
-            SourceLocation start_with_trivia = location;
-            start_with_trivia.offset -= leading_width;
-            start_with_trivia.column -= leading_width;
-
-            return SourceRange(start_with_trivia, leading_width + width + trailing_width);
         }
 
         // Check if this is a specific token kind
@@ -1002,7 +972,7 @@ namespace Mycelium::Scripting
 
         std::string_view to_string() const
         {
-            return Mycelium::Scripting::to_string(kind);
+            return Myre::to_string(kind);
         }
 
         static TokenKind get_keyword_kind(std::string_view keyword)
@@ -1021,7 +991,7 @@ namespace Mycelium::Scripting
 
     // Initialize the keyword map with all keywords
     inline const std::unordered_map<std::string_view, TokenKind> Token::keyword_map =
-    {
+        {
             {"type", TokenKind::Type},
             {"ref", TokenKind::Ref},
             {"enum", TokenKind::Enum},
@@ -1064,4 +1034,4 @@ namespace Mycelium::Scripting
             {"true", TokenKind::BooleanLiteral},
             {"false", TokenKind::BooleanLiteral}};
 
-} // namespace Mycelium::Scripting
+} // namespace Myre

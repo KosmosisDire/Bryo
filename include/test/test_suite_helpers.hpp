@@ -1,7 +1,7 @@
 #pragma once
 #include "test/test_framework.hpp"
 
-namespace Mycelium::Testing {
+namespace Myre {
 
 // Convenience macro to create a test suite and run it in one go
 #define CREATE_TEST_SUITE(suite_name) \
@@ -32,4 +32,4 @@ TestResult test_feature_one() {
 }
 */
 
-} // namespace Mycelium::Testing
+} // namespace Myre

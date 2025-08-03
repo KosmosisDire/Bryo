@@ -5,7 +5,7 @@
 #include <vector>
 #include <cstring> // Include for memset
 
-namespace Mycelium::Scripting::Lang
+namespace Myre
 {
     class AstAllocator;
 
@@ -80,4 +80,4 @@ namespace Mycelium::Scripting::Lang
         
     };
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

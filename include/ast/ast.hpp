@@ -8,11 +8,7 @@
 #include "ast_allocator.hpp"
 #include "common/token.hpp"
 
-// Define this to include a parent pointer in each AST node, which can be useful
-// for analysis but adds memory overhead.
-// #define AST_HAS_PARENT_POINTER
-
-namespace Mycelium::Scripting::Lang
+namespace Myre
 {
     // --- Forward Declarations ---
     // This comprehensive list allows any node to reference any other node.
@@ -226,16 +222,10 @@ namespace Mycelium::Scripting::Lang
     {
         AST_ROOT_TYPE(AstNode) // Root node has no base type
 
-        #ifdef AST_HAS_PARENT_POINTER
-        AstNode* parent;
-        #endif
-
         uint8_t typeId;
         bool contains_errors;  // Fast error detection flag
         TokenKind tokenKind;
-        int sourceStart;
-        int sourceLength;
-        int triviaStart;
+        SourceRange location;
 
         // Must be implemented in ast.cpp
         void init_with_type_id(uint8_t id);
@@ -247,24 +237,16 @@ namespace Mycelium::Scripting::Lang
         template <typename T> T* as() { return node_cast<T>(this); }
     };
 
-    enum class ErrorKind {
-        UnexpectedToken,    // "Expected ';', found 'if'"
-        MissingToken       // "Expected ')' after expression"
-    };
-
     struct ErrorNode : AstNode {
         AST_TYPE(ErrorNode, AstNode)
 
-        ErrorKind kind;
         std::string error_message;
 
-        static ErrorNode* create(ErrorKind k, const char* msg, const Token& token, AstAllocator& allocator) {
+        static ErrorNode* create(const char* msg, const Token& token, AstAllocator& allocator) {
             auto* node = allocator.alloc<ErrorNode>();
             node->tokenKind = token.kind;
-            node->kind = k;
             node->error_message = msg;
-            node->sourceStart = token.location.offset;
-            node->sourceLength = token.width;
+            node->location = token.location;
             node->contains_errors = true;  // ErrorNodes always contain errors
             return node;
         }
@@ -878,4 +860,4 @@ namespace Mycelium::Scripting::Lang
         }
     }
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

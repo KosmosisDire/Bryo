@@ -2,7 +2,7 @@
 #include <vector>
 #include <stdexcept>
 
-namespace Mycelium::Scripting::Lang
+namespace Myre
 {
     // --- RTTI System Implementation ---
 
@@ -85,18 +85,15 @@ namespace Mycelium::Scripting::Lang
 
     void AstNode::init_with_type_id(uint8_t id)
     {
-        #ifdef AST_HAS_PARENT_POINTER
-        this->parent = nullptr;
-        #endif
         this->typeId = id;
         this->tokenKind = TokenKind::None;
-        this->sourceStart = 0;
-        this->sourceLength = 0;
-        this->triviaStart = 0;
+        this->location = SourceRange();
     }
 
     void AstNode::accept(StructuralVisitor* visitor)
     {
+        assert(!g_ordered_type_infos.empty() && "RTTI system not initialized. Call AstTypeInfo::initialize() first.");
+        
         // Dispatch to the correct visit method using our RTTI system.
         g_ordered_type_infos[this->typeId]->acceptFunc(this, visitor);
     }
@@ -352,7 +349,10 @@ namespace Mycelium::Scripting::Lang
 
     // --- RTTI Utility Function Implementations ---
 
-    const char* get_type_name_from_id(uint8_t type_id) {
+    const char* get_type_name_from_id(uint8_t type_id)
+    {
+        assert(!g_ordered_type_infos.empty() && "RTTI system not initialized. Call AstTypeInfo::initialize() first.");
+
         if (type_id < g_ordered_type_infos.size()) {
             return g_ordered_type_infos[type_id]->name;
         }
@@ -399,4 +399,4 @@ namespace Mycelium::Scripting::Lang
         if (node->body) visit(node->body);
     }
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

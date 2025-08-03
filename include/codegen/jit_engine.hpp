@@ -11,7 +11,7 @@ namespace llvm {
     class Function;
 }
 
-namespace Mycelium::Scripting::Lang {
+namespace Myre {
 
 class JITEngine {
 private:
@@ -43,4 +43,4 @@ public:
     void dump_functions();
 };
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

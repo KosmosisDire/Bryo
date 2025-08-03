@@ -5,7 +5,7 @@
 #include <functional>
 #include "common/logger.hpp"
 
-namespace Mycelium::Testing {
+namespace Myre {
 
 // ANSI color codes
 namespace Colors {
@@ -199,4 +199,4 @@ public:
         } \
     } while(0)
 
-} // namespace Mycelium::Testing
+} // namespace Myre

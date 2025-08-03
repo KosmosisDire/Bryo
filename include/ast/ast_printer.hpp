@@ -7,13 +7,10 @@
 #include <iostream>
 #include <sstream>
 
-using namespace Mycelium::Scripting::Lang;
-using namespace Mycelium::Scripting::Common;
-using namespace Mycelium::Scripting;
-using namespace Mycelium;
+using namespace Myre;
 
 // A code-like visitor to print AST nodes as pseudo-code
-class AstPrinterVisitor : public StructuralVisitor
+class AstPrinter : public StructuralVisitor
 {
 private:
     int indentLevel = 0;
@@ -322,17 +319,13 @@ public:
         std::string condition_part = get_node_content();
         print_line(condition_part);
         
-        indentLevel++;
         if (node->thenStatement) {
             node->thenStatement->accept(this);
         }
-        indentLevel--;
         
         if (node->elseStatement) {
-            print_line(get_indent() + "else");
-            indentLevel++;
+            print_line("else");
             node->elseStatement->accept(this);
-            indentLevel--;
         }
     }
 
@@ -346,11 +339,9 @@ public:
         std::string condition_part = get_node_content();
         print_line(condition_part);
         
-        indentLevel++;
         if (node->body) {
             node->body->accept(this);
         }
-        indentLevel--;
     }
 
     void visit(ForStatementNode* node) override {
@@ -403,11 +394,9 @@ public:
         std::string header = get_node_content();
         print_line(header);
         
-        indentLevel++;
         if (node->body) {
             node->body->accept(this);
         }
-        indentLevel--;
     }
 
     void visit(ReturnStatementNode* node) override {
@@ -595,7 +584,7 @@ public:
             if (i > 0) print_inline(", ");
             if (node->parameters[i]) {
                 node->parameters[i]->accept(this);
-                get_node_content(); // Clear since we're building inline
+                // Don't clear content - parameters are building inline
             }
         }
         print_inline(")");
@@ -618,12 +607,12 @@ public:
 
     void visit(ParameterNode* node) override {
         print_modifiers(node->modifiers);
+        if (node->type) {
+            node->type->accept(this);
+            print_inline(" ");
+        }
         if (node->name) {
             print_inline(std::string(node->name->name));
-        }
-        if (node->type) {
-            print_inline(": ");
-            node->type->accept(this);
         }
         if (node->defaultValue) {
             print_inline(" = ");
@@ -698,7 +687,7 @@ public:
             if (i > 0) print_inline(", ");
             if (node->parameters[i]) {
                 node->parameters[i]->accept(this);
-                get_node_content(); // Clear inline content
+                // Don't clear content - parameters are building inline
             }
         }
         print_inline(") ");
@@ -724,7 +713,7 @@ public:
                 if (i > 0) print_inline(", ");
                 if (node->associatedData[i]) {
                     node->associatedData[i]->accept(this);
-                    get_node_content(); // Clear inline content
+                    // Don't clear content - parameters are building inline
                 }
             }
             print_inline(")");
@@ -836,7 +825,6 @@ public:
     // --- Root ---
     
     void visit(CompilationUnitNode* node) override {
-        print_line("// Compilation Unit");
         for (auto stmt : node->statements) {
             if (stmt) {
                 stmt->accept(this);

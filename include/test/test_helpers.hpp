@@ -4,10 +4,9 @@
 #include <string>
 #include <cstring>
 
-namespace Mycelium::Testing {
+namespace Myre {
 
-using namespace Mycelium::Scripting::Lang;
-using namespace Mycelium::Scripting;
+using namespace Myre;
 
 class TestASTBuilder {
 private:
@@ -150,4 +149,4 @@ public:
     }
 };
 
-} // namespace Mycelium::Testing
+} // namespace Myre

@@ -18,7 +18,7 @@ namespace llvm {
     class BasicBlock;
 }
 
-namespace Mycelium::Scripting::Lang {
+namespace Myre {
 
 class CommandProcessor {
 private:
@@ -75,4 +75,4 @@ public:
     static std::string process_to_ir_string(const std::vector<Command>& commands, const std::string& module_name = "Module");
 };
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

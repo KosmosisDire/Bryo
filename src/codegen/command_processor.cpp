@@ -3,17 +3,17 @@
 #include <iostream>
 #include <sstream>
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/IRBuilder.hpp"
+#include "llvm/IR/LLVMContext.hpp"
+#include "llvm/IR/Module.hpp"
+#include "llvm/IR/Verifier.hpp"
+#include "llvm/IR/Type.hpp"
+#include "llvm/IR/Function.hpp"
+#include "llvm/IR/BasicBlock.hpp"
+#include "llvm/IR/Constants.hpp"
+#include "llvm/Support/raw_ostream.hpp"
 
-namespace Mycelium::Scripting::Lang {
+namespace Myre {
 
 CommandProcessor::CommandProcessor(const std::string& module_name) 
     : current_function_(nullptr), current_block_(nullptr) {
@@ -712,4 +712,4 @@ std::string CommandProcessor::process_to_ir_string(const std::vector<Command>& c
     }
 }
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

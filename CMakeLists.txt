@@ -77,49 +77,37 @@ set(SOURCE_FILES
     src/parser/lexer.cpp
     src/parser/token_stream.cpp
     src/parser/parser.cpp
+    src/parser/parser_base.cpp
     src/parser/expression_parser.cpp
     src/parser/statement_parser.cpp
     src/parser/declaration_parser.cpp
-    
-    # Semantic Analyzer
+
+    # Semantic Analysis
+    src/semantic/type.cpp
+    src/semantic/type_definition.cpp
+    src/semantic/scope.cpp
     src/semantic/symbol_table.cpp
     
     # Code Generator
-    src/codegen/codegen.cpp
-    src/codegen/ir_builder.cpp
-    src/codegen/ir_command.cpp
-    src/codegen/command_processor.cpp
     src/codegen/jit_engine.cpp
     
     # Common Utilities
     src/common/logger.cpp
     src/common/token.cpp
+
+    src/compiler.cpp
 )
 
 set(RUNTIME_FILES
-    # lib/mycelium_runtime.cpp
-    # lib/runtime_binding.cpp
+
 )
 
-set(TEST_FILES
-    tests/test_lexer.cpp
-    tests/test_parser.cpp
-    tests/test_command_generation.cpp
-    tests/test_ir_generation.cpp
-    tests/test_jit_execution.cpp
-    tests/test_integration.cpp
-)
 
 # Main executable
 add_executable(Myre ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
 
-# Test runner executable
-add_executable(TestRunner ${SOURCE_FILES} ${TEST_FILES} test_runner.cpp)
-
 if(LLVM_AVAILABLE)
     target_link_libraries(Myre PRIVATE ${LLVM_LIBS})
-    target_link_libraries(TestRunner PRIVATE ${LLVM_LIBS})
 endif()
 
 target_include_directories(Myre PRIVATE "include" "lib")
-target_include_directories(TestRunner PRIVATE "include" "lib")

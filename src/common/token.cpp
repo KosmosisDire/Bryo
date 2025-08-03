@@ -1,6 +1,6 @@
 #include "common/token.hpp"
 #include <string>
 
-namespace Mycelium::Scripting {
+namespace Myre {
 
-} // namespace Mycelium::Scripting
+} // namespace Myre

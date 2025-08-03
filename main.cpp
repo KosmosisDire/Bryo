@@ -1,177 +1,134 @@
-#include "parser/parser.h"
-#include "parser/lexer.hpp"
-#include "parser/token_stream.hpp"
-#include "codegen/codegen.hpp"
-#include "codegen/command_processor.hpp"
-#include "codegen/jit_engine.hpp"
+#include "compiler.hpp"
 #include "semantic/symbol_table.hpp"
-#include "common/logger.hpp"
-#include "ast/ast_rtti.hpp"
-#include <iostream>
+#include "semantic/type_registry.hpp"
 #include <fstream>
-#include <string>
-#include <filesystem>
+#include <sstream>
+#include <iostream>
+using namespace Myre;
 
-#include "ast/ast_printer.hpp"
 
-using namespace Mycelium::Scripting::Lang;
-using namespace Mycelium;
-using namespace Mycelium::Scripting::Common;
-
-// Diagnostic sink for lexer errors
-class ConsoleLexerDiagnosticSink : public LexerDiagnosticSink {
-public:
-    void report_diagnostic(const LexerDiagnostic& diagnostic) override {
-        std::cerr << "Lexer Error: " << diagnostic.message << " at line " << diagnostic.location.line << ", column " << diagnostic.location.column << std::endl;
-    }
-};
-
-// Helper function to read file contents
-std::string read_file(const std::string& filepath) {
-    std::ifstream file(filepath);
+std::string read_file(const std::string& filename) {
+    std::ifstream file(filename);
     if (!file.is_open()) {
-        throw std::runtime_error("Could not open file: " + filepath);
+        throw std::runtime_error("Could not open file: " + filename);
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
+void test_type_system() {
+    std::cout << "\n=== TYPE SYSTEM TEST ===\n\n";
+    
+    // Create symbol table and type registry
+    SymbolTable symbolTable;
+    TypeRegistry& registry = symbolTable.get_type_registry();
+    
+    std::cout << "1. Initial Type Registry:\n";
+    std::cout << registry.to_string() << "\n";
+    
+    // Create a custom type: Player
+    std::cout << "2. Creating Player type...\n";
+    auto playerDef = std::make_shared<TypeDefinition>("Player", "Game.Player");
+    
+    // Add health field
+    auto healthSymbol = std::make_shared<Symbol>();
+    healthSymbol->kind = SymbolKind::Field;
+    healthSymbol->name = "health";
+    healthSymbol->type = registry.get_primitive("i32");
+    healthSymbol->access = AccessLevel::Public;
+    playerDef->add_member(healthSymbol);
+    
+    // Add name field
+    auto nameSymbol = std::make_shared<Symbol>();
+    nameSymbol->kind = SymbolKind::Field;
+    nameSymbol->name = "name";
+    nameSymbol->type = registry.get_primitive("string");
+    nameSymbol->access = AccessLevel::Public;
+    playerDef->add_member(nameSymbol);
+    
+    // Add move method
+    auto moveSymbol = std::make_shared<Symbol>();
+    moveSymbol->kind = SymbolKind::Function;
+    moveSymbol->name = "move";
+    moveSymbol->type = registry.get_function_type(
+        registry.get_primitive("void"),
+        {registry.get_primitive("f32"), registry.get_primitive("f32")}
+    );
+    moveSymbol->access = AccessLevel::Public;
+    playerDef->add_member(moveSymbol);
+    
+    // Register the type
+    registry.register_type_definition("Game.Player", playerDef);
+    
+    // Create type symbol and add to symbol table
+    auto playerTypeSymbol = std::make_shared<Symbol>();
+    playerTypeSymbol->kind = SymbolKind::Type;
+    playerTypeSymbol->name = "Player";
+    playerTypeSymbol->type = registry.get_defined_type(playerDef);
+    playerTypeSymbol->access = AccessLevel::Public;
+    symbolTable.define(playerTypeSymbol);
+    
+    std::cout << "3. After adding Player type:\n";
+    std::cout << registry.to_string() << "\n";
+    std::cout << symbolTable.to_string() << "\n";
+    
+    // Test type canonicalization
+    std::cout << "4. Testing type canonicalization...\n";
+    TypePtr player1 = registry.get_type_reference("Game.Player");
+    TypePtr player2 = registry.get_type_reference("Game.Player");
+    TypePtr playerArray1 = registry.get_array_type(player1, 1);
+    TypePtr playerArray2 = registry.get_array_type(player2, 1);
+    
+    std::cout << "player1 == player2: " << (player1 == player2 ? "true" : "false") << "\n";
+    std::cout << "playerArray1 == playerArray2: " << (playerArray1 == playerArray2 ? "true" : "false") << "\n";
+    
+    // Test member lookup
+    std::cout << "\n5. Testing member lookup...\n";
+    auto healthMember = playerDef->lookup_member("health");
+    if (healthMember) {
+        std::cout << "Found health member: " << healthMember->name << " : " << healthMember->type->get_name() << "\n";
     }
     
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-    return content;
-}
-
-// Main scripting engine function
-int run_script(const std::string& filepath) {
-    try {
-
-        // Read the script file
-        std::string source_code = read_file(filepath);
-        std::cout << "Executing script: " << filepath << std::endl;
-        
-        // Step 1: Lexical analysis
-        ConsoleLexerDiagnosticSink diagnostic_sink;
-        Lexer lexer(source_code, {}, &diagnostic_sink);
-        TokenStream token_stream = lexer.tokenize_all();
-        
-        if (token_stream.size() == 0) {
-            std::cerr << "Error: No tokens generated from source file" << std::endl;
-            return 1;
-        }
-
-        // LOG_INFO(token_stream.to_string(), LogCategory::PARSER);
-
-        // Step 2: Parse the source code
-        Parser parser(token_stream);
-        auto parse_result = parser.parse();
-        
-        if (!parse_result.is_success()) {
-            std::cerr << "Parse Error: Failed to parse " << filepath << std::endl;
-            return 1;
-        }
-
-        parser.get_diagnostics().print();
-        
-        auto* compilation_unit = parse_result.get_node();
-        if (!compilation_unit) {
-            std::cerr << "Error: No AST generated" << std::endl;
-            return 1;
-        }
-
-        AstPrinterVisitor printer;
-        compilation_unit->accept(&printer);
-        
-        // Step 3: Build symbol table
-        SymbolTable symbol_table;
-        build_symbol_table(symbol_table, compilation_unit);
-        
-        // Debug: Print symbol table
-        LOG_HEADER("Symbol Table", LogCategory::SEMANTIC);
-        symbol_table.print_symbol_table();
-        
-        // Step 4: Generate code
-        CodeGenerator codegen(symbol_table);
-        auto commands = codegen.generate_code(compilation_unit);
-        
-        if (commands.empty()) {
-            std::cerr << "Error: No commands generated from AST" << std::endl;
-            return 1;
-        }
-        
-        // Debug: Show generated commands with readable format
-        // std::cout << "=== Generated Commands ===" << std::endl;
-        // for (size_t i = 0; i < commands.size(); ++i) {
-        //     std::cout << "[" << i << "] " << commands[i].to_string() << std::endl;
-        // }
-        // std::cout << "=== End Commands ===" << std::endl;
-        
-        // Step 5: Generate LLVM IR
-        std::string ir = CommandProcessor::process_to_ir_string(commands, "ScriptModule");
-        
-        if (ir.empty()) {
-            std::cerr << "Error: No IR generated from commands" << std::endl;
-            return 1;
-        }
-        
-        // Debug: Show generated IR
-        std::cout << "=== Generated IR ===" << std::endl;
-        std::cout << ir << std::endl;
-        std::cout << "=== End IR ===" << std::endl;
-        
-        // Step 6: Execute with JIT
-        JITEngine jit;
-        if (!jit.initialize_from_ir(ir, "ScriptModule")) {
-            std::cerr << "Error: Failed to initialize JIT engine" << std::endl;
-            return 1;
-        }
-        
-        // Step 7: Execute the main function
-        try {
-            int result = jit.execute_function("main");
-            std::cout << "Script executed successfully. Return value: " << result << std::endl;
-            return result;
-        } catch (const std::exception& e) {
-            std::cerr << "Execution Error: " << e.what() << std::endl;
-            return 1;
-        }
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+    auto moveMember = playerDef->lookup_member("move");
+    if (moveMember) {
+        std::cout << "Found move member: " << moveMember->name << " : " << moveMember->type->get_name() << "\n";
     }
+    
+    // Test compound types
+    std::cout << "\n6. Testing compound types...\n";
+    TypePtr i32Type = registry.get_primitive("i32");
+    TypePtr i32Array = registry.get_array_type(i32Type, 1);
+    TypePtr i32Array2D = registry.get_array_type(i32Type, 2);
+    
+    std::cout << "i32 type: " << i32Type->get_name() << "\n";
+    std::cout << "i32[] type: " << i32Array->get_name() << "\n";
+    std::cout << "i32[,] type: " << i32Array2D->get_name() << "\n";
+    
+    std::cout << "\n7. Final Type Registry state:\n";
+    std::cout << registry.to_string() << "\n";
+    
+    std::cout << "=== TYPE SYSTEM TEST COMPLETE ===\n\n";
 }
 
-void print_usage(const std::string& program_name) {
-    std::cout << "Myre Scripting Engine" << std::endl;
-    std::cout << "Usage: " << program_name << " <script.myre>" << std::endl;
-    std::cout << "Example: " << program_name << " test.myre" << std::endl;
-}
 
-int main(int argc, char* argv[]) {
-    // Initialize logger (minimal output for cleaner IR output)
+
+int main(int argc, char* argv[])
+{
     Logger& logger = Logger::get_instance();
     logger.initialize();
-    logger.set_console_level(LogLevel::TRACE); // Only show errors for cleaner output
-    
-    // Initialize RTTI system
-    AstTypeInfo::initialize();
-    
-    // Check command line arguments
-    if (argc != 2) {
-        print_usage(argv[0]);
-        return 1;
+    logger.set_console_level(LogLevel::ERR); // Only show errors for cleaner output
+
+    // Test the type system
+    test_type_system();
+
+    // Optionally run the compiler if a file is provided
+    if (argc > 1) {
+        std::cout << "\n=== COMPILER TEST ===\n";
+        Compiler compiler;
+        auto source = read_file(argv[1]);
+        compiler.compile(source);
     }
-    
-    std::string script_path = argv[1];
-    
-    // Check if file exists
-    if (!std::filesystem::exists(script_path)) {
-        std::cerr << "Error: File does not exist: " << script_path << std::endl;
-        return 1;
-    }
-    
-    // Check if file has .myre extension
-    if (!script_path.ends_with(".myre")) {
-        std::cerr << "Warning: File does not have .myre extension" << std::endl;
-    }
-    
-    // Run the script
-    return run_script(script_path);
+
+    return 0;
 }

@@ -14,7 +14,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/MemoryBuffer.h"
 
-namespace Mycelium::Scripting::Lang {
+namespace Myre {
 
 JITEngine::JITEngine() : execution_engine_(nullptr), context_(nullptr), module_(nullptr) {
     // Initialize LLVM targets for JIT compilation
@@ -172,4 +172,4 @@ void JITEngine::dump_functions() {
     }
 }
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

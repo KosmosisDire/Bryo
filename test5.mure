@@ -1,0 +1,80 @@
+// this is a concept for bracket initializers and tree initializers
+
+
+type Player
+{
+    int x, y, z;
+    int health = 100;
+}
+
+var player = new Player
+{
+    x: 100;
+    health: 50;
+}
+
+type Element
+{
+    int id;
+    string name;
+    Color backgroundColor;
+    Color color;
+    Border borderLeft, borderTop, borderRight, borderBottom;
+    Measure topRightRadius, bottomRightRadius, bottomLeftRadius, topLeftRadius;
+    Measure left, top, right, bottom;
+    Measure width, height;
+    Measure minWidth, minHeight;
+    Measure maxWidth, maxHeight;
+    Measure marginLeft, marginTop, marginRight, marginBottom;
+    Measure paddingLeft, paddingTop, paddingRight, paddingBottom;
+    Measure fontSize;
+    string fontFamily;
+
+    treeparent Element parent; //tree parent means this property will be populated from a tree initializer
+    childlist List<Element> children; // childlist means that this list can be populated directly from the initializer
+}
+
+var element = new Element
+{
+    id: 1;
+    name: "MyElement";
+    backgroundColor: Color(255, 255, 255);
+    color: Color(0, 0, 0);
+    borderLeft: Border(1, Color(0, 0, 0));
+    borderTop: Border(1, Color(0, 0, 0));
+    borderRight: Border(1, Color(0, 0, 0));
+    borderBottom: Border(1, Color(0, 0, 0));
+    topRightRadius: Measure(5);
+    bottomRightRadius: Measure(5);
+    bottomLeftRadius: Measure(5);
+    topLeftRadius: Measure(5);
+    left: Measure(10);
+    top: Measure(10);
+    width: Measure(100);
+    height: Measure(50);
+    
+    new Element
+    { 
+        id: 2;
+        name: "Child1";
+    }
+    
+    new Element
+    { 
+        id: 3;
+        name: "Child2";
+        children: [
+            new Element
+            {
+                id: 4;
+                name: "GrandChild1";
+            },
+            new Element
+            {
+                id: 5;
+                name: "GrandChild2";
+            }
+        ];
+    }
+    
+};

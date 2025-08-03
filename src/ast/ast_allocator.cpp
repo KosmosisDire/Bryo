@@ -2,7 +2,7 @@
 #include <cstdlib> // for malloc, free, abort
 #include <memory>  // for std::align
 
-namespace Mycelium::Scripting::Lang
+namespace Myre
 {
     AstAllocator::AstAllocator()
     {
@@ -86,4 +86,4 @@ namespace Mycelium::Scripting::Lang
         return nullptr;
     }
 
-} // namespace Mycelium::Scripting::Lang
+} // namespace Myre

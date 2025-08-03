@@ -7,10 +7,9 @@
 #include <sstream>
 #include <string>
 
-namespace Mycelium::Testing {
+namespace Myre {
 
-using namespace Mycelium::Scripting::Lang;
-using namespace Mycelium::Scripting::Common;
+using namespace Myre;
 
 // Helper function to generate AST debug information using logger string capture
 inline std::string get_ast_debug_info(AstNode* node, const std::string& label = "AST") {
@@ -28,7 +27,7 @@ inline std::string get_ast_debug_info(AstNode* node, const std::string& label = 
     Logger& logger = Logger::get_instance();
     logger.begin_string_capture();
     
-    AstPrinterVisitor printer;
+    AstPrinter printer;
     node->accept(&printer);
     
     std::string ast_output = logger.end_string_capture();
@@ -240,4 +239,4 @@ inline std::string get_ast_debug_info(AstNode* node, const std::string& label = 
         } \
     } while(0)
 
-} // namespace Mycelium::Testing
+} // namespace Myre
