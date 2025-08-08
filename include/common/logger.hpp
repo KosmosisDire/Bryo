@@ -116,7 +116,7 @@ namespace Myre
         bool should_log(LogLevel level, LogCategory category, bool to_console) const;
 
     public:
-        static Logger &Logger::get_instance();
+        static Logger &get_instance();
 
         // Initialize the logger with a log file path
         bool initialize(const std::string &log_file_path = "");

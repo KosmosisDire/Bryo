@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <algorithm>
 #include "scope.hpp"
 #include "type_system.hpp"  // Contains TypeSystem
 #include <stack>
