@@ -53,10 +53,6 @@ private:
 
 public:
     // --- Base Node Types ---
-    
-    void visit(AstNode* node) override {
-        print_line(std::string(g_ordered_type_infos[node->typeId]->name));
-    }
 
     void visit(TokenNode* node) override {
         print_line("Token");

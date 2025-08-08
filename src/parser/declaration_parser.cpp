@@ -119,12 +119,10 @@ namespace Myre
         ctx.advance();
 
         auto *func_decl = parser_->get_allocator().alloc<FunctionDeclarationNode>();
-        func_decl->contains_errors = false;
 
         // Set up name
         auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
         name_node->name = name_token.text;
-        name_node->contains_errors = false;
         func_decl->name = name_node;
 
         // Parse parameter list
@@ -149,7 +147,6 @@ namespace Myre
             {
                 // Error recovery: skip to next parameter or end
                 parser_->recover_to_safe_point(ctx);
-                func_decl->contains_errors = true;
                 if (ctx.check(TokenKind::RightParen))
                     break;
             }
@@ -162,7 +159,6 @@ namespace Myre
             else if (!ctx.check(TokenKind::RightParen))
             {
                 create_error("Expected ',' or ')' in parameter list");
-                func_decl->contains_errors = true;
                 break;
             }
         }
@@ -182,7 +178,6 @@ namespace Myre
         if (!parser_->match(TokenKind::RightParen))
         {
             create_error("Expected ')' after parameters");
-            func_decl->contains_errors = true;
         }
 
         // Parse optional return type: fn test(): i32
@@ -192,10 +187,6 @@ namespace Myre
             if (return_type_result.is_success())
             {
                 func_decl->returnType = return_type_result.get_node();
-            }
-            else
-            {
-                func_decl->contains_errors = true;
             }
         }
 
@@ -211,16 +202,11 @@ namespace Myre
             {
                 func_decl->body = static_cast<BlockStatementNode *>(body_result.get_node());
             }
-            else
-            {
-                func_decl->contains_errors = true;
-            }
         }
         else
         {
             // Missing body - create error but continue
             create_error("Expected '{' for function body");
-            func_decl->contains_errors = true;
         }
 
         return ParseResult<DeclarationNode>::success(func_decl);
@@ -233,11 +219,9 @@ namespace Myre
         // Store the 'new' keyword
         auto *new_keyword = parser_->get_allocator().alloc<TokenNode>();
         new_keyword->text = ctx.current().text;
-        new_keyword->contains_errors = false;
         ctx.advance(); // consume 'new'
 
         auto *ctor_decl = parser_->get_allocator().alloc<ConstructorDeclarationNode>();
-        ctor_decl->contains_errors = false;
         ctor_decl->newKeyword = new_keyword;
 
         // Parse opening paren
@@ -249,7 +233,6 @@ namespace Myre
 
         auto *open_paren = parser_->get_allocator().alloc<TokenNode>();
         open_paren->text = ctx.current().text;
-        open_paren->contains_errors = false;
         ctor_decl->openParen = open_paren;
         ctx.advance(); // consume '('
 
@@ -264,7 +247,6 @@ namespace Myre
             }
             else
             {
-                ctor_decl->contains_errors = true;
                 parser_->recover_to_safe_point(ctx);
                 if (ctx.check(TokenKind::RightParen))
                     break;
@@ -277,7 +259,6 @@ namespace Myre
             else if (!ctx.check(TokenKind::RightParen))
             {
                 create_error("Expected ',' or ')' in parameter list");
-                ctor_decl->contains_errors = true;
                 break;
             }
         }
@@ -298,14 +279,12 @@ namespace Myre
         if (!ctx.check(TokenKind::RightParen))
         {
             create_error("Expected ')' after constructor parameters");
-            ctor_decl->contains_errors = true;
             ctor_decl->closeParen = nullptr;
         }
         else
         {
             auto *close_paren = parser_->get_allocator().alloc<TokenNode>();
             close_paren->text = ctx.current().text;
-            close_paren->contains_errors = false;
             ctor_decl->closeParen = close_paren;
             ctx.advance(); // consume ')'
         }
@@ -323,10 +302,6 @@ namespace Myre
         {
             ctor_decl->body = static_cast<BlockStatementNode *>(body_result.get_node());
         }
-        else
-        {
-            ctor_decl->contains_errors = true;
-        }
 
         return ParseResult<DeclarationNode>::success(ctor_decl);
     }
@@ -339,7 +314,6 @@ namespace Myre
         // Store the type keyword token
         auto *type_keyword = parser_->get_allocator().alloc<TokenNode>();
         type_keyword->text = ctx.current().text;
-        type_keyword->contains_errors = false;
 
         ctx.advance(); // consume 'type'
 
@@ -353,13 +327,11 @@ namespace Myre
         ctx.advance();
 
         auto *type_decl = parser_->get_allocator().alloc<TypeDeclarationNode>();
-        type_decl->contains_errors = false;
         type_decl->typeKeyword = type_keyword;
 
         // Set up name
         auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
         name_node->name = name_token.text;
-        name_node->contains_errors = false;
         type_decl->name = name_node;
 
         // Parse type body
@@ -372,7 +344,6 @@ namespace Myre
         // Store the opening brace
         auto *open_brace = parser_->get_allocator().alloc<TokenNode>();
         open_brace->text = "{";
-        open_brace->contains_errors = false;
         type_decl->openBrace = open_brace;
 
         std::vector<AstNode *> members;
@@ -395,7 +366,7 @@ namespace Myre
             {
                 // Add error node and continue
                 members.push_back(member_result.get_error());
-                type_decl->contains_errors = true;
+
 
                 // Simple recovery: skip to next member or end
                 parser_->recover_to_safe_point(ctx);
@@ -410,7 +381,7 @@ namespace Myre
         if (!parser_->match(TokenKind::RightBrace))
         {
             create_error("Expected '}' to close type");
-            type_decl->contains_errors = true;
+
             type_decl->closeBrace = nullptr;
         }
         else
@@ -418,7 +389,7 @@ namespace Myre
             // Store the closing brace
             auto *close_brace = parser_->get_allocator().alloc<TokenNode>();
             close_brace->text = "}";
-            close_brace->contains_errors = false;
+
             type_decl->closeBrace = close_brace;
         }
 
@@ -454,12 +425,12 @@ namespace Myre
         ctx.advance();
 
         auto *enum_decl = parser_->get_allocator().alloc<EnumDeclarationNode>();
-        enum_decl->contains_errors = false;
+
 
         // Set up name
         auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
         name_node->name = name_token.text;
-        name_node->contains_errors = false;
+
         enum_decl->name = name_node;
 
         if (!parser_->match(TokenKind::LeftBrace))
@@ -480,7 +451,7 @@ namespace Myre
             }
             else
             {
-                enum_decl->contains_errors = true;
+
                 // Simple recovery: skip to next case or end
                 parser_->recover_to_safe_point(ctx);
                 if (ctx.check(TokenKind::RightBrace))
@@ -497,7 +468,7 @@ namespace Myre
         if (!parser_->match(TokenKind::RightBrace))
         {
             create_error("Expected '}' to close enum");
-            enum_decl->contains_errors = true;
+
         }
 
         // Allocate cases array
@@ -531,7 +502,7 @@ namespace Myre
 
         auto *using_stmt = parser_->get_allocator().alloc<UsingDirectiveNode>();
         using_stmt->namespaceName = type_result.get_node();
-        using_stmt->contains_errors = ast_has_errors(type_result.get_node());
+
 
         parser_->expect(TokenKind::Semicolon, "Expected ';' after using directive");
 
@@ -591,12 +562,12 @@ namespace Myre
         ctx.advance();
 
         auto *case_node = parser_->get_allocator().alloc<EnumCaseNode>();
-        case_node->contains_errors = false;
+
 
         // Set up name
         auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
         name_node->name = name_token.text;
-        name_node->contains_errors = false;
+
         case_node->name = name_node;
 
         // Check for associated data: Case(param1: Type1, param2: Type2)
@@ -615,7 +586,7 @@ namespace Myre
                 }
                 else
                 {
-                    case_node->contains_errors = true;
+
                     break;
                 }
 
@@ -626,7 +597,7 @@ namespace Myre
                 else if (!ctx.check(TokenKind::RightParen))
                 {
                     create_error("Expected ',' or ')' in parameter list");
-                    case_node->contains_errors = true;
+
                     break;
                 }
             }
@@ -634,7 +605,7 @@ namespace Myre
             if (!parser_->match(TokenKind::RightParen))
             {
                 create_error("Expected ')' after parameters");
-                case_node->contains_errors = true;
+
             }
 
             // Allocate parameter array
@@ -677,12 +648,12 @@ namespace Myre
         ctx.advance();
 
         auto *param = parser_->get_allocator().alloc<ParameterNode>();
-        param->contains_errors = false;
+
 
         // Set up name
         auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
         name_node->name = name_token.text;
-        name_node->contains_errors = false;
+
         param->name = name_node;
 
         // Set up type
@@ -698,7 +669,7 @@ namespace Myre
             }
             else
             {
-                param->contains_errors = true;
+
             }
         }
 
@@ -718,7 +689,7 @@ namespace Myre
         }
 
         auto *param = parser_->get_allocator().alloc<ParameterNode>();
-        param->contains_errors = false;
+
         param->type = type_result.get_node();
         param->defaultValue = nullptr; // No default values for enum parameters
 
@@ -731,7 +702,7 @@ namespace Myre
 
             auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
             name_node->name = name_token.text;
-            name_node->contains_errors = false;
+
             param->name = name_node;
         }
         else
@@ -812,7 +783,7 @@ namespace Myre
         }
         else
         {
-            namespace_decl->contains_errors = true;
+
         }
 
         return ParseResult<DeclarationNode>::success(namespace_decl);
@@ -842,7 +813,7 @@ namespace Myre
             auto *var_keyword = parser_->get_allocator().alloc<TokenNode>();
             var_keyword->text = ctx.current().text;
             var_keyword->location = ctx.current().location;
-            var_keyword->contains_errors = false;
+
 
             ctx.advance(); // consume 'var'
 
@@ -861,7 +832,7 @@ namespace Myre
             auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
             id_node->name = ctx.current().text;
             id_node->location = ctx.current().location;
-            id_node->contains_errors = false;
+
 
             auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(1);
             names_array[0] = id_node;
@@ -874,7 +845,7 @@ namespace Myre
             var_decl->initializer = nullptr;
             var_decl->equalsToken = nullptr;
             var_decl->semicolon = nullptr;
-            var_decl->contains_errors = false;
+
 
             return ParseResult<StatementNode>::success(var_decl);
         }
@@ -898,7 +869,7 @@ namespace Myre
                 auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
                 id_node->name = ctx.current().text;
                 id_node->location = ctx.current().location;
-                id_node->contains_errors = false;
+
 
                 auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(1);
                 names_array[0] = id_node;
@@ -910,7 +881,7 @@ namespace Myre
                 var_decl->initializer = nullptr;
                 var_decl->equalsToken = nullptr;
                 var_decl->semicolon = nullptr;
-                var_decl->contains_errors = ast_has_errors(var_decl->type);
+
 
                 return ParseResult<StatementNode>::success(var_decl);
             }
@@ -922,18 +893,18 @@ namespace Myre
             auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
             id_node->name = ctx.current().text;
             id_node->location = ctx.current().location;
-            id_node->contains_errors = false;
+
             ctx.advance(); // consume identifier
 
             // Create an IdentifierExpressionNode for consistency
             auto *id_expr = parser_->get_allocator().alloc<IdentifierExpressionNode>();
             id_expr->identifier = id_node;
-            id_expr->contains_errors = false;
+
 
             // Wrap in an expression statement to match StatementNode type
             auto *expr_stmt = parser_->get_allocator().alloc<ExpressionStatementNode>();
             expr_stmt->expression = id_expr;
-            expr_stmt->contains_errors = false;
+
 
             return ParseResult<StatementNode>::success(expr_stmt);
         }
@@ -952,7 +923,7 @@ namespace Myre
             // Store the var keyword token
             var_keyword = parser_->get_allocator().alloc<TokenNode>();
             var_keyword->text = ctx.current().text;
-            var_keyword->contains_errors = false;
+
 
             ctx.advance(); // consume 'var'
         }
@@ -986,7 +957,7 @@ namespace Myre
 
         auto *first_name = parser_->get_allocator().alloc<IdentifierNode>();
         first_name->name = first_name_token.text;
-        first_name->contains_errors = false;
+
         names.push_back(first_name);
 
         // Parse additional names if comma-separated
@@ -1005,12 +976,12 @@ namespace Myre
 
             auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
             name_node->name = name_token.text;
-            name_node->contains_errors = false;
+
             names.push_back(name_node);
         }
 
         auto *var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
-        var_decl->contains_errors = false;
+
         var_decl->varKeyword = var_keyword;
         var_decl->type = type;
 
@@ -1031,7 +1002,7 @@ namespace Myre
         {
             auto *equals_token = parser_->get_allocator().alloc<TokenNode>();
             equals_token->text = ctx.current().text;
-            equals_token->contains_errors = false;
+
             var_decl->equalsToken = equals_token;
             ctx.advance(); // consume '='
 
@@ -1042,14 +1013,8 @@ namespace Myre
             }
             else
             {
-                var_decl->contains_errors = true;
-            }
-        }
 
-        // Update error flag
-        if (var_decl->initializer && ast_has_errors(var_decl->initializer))
-        {
-            var_decl->contains_errors = true;
+            }
         }
 
         // Note: Semicolon handling is done by the caller

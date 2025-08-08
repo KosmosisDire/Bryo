@@ -39,7 +39,7 @@ namespace Myre
             assign_expr->target = left;
             assign_expr->source = right_result.get_node();
             assign_expr->opKind = assign_token.to_assignment_operator_kind();
-            assign_expr->contains_errors = ast_has_errors(left) || ast_has_errors(right_result.get_node());
+
 
             return ParseResult<ExpressionNode>::success(assign_expr);
         }
@@ -85,7 +85,7 @@ namespace Myre
                 binary->left = left;
                 binary->right = error; // Use AstNode* directly for error integration
                 binary->opKind = op_token.to_binary_operator_kind();
-                binary->contains_errors = true;
+
                 return ParseResult<ExpressionNode>::success(binary);
             }
 
@@ -93,7 +93,7 @@ namespace Myre
             binary->left = left;
             binary->right = right_result.get_node();
             binary->opKind = op_token.to_binary_operator_kind();
-            binary->contains_errors = ast_has_errors(left) || ast_has_errors(right_result.get_node());
+
 
             left = binary;
         }
@@ -174,13 +174,13 @@ namespace Myre
         }
         
         auto *range_expr = parser_->get_allocator().alloc<RangeExpressionNode>();
-        range_expr->contains_errors = false;
+
         
         // Store range operator
         auto *range_op = parser_->get_allocator().alloc<TokenNode>();
         range_op->text = ctx.current().text;
         range_op->location = ctx.current().location;
-        range_op->contains_errors = false;
+
         range_expr->rangeOp = range_op;
         
         ctx.advance(); // consume .. or ..=
@@ -211,7 +211,7 @@ namespace Myre
             auto *by_token = parser_->get_allocator().alloc<TokenNode>();
             by_token->text = ctx.current().text;
             by_token->location = ctx.current().location;
-            by_token->contains_errors = false;
+
             range_expr->byKeyword = by_token;
             
             ctx.advance(); // consume 'by'
@@ -225,12 +225,6 @@ namespace Myre
             }
             range_expr->stepExpression = step_result.get_node();
         }
-        
-        // Update error flag
-        bool has_errors = (range_expr->start && ast_has_errors(range_expr->start)) ||
-                          (range_expr->end && ast_has_errors(range_expr->end)) ||
-                          (range_expr->stepExpression && ast_has_errors(range_expr->stepExpression));
-        range_expr->contains_errors = has_errors;
         
         return ParseResult<ExpressionNode>::success(range_expr);
     }
@@ -247,13 +241,13 @@ namespace Myre
         }
         
         auto *range_expr = parser_->get_allocator().alloc<RangeExpressionNode>();
-        range_expr->contains_errors = false;
+
         
         // Store range operator
         auto *range_op = parser_->get_allocator().alloc<TokenNode>();
         range_op->text = ctx.current().text;
         range_op->location = ctx.current().location;
-        range_op->contains_errors = false;
+
         range_expr->rangeOp = range_op;
         
         ctx.advance(); // consume .. or ..=
@@ -274,7 +268,7 @@ namespace Myre
         range_expr->byKeyword = nullptr;
         range_expr->stepExpression = nullptr;
         
-        range_expr->contains_errors = ast_has_errors(range_expr->end);
+
         
         return ParseResult<ExpressionNode>::success(range_expr);
     }
@@ -287,11 +281,11 @@ namespace Myre
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::I32;
-        literal->contains_errors = false;
+
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
         token_node->text = token.text;
-        token_node->contains_errors = false;
+
         literal->token = token_node;
 
         return ParseResult<ExpressionNode>::success(literal);
@@ -304,11 +298,11 @@ namespace Myre
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::String;
-        literal->contains_errors = false;
+
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
         token_node->text = token.text;
-        token_node->contains_errors = false;
+
         literal->token = token_node;
 
         return ParseResult<ExpressionNode>::success(literal);
@@ -321,11 +315,11 @@ namespace Myre
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::Bool;
-        literal->contains_errors = false;
+
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
         token_node->text = token.text;
-        token_node->contains_errors = false;
+
         literal->token = token_node;
 
         return ParseResult<ExpressionNode>::success(literal);
@@ -338,11 +332,11 @@ namespace Myre
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::F32;
-        literal->contains_errors = false;
+
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
         token_node->text = token.text;
-        token_node->contains_errors = false;
+
         literal->token = token_node;
 
         return ParseResult<ExpressionNode>::success(literal);
@@ -355,11 +349,11 @@ namespace Myre
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
         literal->kind = LiteralKind::F64;
-        literal->contains_errors = false;
+
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
         token_node->text = token.text;
-        token_node->contains_errors = false;
+
         literal->token = token_node;
 
         return ParseResult<ExpressionNode>::success(literal);
@@ -381,7 +375,7 @@ namespace Myre
         unary_expr->operand = operand_result.get_node();
         unary_expr->opKind = op_token.to_unary_operator_kind();
         unary_expr->isPostfix = false;
-        unary_expr->contains_errors = ast_has_errors(operand_result.get_node());
+
 
         return ParseResult<ExpressionNode>::success(unary_expr);
     }
@@ -392,10 +386,10 @@ namespace Myre
         context().advance();
 
         auto *identifier_expr = parser_->get_allocator().alloc<IdentifierExpressionNode>();
-        identifier_expr->contains_errors = false;
+
         auto *identifier = parser_->get_allocator().alloc<IdentifierNode>();
         identifier->name = token.text;
-        identifier->contains_errors = false;
+
         identifier_expr->identifier = identifier;
 
         // Start with the identifier, then handle postfix operations
@@ -438,7 +432,7 @@ namespace Myre
                 unary_expr->operand = current;
                 unary_expr->opKind = op_token.to_unary_operator_kind();
                 unary_expr->isPostfix = true;
-                unary_expr->contains_errors = ast_has_errors(current);
+
 
                 current = unary_expr;
             }
@@ -504,7 +498,7 @@ namespace Myre
 
         auto *call_expr = parser_->get_allocator().alloc<CallExpressionNode>();
         call_expr->target = target;
-        call_expr->contains_errors = ast_has_errors(target);
+
 
         std::vector<AstNode *> arguments;
 
@@ -518,7 +512,7 @@ namespace Myre
                 // Error recovery: add error node and try to continue
                 auto *error = create_error("Invalid argument in call");
                 arguments.push_back(error);
-                call_expr->contains_errors = true;
+
 
                 // Try to recover to next argument or end of call
                 parser_->recover_to_safe_point(context());
@@ -526,10 +520,6 @@ namespace Myre
             }
 
             arguments.push_back(arg_result.get_ast_node());
-            if (ast_has_errors(arg_result.get_ast_node()))
-            {
-                call_expr->contains_errors = true;
-            }
 
             // Check for comma separator
             if (context().check(TokenKind::Comma))
@@ -539,7 +529,7 @@ namespace Myre
             else if (!context().check(TokenKind::RightParen))
             {
                 create_error("Expected ',' or ')' in argument list");
-                call_expr->contains_errors = true;
+
                 break;
             }
         }
@@ -571,7 +561,7 @@ namespace Myre
             auto *member_expr = parser_->get_allocator().alloc<MemberAccessExpressionNode>();
             member_expr->target = target;
             member_expr->member = nullptr;
-            member_expr->contains_errors = true;
+
             return ParseResult<ExpressionNode>::success(member_expr);
         }
 
@@ -583,10 +573,10 @@ namespace Myre
 
         auto *member_identifier = parser_->get_allocator().alloc<IdentifierNode>();
         member_identifier->name = member_token.text;
-        member_identifier->contains_errors = false;
+
         member_expr->member = member_identifier;
 
-        member_expr->contains_errors = ast_has_errors(target);
+
 
         return ParseResult<ExpressionNode>::success(member_expr);
     }
@@ -612,7 +602,7 @@ namespace Myre
         auto *indexer_expr = parser_->get_allocator().alloc<IndexerExpressionNode>();
         indexer_expr->target = target;
         indexer_expr->index = index_result.get_node();
-        indexer_expr->contains_errors = ast_has_errors(target) || ast_has_errors(index_result.get_node());
+
 
         return ParseResult<ExpressionNode>::success(indexer_expr);
     }
@@ -637,12 +627,12 @@ namespace Myre
         }
 
         auto *new_expr = parser_->get_allocator().alloc<NewExpressionNode>();
-        new_expr->contains_errors = ast_has_errors(type_result.get_node());
+
 
         // Create token node for the 'new' keyword
         auto *new_keyword = parser_->get_allocator().alloc<TokenNode>();
         new_keyword->text = new_token.text;
-        new_keyword->contains_errors = false;
+
         new_expr->newKeyword = new_keyword;
 
         new_expr->type = type_result.get_node();
@@ -658,15 +648,11 @@ namespace Myre
                 auto *call_expr = static_cast<CallExpressionNode *>(call_result.get_node());
                 call_expr->target = nullptr; // Constructor calls don't have a target expression
                 new_expr->constructorCall = call_expr;
-                if (ast_has_errors(call_expr))
-                {
-                    new_expr->contains_errors = true;
-                }
             }
             else
             {
                 // Failed to parse constructor call - treat as error
-                new_expr->contains_errors = true;
+
                 new_expr->constructorCall = nullptr;
             }
         }

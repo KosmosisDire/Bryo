@@ -22,10 +22,8 @@ namespace Myre
         std::string message;
         SourceRange location;
 
-        static Diagnostic from_error_node(ErrorNode *error)
-        {
-            return {error->error_message, error->location};
-        }
+        Diagnostic(const std::string &msg, const SourceRange &loc)
+            : message(msg), location(loc) {}
 
         std::string to_string() const
         {
@@ -247,7 +245,6 @@ namespace Myre
             }
 
             auto *name = allocator_.alloc<QualifiedNameNode>();
-            name->contains_errors = false;
 
             std::vector<IdentifierNode*> identifiers;
 
@@ -256,7 +253,6 @@ namespace Myre
             {
                 if (!context_.check(TokenKind::Identifier))
                 {
-                    name->contains_errors = true;
                     diagnostics_.add(Diagnostic{"Expected identifier in type name", context_.current().location});
                     break;
                 }
@@ -266,7 +262,6 @@ namespace Myre
 
                 auto *identifier = allocator_.alloc<IdentifierNode>();
                 identifier->name = id_token.text;
-                identifier->contains_errors = false;
                 identifiers.push_back(identifier);
 
                 // If next token is '.', continue parsing next identifier
@@ -300,10 +295,8 @@ namespace Myre
             }
 
             auto *type_name = allocator_.alloc<TypeNameNode>();
-            type_name->contains_errors = false;
             type_name->name = qname_result.get_node();
             type_name->location = type_name->name->location;
-            type_name->contains_errors = type_name->name->contains_errors;
 
             // Check for array type suffix []
             if (context_.check(TokenKind::LeftBracket))
@@ -327,7 +320,6 @@ namespace Myre
 
                     // Create ArrayTypeNameNode
                     auto *array_type = allocator_.alloc<ArrayTypeNameNode>();
-                    array_type->contains_errors = false;
                     array_type->elementType = type_name;
 
                     return ParseResult<TypeNameNode>::success(array_type);
@@ -353,9 +345,10 @@ namespace Myre
         // Direct error creation for helper parsers
         ErrorNode *create_error(const char *msg)
         {
-            auto error = ErrorNode::create(msg, context_.current().location, allocator_);
-            diagnostics_.add(Diagnostic::from_error_node(error));
-            return error;
+            auto* node = allocator_.alloc<ErrorNode>();
+            node->location = context_.current().location;
+            diagnostics_.add(Diagnostic(msg, node->location));
+            return node;
         }
 
     private:

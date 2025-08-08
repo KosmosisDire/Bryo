@@ -122,22 +122,12 @@ namespace Myre
     // Now includes type-safe error handling capabilities.
     class StructuralVisitor
     {
-    protected:
-        // Type-safe visitor helper that handles errors gracefully
-        // Implementation moved after AstNode definition
-        template<typename T>
-        void visit_as(AstNode* node, std::function<void(T*)> handler);
-        
-        // Visit collections with automatic error handling
-        // Implementation moved after AstNode definition
-        template<typename T>
-        void visit_collection(const SizedArray<AstNode*>& nodes, std::function<void(T*)> handler);
 
     public:
         virtual ~StructuralVisitor() = default;
 
         // The default visit function, which all others will call.
-        virtual void visit(AstNode* node);
+        void visit(AstNode* node) {};
 
         // One visit method for each concrete AND abstract node type.
         virtual void visit(ErrorNode* node);
@@ -214,6 +204,7 @@ namespace Myre
         virtual void visit(CompilationUnitNode* node);
     };
 
+    const char* get_type_name_from_id(uint8_t typeId);
 
     // --- Base AST Node ---
     struct AstNode
@@ -221,7 +212,6 @@ namespace Myre
         AST_ROOT_TYPE(AstNode) // Root node has no base type
 
         uint8_t typeId;
-        bool contains_errors;  // Fast error detection flag
         SourceRange location;
 
         // Must be implemented in ast.cpp
@@ -237,16 +227,12 @@ namespace Myre
     struct ErrorNode : AstNode {
         AST_TYPE(ErrorNode, AstNode)
 
-        std::string error_message;
-
-        static ErrorNode* create(const char* msg, const SourceRange location, AstAllocator& allocator) {
+        static ErrorNode* create(const SourceRange location, AstAllocator& allocator) {
             auto* node = allocator.alloc<ErrorNode>();
-            node->error_message = msg;
             node->location = location;
-            node->contains_errors = true;  // ErrorNodes always contain errors
             return node;
         }
-    };
+    }; AST_DECL_IMPL(ErrorNode, AstNode)
 
 
     // --- Node Hierarchy ---
@@ -255,29 +241,32 @@ namespace Myre
     {
         AST_TYPE(TokenNode, AstNode)
         std::string_view text;
-    };
+    }; AST_DECL_IMPL(TokenNode, AstNode)
 
     struct IdentifierNode : AstNode
     {
         AST_TYPE(IdentifierNode, AstNode)
         std::string_view name;
-    };
+    }; AST_DECL_IMPL(IdentifierNode, AstNode)
 
     // --- Expressions ---
-    struct ExpressionNode : AstNode { AST_TYPE(ExpressionNode, AstNode) };
+    struct ExpressionNode : AstNode
+    {
+        AST_TYPE(ExpressionNode, AstNode)
+    }; AST_DECL_IMPL(ExpressionNode, AstNode)
 
     struct LiteralExpressionNode : ExpressionNode
     {
         AST_TYPE(LiteralExpressionNode, ExpressionNode)
         LiteralKind kind;
         TokenNode* token; // Contains the raw text
-    };
+    }; AST_DECL_IMPL(LiteralExpressionNode, ExpressionNode)
 
     struct IdentifierExpressionNode : ExpressionNode
     {
         AST_TYPE(IdentifierExpressionNode, ExpressionNode)
         IdentifierNode* identifier;
-    };
+    }; AST_DECL_IMPL(IdentifierExpressionNode, ExpressionNode)
 
     struct ParenthesizedExpressionNode : ExpressionNode
     {
@@ -285,7 +274,7 @@ namespace Myre
         TokenNode* openParen;
         ExpressionNode* expression;
         TokenNode* closeParen;
-    };
+    }; AST_DECL_IMPL(ParenthesizedExpressionNode, ExpressionNode)
 
     struct UnaryExpressionNode : ExpressionNode
     {
@@ -294,7 +283,7 @@ namespace Myre
         TokenNode* operatorToken;
         ExpressionNode* operand;
         bool isPostfix;
-    };
+    }; AST_DECL_IMPL(UnaryExpressionNode, ExpressionNode)
 
     struct BinaryExpressionNode : ExpressionNode
     {
@@ -303,7 +292,7 @@ namespace Myre
         BinaryOperatorKind opKind;
         TokenNode* operatorToken;
         AstNode* right;       // Can be ExpressionNode* or ErrorNode*
-    };
+    }; AST_DECL_IMPL(BinaryExpressionNode, ExpressionNode)
 
     struct AssignmentExpressionNode : ExpressionNode
     {
@@ -312,7 +301,7 @@ namespace Myre
         AssignmentOperatorKind opKind;
         TokenNode* operatorToken;
         ExpressionNode* source;
-    };
+    }; AST_DECL_IMPL(AssignmentExpressionNode, ExpressionNode)
 
     struct CallExpressionNode : ExpressionNode
     {
@@ -322,7 +311,7 @@ namespace Myre
         SizedArray<AstNode*> arguments;  // Can contain ExpressionNodes or ErrorNodes
         SizedArray<TokenNode*> commas;
         TokenNode* closeParen;
-    };
+    }; AST_DECL_IMPL(CallExpressionNode, ExpressionNode)
 
     struct MemberAccessExpressionNode : ExpressionNode
     {
@@ -330,7 +319,7 @@ namespace Myre
         ExpressionNode* target;
         TokenNode* dotToken;
         IdentifierNode* member;
-    };
+    }; AST_DECL_IMPL(MemberAccessExpressionNode, ExpressionNode)
 
     struct NewExpressionNode : ExpressionNode
     {
@@ -338,13 +327,13 @@ namespace Myre
         TokenNode* newKeyword;
         TypeNameNode* type;
         CallExpressionNode* constructorCall; // Optional, can be null
-    };
+    }; AST_DECL_IMPL(NewExpressionNode, ExpressionNode)
 
     struct ThisExpressionNode : ExpressionNode
     {
         AST_TYPE(ThisExpressionNode, ExpressionNode)
         TokenNode* thisKeyword;
-    };
+    }; AST_DECL_IMPL(ThisExpressionNode, ExpressionNode)
 
     struct CastExpressionNode : ExpressionNode
     {
@@ -353,7 +342,7 @@ namespace Myre
         TypeNameNode* targetType;
         TokenNode* closeParen;
         ExpressionNode* expression;
-    };
+    }; AST_DECL_IMPL(CastExpressionNode, ExpressionNode)
 
     struct IndexerExpressionNode : ExpressionNode
     {
@@ -362,7 +351,7 @@ namespace Myre
         TokenNode* openBracket;
         ExpressionNode* index;
         TokenNode* closeBracket;
-    };
+    }; AST_DECL_IMPL(IndexerExpressionNode, ExpressionNode)
 
     struct TypeOfExpressionNode : ExpressionNode
     {
@@ -371,7 +360,7 @@ namespace Myre
         TokenNode* openParen;
         TypeNameNode* type;
         TokenNode* closeParen;
-    };
+    }; AST_DECL_IMPL(TypeOfExpressionNode, ExpressionNode)
 
     struct SizeOfExpressionNode : ExpressionNode
     {
@@ -380,7 +369,7 @@ namespace Myre
         TokenNode* openParen;
         TypeNameNode* type;
         TokenNode* closeParen;
-    };
+    }; AST_DECL_IMPL(SizeOfExpressionNode, ExpressionNode)
 
     struct MatchExpressionNode : ExpressionNode
     {
@@ -392,7 +381,7 @@ namespace Myre
         TokenNode* openBrace;
         SizedArray<MatchArmNode*> arms;
         TokenNode* closeBrace;
-    };
+    }; AST_DECL_IMPL(MatchExpressionNode, ExpressionNode)
 
     struct ConditionalExpressionNode : ExpressionNode
     {
@@ -402,7 +391,7 @@ namespace Myre
         ExpressionNode* whenTrue;
         TokenNode* colon;
         ExpressionNode* whenFalse;
-    };
+    }; AST_DECL_IMPL(ConditionalExpressionNode, ExpressionNode)
 
     struct RangeExpressionNode : ExpressionNode
     {
@@ -412,28 +401,31 @@ namespace Myre
         ExpressionNode* end;
         TokenNode* byKeyword; // optional
         ExpressionNode* stepExpression; // var i or Type var or just an identifier, optional
-    };
+    }; AST_DECL_IMPL(RangeExpressionNode, ExpressionNode)
 
     struct FieldKeywordExpressionNode : ExpressionNode
     {
         AST_TYPE(FieldKeywordExpressionNode, ExpressionNode)
         TokenNode* fieldKeyword;
-    };
+    }; AST_DECL_IMPL(FieldKeywordExpressionNode, ExpressionNode)
 
     struct ValueKeywordExpressionNode : ExpressionNode
     {
         AST_TYPE(ValueKeywordExpressionNode, ExpressionNode)
         TokenNode* valueKeyword;
-    };
+    }; AST_DECL_IMPL(ValueKeywordExpressionNode, ExpressionNode)
 
     // --- Statements ---
-    struct StatementNode : AstNode { AST_TYPE(StatementNode, AstNode) };
+    struct StatementNode : AstNode
+    { 
+        AST_TYPE(StatementNode, AstNode)
+    }; AST_DECL_IMPL(StatementNode, AstNode)
 
     struct EmptyStatementNode : StatementNode
     {
         AST_TYPE(EmptyStatementNode, StatementNode)
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(EmptyStatementNode, StatementNode)
 
     struct BlockStatementNode : StatementNode
     {
@@ -442,14 +434,14 @@ namespace Myre
         // A block can contain both statements and local declarations (including ErrorNodes)
         SizedArray<AstNode*> statements;
         TokenNode* closeBrace;
-    };
+    }; AST_DECL_IMPL(BlockStatementNode, StatementNode)
 
     struct ExpressionStatementNode : StatementNode
     {
         AST_TYPE(ExpressionStatementNode, StatementNode)
         AstNode* expression;  // Can be ExpressionNode* or ErrorNode*
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(ExpressionStatementNode, StatementNode)
 
     struct IfStatementNode : StatementNode
     {
@@ -461,7 +453,7 @@ namespace Myre
         StatementNode* thenStatement;
         TokenNode* elseKeyword; // Optional, can be null
         StatementNode* elseStatement; // Optional, can be null
-    };
+    }; AST_DECL_IMPL(IfStatementNode, StatementNode)
 
     struct WhileStatementNode : StatementNode
     {
@@ -471,7 +463,7 @@ namespace Myre
         ExpressionNode* condition;
         TokenNode* closeParen;
         StatementNode* body;
-    };
+    }; AST_DECL_IMPL(WhileStatementNode, StatementNode)
 
     struct ForStatementNode : StatementNode
     {
@@ -485,7 +477,7 @@ namespace Myre
         TokenNode* secondSemicolon;
         TokenNode* closeParen;
         StatementNode* body;
-    };
+    }; AST_DECL_IMPL(ForStatementNode, StatementNode)
 
     struct ForInStatementNode : StatementNode
     {
@@ -499,7 +491,7 @@ namespace Myre
         StatementNode* indexVariable;  // var i or Type var or just an identifier, optional
         TokenNode* closeParen;
         StatementNode* body;
-    };
+    }; AST_DECL_IMPL(ForInStatementNode, StatementNode)
 
     struct ReturnStatementNode : StatementNode
     {
@@ -507,21 +499,21 @@ namespace Myre
         TokenNode* returnKeyword;
         ExpressionNode* expression; // Optional, can be null
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(ReturnStatementNode, StatementNode)
 
     struct BreakStatementNode : StatementNode
     {
         AST_TYPE(BreakStatementNode, StatementNode)
         TokenNode* breakKeyword;
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(BreakStatementNode, StatementNode)
 
     struct ContinueStatementNode : StatementNode
     {
         AST_TYPE(ContinueStatementNode, StatementNode)
         TokenNode* continueKeyword;
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(ContinueStatementNode, StatementNode)
 
     // --- Type Names ---
 
@@ -548,7 +540,7 @@ namespace Myre
                 return "";
             return identifiers.back()->name;
         }
-    };
+    }; AST_DECL_IMPL(QualifiedNameNode, AstNode)
 
     struct TypeNameNode : AstNode
     {
@@ -567,7 +559,7 @@ namespace Myre
                 return name->get_name();
             return "";
         }
-    };
+    }; AST_DECL_IMPL(TypeNameNode, AstNode)
 
     struct ArrayTypeNameNode : TypeNameNode
     {
@@ -575,7 +567,7 @@ namespace Myre
         TypeNameNode* elementType;
         TokenNode* openBracket;
         TokenNode* closeBracket;
-    };
+    }; AST_DECL_IMPL(ArrayTypeNameNode, TypeNameNode)
 
     struct GenericTypeNameNode : TypeNameNode
     {
@@ -585,14 +577,14 @@ namespace Myre
         SizedArray<AstNode*> arguments;  // Can contain TypeNameNodes or ErrorNodes
         SizedArray<TokenNode*> commas;
         TokenNode* closeAngle;
-    };
+    }; AST_DECL_IMPL(GenericTypeNameNode, TypeNameNode)
 
     // --- Declarations ---
     struct DeclarationNode : StatementNode
     {
         AST_TYPE(DeclarationNode, StatementNode)
         SizedArray<ModifierKind> modifiers;
-    };
+    }; AST_DECL_IMPL(DeclarationNode, StatementNode)
 
     struct ParameterNode : DeclarationNode
     {
@@ -601,7 +593,7 @@ namespace Myre
         TypeNameNode* type;
         TokenNode* equalsToken; // Optional, can be null
         ExpressionNode* defaultValue; // Optional, can be null
-    };
+    }; AST_DECL_IMPL(ParameterNode, DeclarationNode)
 
     struct VariableDeclarationNode : DeclarationNode
     {
@@ -617,19 +609,19 @@ namespace Myre
         IdentifierNode* first_name() const {
             return names.size > 0 ? names[0] : nullptr;
         }
-    };
+    }; AST_DECL_IMPL(VariableDeclarationNode, DeclarationNode)
 
     struct MemberDeclarationNode : DeclarationNode
     {
         AST_TYPE(MemberDeclarationNode, DeclarationNode)
         IdentifierNode* name;
-    };
+    }; AST_DECL_IMPL(MemberDeclarationNode, DeclarationNode)
 
     struct GenericParameterNode : DeclarationNode
     {
         AST_TYPE(GenericParameterNode, DeclarationNode)
         IdentifierNode* name;
-    };
+    }; AST_DECL_IMPL(GenericParameterNode, DeclarationNode)
 
     struct FunctionDeclarationNode : MemberDeclarationNode
     {
@@ -644,7 +636,7 @@ namespace Myre
         TypeNameNode* returnType; // optional, after arrow
         BlockStatementNode* body; // can be null for abstract
         TokenNode* semicolon; // for abstract functions
-    };
+    }; AST_DECL_IMPL(FunctionDeclarationNode, MemberDeclarationNode)
 
     struct TypeDeclarationNode : DeclarationNode
     {
@@ -654,7 +646,7 @@ namespace Myre
         TokenNode* openBrace;
         SizedArray<AstNode*> members;  // Can contain MemberDeclarationNodes or ErrorNodes
         TokenNode* closeBrace;
-    };
+    }; AST_DECL_IMPL(TypeDeclarationNode, DeclarationNode)
 
     struct InterfaceDeclarationNode : DeclarationNode
     {
@@ -664,7 +656,7 @@ namespace Myre
         TokenNode* openBrace;
         SizedArray<MemberDeclarationNode*> members;
         TokenNode* closeBrace;
-    };
+    }; AST_DECL_IMPL(InterfaceDeclarationNode, DeclarationNode)
 
     struct EnumDeclarationNode : DeclarationNode
     {
@@ -675,7 +667,7 @@ namespace Myre
         SizedArray<EnumCaseNode*> cases;
         SizedArray<FunctionDeclarationNode*> methods; // enums can have methods
         TokenNode* closeBrace;
-    };
+    }; AST_DECL_IMPL(EnumDeclarationNode, DeclarationNode)
 
     struct UsingDirectiveNode : StatementNode
     {
@@ -683,7 +675,7 @@ namespace Myre
         TokenNode* usingKeyword;
         QualifiedNameNode* namespaceName;
         TokenNode* semicolon;
-    };
+    }; AST_DECL_IMPL(UsingDirectiveNode, StatementNode)
 
     struct NamespaceDeclarationNode : DeclarationNode
     {
@@ -691,14 +683,14 @@ namespace Myre
         TokenNode* namespaceKeyword;
         QualifiedNameNode* name;
         BlockStatementNode* body; // File-scoped namespaces might not have braces
-    };
+    }; AST_DECL_IMPL(NamespaceDeclarationNode, DeclarationNode)
 
     // The root of a parsed file
     struct CompilationUnitNode : AstNode
     {
         AST_TYPE(CompilationUnitNode, AstNode)
         SizedArray<AstNode*> statements; // Can contain usings, namespace, function, class decls, and ErrorNodes
-    };
+    }; AST_DECL_IMPL(CompilationUnitNode, AstNode)
 
     // --- Match Patterns ---
     struct MatchArmNode : AstNode
@@ -708,19 +700,19 @@ namespace Myre
         TokenNode* arrow; // =>
         ExpressionNode* result; // can be expression or block
         TokenNode* comma; // optional trailing comma
-    };
+    }; AST_DECL_IMPL(MatchArmNode, AstNode)
 
     struct MatchPatternNode : AstNode
     { 
         AST_TYPE(MatchPatternNode, AstNode)
-    };
+    }; AST_DECL_IMPL(MatchPatternNode, AstNode)
 
     struct EnumPatternNode : MatchPatternNode
     {
         AST_TYPE(EnumPatternNode, MatchPatternNode)
         TokenNode* dot;
         IdentifierNode* enumCase;
-    };
+    }; AST_DECL_IMPL(EnumPatternNode, MatchPatternNode)
 
     struct RangePatternNode : MatchPatternNode
     {
@@ -728,26 +720,26 @@ namespace Myre
         ExpressionNode* start; // optional for open ranges
         TokenNode* rangeOp; // .. or ..=
         ExpressionNode* end; // optional for open ranges
-    };
+    }; AST_DECL_IMPL(RangePatternNode, MatchPatternNode)
 
     struct ComparisonPatternNode : MatchPatternNode
     {
         AST_TYPE(ComparisonPatternNode, MatchPatternNode)
         TokenNode* comparisonOp; // <=, >=, <, >
         ExpressionNode* value;
-    };
+    }; AST_DECL_IMPL(ComparisonPatternNode, MatchPatternNode)
 
     struct WildcardPatternNode : MatchPatternNode
     {
         AST_TYPE(WildcardPatternNode, MatchPatternNode)
         TokenNode* underscore;
-    };
+    }; AST_DECL_IMPL(WildcardPatternNode, MatchPatternNode)
 
     struct LiteralPatternNode : MatchPatternNode
     {
         AST_TYPE(LiteralPatternNode, MatchPatternNode)
         LiteralExpressionNode* literal;
-    };
+    }; AST_DECL_IMPL(LiteralPatternNode, MatchPatternNode)
 
     // --- Properties ---
     struct PropertyDeclarationNode : MemberDeclarationNode
@@ -762,7 +754,7 @@ namespace Myre
         TokenNode* openBrace; // optional for accessor block
         SizedArray<PropertyAccessorNode*> accessors;
         TokenNode* closeBrace; // optional
-    };
+    }; AST_DECL_IMPL(PropertyDeclarationNode, MemberDeclarationNode)
 
     struct PropertyAccessorNode : AstNode
     {
@@ -772,7 +764,7 @@ namespace Myre
         TokenNode* arrow; // optional =>
         ExpressionNode* expression; // for => field
         BlockStatementNode* body; // for { } syntax
-    };
+    }; AST_DECL_IMPL(PropertyAccessorNode, AstNode)
 
     // --- Constructor ---
     struct ConstructorDeclarationNode : MemberDeclarationNode
@@ -783,7 +775,7 @@ namespace Myre
         SizedArray<ParameterNode*> parameters;
         TokenNode* closeParen;
         BlockStatementNode* body;
-    };
+    }; AST_DECL_IMPL(ConstructorDeclarationNode, MemberDeclarationNode)
 
     // --- Enum Cases ---
     struct EnumCaseNode : MemberDeclarationNode
@@ -794,13 +786,11 @@ namespace Myre
         TokenNode* openParen; // optional
         SizedArray<ParameterNode*> associatedData; // for Square(x, y, w, h)
         TokenNode* closeParen; // optional
-    };
+    }; AST_DECL_IMPL(EnumCaseNode, MemberDeclarationNode)
 
 
-    // --- Inline RTTI Helper Implementations ---
-    // These need to be defined here after AstNode is fully defined.
-    // They are templated, so they must be in the header.
 
+    
     template <typename T>
     inline bool node_is(AstNode* node)
     {
@@ -812,80 +802,27 @@ namespace Myre
     }
 
     template <typename T>
-    inline bool node_is_exact(AstNode* node)
-    {
-        if (node == nullptr)
-            return false;
-        return node->typeId == T::sTypeInfo.typeId;
-    }
-
-    template <typename T>
     inline T* node_cast(AstNode* node)
     {
         return node_is<T>(node) ? static_cast<T*>(node) : nullptr;
     }
 
-    template <typename T>
-    inline T* node_cast_exact(AstNode* node)
+    inline const char* get_type_name_from_id(uint8_t type_id)
     {
-        return node_is_exact<T>(node) ? static_cast<T*>(node) : nullptr;
-    }
+        assert(!g_type_infos.empty() && "RTTI system not initialized. Call AstTypeInfo::initialize() first.");
 
-    // --- Type-Safe Error Handling Helpers ---
-
-    // Check if a node is valid (not an ErrorNode)
-    inline bool ast_is_valid(AstNode* node) {
-        return node != nullptr && !node_is<ErrorNode>(node);
-    }
-
-    // Check if a node or its children contain errors
-    inline bool ast_has_errors(AstNode* node) {
-        return node != nullptr && node->contains_errors;
-    }
-
-    // Type-safe cast that returns nullptr for ErrorNodes
-    template <typename T>
-    inline T* ast_cast_or_error(AstNode* node) {
-        if (!ast_is_valid(node)) {
-            return nullptr;
+        if (type_id < g_type_infos.size()) {
+            return g_type_infos[type_id]->name;
         }
-        return node_cast<T>(node);
+        return "UnknownType";
     }
 
-    // Count valid nodes in a collection
-    template <typename T>
-    inline size_t ast_count_valid(const SizedArray<T*>& collection) {
-        size_t count = 0;
-        for (int i = 0; i < collection.size; ++i) {
-            if (ast_is_valid(collection[i])) {
-                count++;
-            }
+    inline const char* get_node_type_name(const AstNode* node) {
+        if (!node) {
+            return "NullNode";
         }
-        return count;
-    }
-
-    // --- StructuralVisitor Template Method Implementations ---
-    // These need to be defined after AstNode is complete
-
-    template<typename T>
-    inline void StructuralVisitor::visit_as(AstNode* node, std::function<void(T*)> handler) {
-        if (auto* typed = ast_cast_or_error<T>(node)) {
-            handler(typed);  // Process valid node
-        } else if (node && node->is_a<ErrorNode>()) {
-            visit(node->as<ErrorNode>());  // Handle error node through visitor
-        }
-        // If null, just skip
+        return get_type_name_from_id(node->typeId);
     }
     
-    template<typename T>
-    inline void StructuralVisitor::visit_collection(const SizedArray<AstNode*>& nodes, std::function<void(T*)> handler) {
-        for (int i = 0; i < nodes.size; ++i) {
-            if (auto* typed = ast_cast_or_error<T>(nodes[i])) {
-                handler(typed);
-            } else if (nodes[i] && nodes[i]->is_a<ErrorNode>()) {
-                visit(nodes[i]->as<ErrorNode>());
-            }
-        }
-    }
 
 } // namespace Myre

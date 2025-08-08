@@ -110,7 +110,7 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
     // Build parameter types
     std::vector<TypePtr> param_types;
     for (int i = 0; i < node->parameters.size; ++i) {
-        if (auto* param = node_cast<ParameterNode>(node->parameters[i])) {
+        if (auto* param = node->parameters[i]->as<ParameterNode>()) {
             if (param->type && param->type->name->identifiers.size > 0) {
                 TypePtr param_type = symbolTable.resolve_type_name(param->type->get_full_name(), symbolTable.get_current_scope());
                 if (param_type) {
@@ -159,7 +159,7 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
     for (int i = 0; i < node->parameters.size; ++i)
     {
         TypePtr param_type = param_types[i];
-        if (auto* param = node_cast<ParameterNode>(node->parameters[i]))
+        if (auto* param = node->parameters[i]->as<ParameterNode>())
         {
             if (param->name) {
                 std::string param_name(param->name->name);

@@ -63,10 +63,6 @@ public:
     }
 
     // --- Base Node Types ---
-    
-    void visit(AstNode* node) override {
-        emit_line("[UnhandledNode: " + std::string(g_ordered_type_infos[node->typeId]->name) + "]");
-    }
 
     void visit(TokenNode* node) override {
         emit("\"" + std::string(node->text) + "\"");
@@ -77,7 +73,7 @@ public:
     }
 
     void visit(ErrorNode* node) override {
-        emit_line("[ERROR: " + node->error_message + "]");
+        emit_line("[ERROR]");
     }
 
     // --- Expression Base ---

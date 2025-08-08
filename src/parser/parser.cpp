@@ -20,7 +20,6 @@ namespace Myre
     ParseResult<CompilationUnitNode> Parser::parse()
     {
         auto *unit = allocator_.alloc<CompilationUnitNode>();
-        unit->contains_errors = false;     // Initialize, will update based on children
         std::vector<AstNode *> statements; // Changed to AstNode* for error integration
 
         while (!context_.at_end())
@@ -64,22 +63,12 @@ namespace Myre
         if (!statements.empty())
         {
             auto *stmt_array = allocator_.alloc_array<AstNode *>(statements.size());
-            bool has_errors = false;
             for (size_t i = 0; i < statements.size(); ++i)
             {
                 stmt_array[i] = statements[i];
-                if (ast_has_errors(statements[i]))
-                {
-                    has_errors = true;
-                }
             }
             unit->statements.values = stmt_array;
             unit->statements.size = static_cast<int>(statements.size());
-            unit->contains_errors = has_errors; // Propagate error flag
-        }
-        else
-        {
-            unit->contains_errors = false;
         }
 
         return ParseResult<CompilationUnitNode>::success(unit);

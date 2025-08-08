@@ -91,7 +91,7 @@ namespace Myre
         {
             auto *expr_stmt = parser_->get_allocator().alloc<ExpressionStatementNode>();
             expr_stmt->expression = expr_result.get_node();
-            expr_stmt->contains_errors = ast_has_errors(expr_result.get_ast_node()); // Propagate errors
+
 
             // Expect semicolon
             if (parser_->expect(TokenKind::Semicolon, "Expected ';' after expression"))
@@ -117,7 +117,7 @@ namespace Myre
         }
 
         auto *block = parser_->get_allocator().alloc<BlockStatementNode>();
-        block->contains_errors = false;    // Initialize, will update based on children
+
         std::vector<AstNode *> statements; // Changed to AstNode* for error integration
 
         while (!ctx.check(TokenKind::RightBrace) && !ctx.at_end())
@@ -148,22 +148,17 @@ namespace Myre
         if (!statements.empty())
         {
             auto *stmt_array = parser_->get_allocator().alloc_array<AstNode *>(statements.size());
-            bool has_errors = false;
             for (size_t i = 0; i < statements.size(); ++i)
             {
                 stmt_array[i] = statements[i];
-                if (ast_has_errors(statements[i]))
-                {
-                    has_errors = true;
-                }
             }
             block->statements.values = stmt_array;
             block->statements.size = static_cast<int>(statements.size());
-            block->contains_errors = has_errors; // Propagate error flag
+
         }
         else
         {
-            block->contains_errors = false;
+
         }
 
         return ParseResult<StatementNode>::success(block);
@@ -205,7 +200,7 @@ namespace Myre
             auto *else_token = parser_->get_allocator().alloc<TokenNode>();
             else_token->text = ctx.current().text;
             else_token->location = ctx.current().location;
-            else_token->contains_errors = false;
+
             if_stmt->elseKeyword = else_token;
 
             ctx.advance(); // consume 'else'
@@ -214,14 +209,6 @@ namespace Myre
             auto else_result = parse_statement();
             if_stmt->elseStatement = static_cast<StatementNode *>(else_result.get_ast_node()); // Could be ErrorNode
         }
-
-        // Update error flag
-        bool has_errors = ast_has_errors(if_stmt->condition) || ast_has_errors(if_stmt->thenStatement);
-        if (if_stmt->elseStatement && ast_has_errors(if_stmt->elseStatement))
-        {
-            has_errors = true;
-        }
-        if_stmt->contains_errors = has_errors;
 
         return ParseResult<StatementNode>::success(if_stmt);
     }
@@ -256,10 +243,6 @@ namespace Myre
         auto *while_stmt = parser_->get_allocator().alloc<WhileStatementNode>();
         while_stmt->condition = static_cast<ExpressionNode *>(condition_result.get_ast_node()); // Could be ErrorNode
         while_stmt->body = static_cast<StatementNode *>(body_result.get_ast_node());            // Could be ErrorNode
-
-        // Update error flag
-        bool has_errors = ast_has_errors(while_stmt->condition) || ast_has_errors(while_stmt->body);
-        while_stmt->contains_errors = has_errors;
 
         return ParseResult<StatementNode>::success(while_stmt);
     }
@@ -301,7 +284,7 @@ namespace Myre
                     // Wrap in ExpressionStatementNode for consistency
                     auto *expr_stmt = parser_->get_allocator().alloc<ExpressionStatementNode>();
                     expr_stmt->expression = expr_result.get_node();
-                    expr_stmt->contains_errors = ast_has_errors(expr_result.get_ast_node());
+
                     init_result = ParseResult<StatementNode>::success(expr_stmt);
                 }
                 else
@@ -394,24 +377,6 @@ namespace Myre
             for_stmt->incrementors.size = static_cast<int>(incrementors.size());
         }
 
-        // Update error flag
-        bool has_errors = false;
-        if (for_stmt->initializer && ast_has_errors(for_stmt->initializer))
-            has_errors = true;
-        if (for_stmt->condition && ast_has_errors(for_stmt->condition))
-            has_errors = true;
-        if (for_stmt->body && ast_has_errors(for_stmt->body))
-            has_errors = true;
-        for (int i = 0; i < for_stmt->incrementors.size; ++i)
-        {
-            if (ast_has_errors(for_stmt->incrementors[i]))
-            {
-                has_errors = true;
-                break;
-            }
-        }
-        for_stmt->contains_errors = has_errors;
-
         return ParseResult<StatementNode>::success(for_stmt);
     }
 
@@ -421,13 +386,13 @@ namespace Myre
 
         // Create the for-in node
         auto *for_in_stmt = parser_->get_allocator().alloc<ForInStatementNode>();
-        for_in_stmt->contains_errors = false;
+
 
         // Store 'for' keyword
         auto *for_token = parser_->get_allocator().alloc<TokenNode>();
         for_token->text = ctx.current().text;
         for_token->location = ctx.current().location;
-        for_token->contains_errors = false;
+
         for_in_stmt->forKeyword = for_token;
 
         ctx.advance(); // consume 'for'
@@ -441,7 +406,7 @@ namespace Myre
         auto *open_paren = parser_->get_allocator().alloc<TokenNode>();
         open_paren->text = ctx.current().text;
         open_paren->location = ctx.current().location;
-        open_paren->contains_errors = false;
+
         for_in_stmt->openParen = open_paren;
         ctx.advance(); // consume '('
 
@@ -462,7 +427,7 @@ namespace Myre
         auto *in_token = parser_->get_allocator().alloc<TokenNode>();
         in_token->text = ctx.current().text;
         in_token->location = ctx.current().location;
-        in_token->contains_errors = false;
+
         for_in_stmt->inKeyword = in_token;
         ctx.advance(); // consume 'in'
 
@@ -483,7 +448,7 @@ namespace Myre
             auto *at_token = parser_->get_allocator().alloc<TokenNode>();
             at_token->text = ctx.current().text;
             at_token->location = ctx.current().location;
-            at_token->contains_errors = false;
+
             for_in_stmt->atKeyword = at_token;
             ctx.advance(); // consume 'at'
 
@@ -505,7 +470,7 @@ namespace Myre
         auto *close_paren = parser_->get_allocator().alloc<TokenNode>();
         close_paren->text = ctx.current().text;
         close_paren->location = ctx.current().location;
-        close_paren->contains_errors = false;
+
         for_in_stmt->closeParen = close_paren;
         ctx.advance(); // consume ')'
 
@@ -520,16 +485,6 @@ namespace Myre
             return ParseResult<StatementNode>::error(body_result.get_error());
         }
         for_in_stmt->body = body_result.get_node();
-
-        // Update error flag
-        bool has_errors = ast_has_errors(for_in_stmt->mainVariable) ||
-                          ast_has_errors(for_in_stmt->iterable) ||
-                          ast_has_errors(for_in_stmt->body);
-        if (for_in_stmt->indexVariable && ast_has_errors(for_in_stmt->indexVariable))
-        {
-            has_errors = true;
-        }
-        for_in_stmt->contains_errors = has_errors;
 
         return ParseResult<StatementNode>::success(for_in_stmt);
     }
@@ -548,7 +503,7 @@ namespace Myre
         ctx.advance(); // consume 'return'
 
         auto *return_stmt = parser_->get_allocator().alloc<ReturnStatementNode>();
-        return_stmt->contains_errors = false;
+
 
         // Optional expression
         if (!ctx.check(TokenKind::Semicolon))
@@ -557,17 +512,13 @@ namespace Myre
             if (expr_result.is_success())
             {
                 return_stmt->expression = expr_result.get_node();
-                if (ast_has_errors(return_stmt->expression))
-                {
-                    return_stmt->contains_errors = true;
-                }
             }
             else
             {
                 // Set expression to null since we can't cast ErrorNode to ExpressionNode
                 // The error will be captured in the error collection via get_error()
                 return_stmt->expression = nullptr;
-                return_stmt->contains_errors = true;
+
             }
         }
         else
@@ -594,7 +545,7 @@ namespace Myre
         ctx.advance(); // consume 'break'
 
         auto *break_stmt = parser_->get_allocator().alloc<BreakStatementNode>();
-        break_stmt->contains_errors = false;
+
 
         parser_->expect(TokenKind::Semicolon, "Expected ';' after break statement");
 
@@ -615,7 +566,7 @@ namespace Myre
         ctx.advance(); // consume 'continue'
 
         auto *continue_stmt = parser_->get_allocator().alloc<ContinueStatementNode>();
-        continue_stmt->contains_errors = false;
+
 
         parser_->expect(TokenKind::Semicolon, "Expected ';' after continue statement");
 
