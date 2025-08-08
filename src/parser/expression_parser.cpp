@@ -62,6 +62,13 @@ namespace Myre
         {
             const Token &op_token = context().current();
             TokenKind op_kind = op_token.kind;
+            
+            // Special handling for range operators
+            if (op_kind == TokenKind::DotDot || op_kind == TokenKind::DotDotEquals)
+            {
+                return parse_range_expression(left);
+            }
+            
             int precedence = get_precedence(op_kind);
 
             if (precedence == 0 || precedence < min_precedence)
@@ -99,6 +106,12 @@ namespace Myre
     {
         auto &ctx = context();
 
+        // Handle prefix range expressions (..end)
+        if (ctx.check(TokenKind::DotDot) || ctx.check(TokenKind::DotDotEquals))
+        {
+            return parse_prefix_range_expression();
+        }
+
         // Handle unary expressions first
         if (ctx.check(TokenKind::Not) || ctx.check(TokenKind::Minus) ||
             ctx.check(TokenKind::Increment) || ctx.check(TokenKind::Decrement))
@@ -106,27 +119,27 @@ namespace Myre
             return parse_unary_expression();
         }
 
-        if (ctx.check(TokenKind::IntegerLiteral))
+        if (ctx.check(TokenKind::LiteralI32))
         {
             return parse_integer_literal();
         }
 
-        if (ctx.check(TokenKind::FloatLiteral))
+        if (ctx.check(TokenKind::LiteralF32))
         {
             return parse_float_literal();
         }
 
-        if (ctx.check(TokenKind::DoubleLiteral))
+        if (ctx.check(TokenKind::LiteralF64))
         {
             return parse_double_literal();
         }
 
-        if (ctx.check(TokenKind::StringLiteral))
+        if (ctx.check(TokenKind::LiteralString))
         {
             return parse_string_literal();
         }
 
-        if (ctx.check(TokenKind::BooleanLiteral))
+        if (ctx.check(TokenKind::LiteralBool))
         {
             return parse_boolean_literal();
         }
@@ -146,8 +159,124 @@ namespace Myre
             return parse_new_expression();
         }
 
-        return ParseResult<ExpressionNode>::error(
-            create_error("Expected expression"));
+        return ParseResult<ExpressionNode>::none();
+    }
+
+    // Range expression parsing
+    ParseResult<ExpressionNode> ExpressionParser::parse_range_expression(ExpressionNode* left)
+    {
+        auto &ctx = context();
+        
+        // Check for .. or ..= operators
+        if (!ctx.check(TokenKind::DotDot) && !ctx.check(TokenKind::DotDotEquals))
+        {
+            return ParseResult<ExpressionNode>::success(left);
+        }
+        
+        auto *range_expr = parser_->get_allocator().alloc<RangeExpressionNode>();
+        range_expr->contains_errors = false;
+        
+        // Store range operator
+        auto *range_op = parser_->get_allocator().alloc<TokenNode>();
+        range_op->text = ctx.current().text;
+        range_op->location = ctx.current().location;
+        range_op->contains_errors = false;
+        range_expr->rangeOp = range_op;
+        
+        ctx.advance(); // consume .. or ..=
+        
+        // Set start (could be null for ..end syntax)
+        range_expr->start = left;
+        
+        // Parse end expression (could be null for start.. syntax)
+        range_expr->end = nullptr;
+        if (!ctx.check(TokenKind::By) && !ctx.at_end() && 
+            !ctx.check(TokenKind::RightParen) && !ctx.check(TokenKind::RightBracket) &&
+            !ctx.check(TokenKind::Comma) && !ctx.check(TokenKind::Semicolon))
+        {
+            // Parse the end expression with appropriate precedence
+            // Range has precedence 5, so we parse at precedence 6 (additive)
+            auto end_result = parse_binary_expression(6);
+            if (end_result.is_success())
+            {
+                range_expr->end = end_result.get_node();
+            }
+        }
+        
+        // Check for optional 'by' clause
+        range_expr->byKeyword = nullptr;
+        range_expr->stepExpression = nullptr;
+        if (ctx.check(TokenKind::By))
+        {
+            auto *by_token = parser_->get_allocator().alloc<TokenNode>();
+            by_token->text = ctx.current().text;
+            by_token->location = ctx.current().location;
+            by_token->contains_errors = false;
+            range_expr->byKeyword = by_token;
+            
+            ctx.advance(); // consume 'by'
+            
+            // Parse step expression at additive precedence
+            auto step_result = parse_binary_expression(6);
+            if (!step_result.is_success())
+            {
+                return ParseResult<ExpressionNode>::error(
+                    create_error("Expected step expression after 'by'"));
+            }
+            range_expr->stepExpression = step_result.get_node();
+        }
+        
+        // Update error flag
+        bool has_errors = (range_expr->start && ast_has_errors(range_expr->start)) ||
+                          (range_expr->end && ast_has_errors(range_expr->end)) ||
+                          (range_expr->stepExpression && ast_has_errors(range_expr->stepExpression));
+        range_expr->contains_errors = has_errors;
+        
+        return ParseResult<ExpressionNode>::success(range_expr);
+    }
+
+    // For prefix range syntax (..end)
+    ParseResult<ExpressionNode> ExpressionParser::parse_prefix_range_expression()
+    {
+        auto &ctx = context();
+        
+        if (!ctx.check(TokenKind::DotDot) && !ctx.check(TokenKind::DotDotEquals))
+        {
+            return ParseResult<ExpressionNode>::error(
+                create_error("Expected '..' or '..=' for prefix range expression"));
+        }
+        
+        auto *range_expr = parser_->get_allocator().alloc<RangeExpressionNode>();
+        range_expr->contains_errors = false;
+        
+        // Store range operator
+        auto *range_op = parser_->get_allocator().alloc<TokenNode>();
+        range_op->text = ctx.current().text;
+        range_op->location = ctx.current().location;
+        range_op->contains_errors = false;
+        range_expr->rangeOp = range_op;
+        
+        ctx.advance(); // consume .. or ..=
+        
+        // No start for prefix range
+        range_expr->start = nullptr;
+        
+        // Parse end expression at additive precedence (6)
+        auto end_result = parse_binary_expression(6);
+        if (!end_result.is_success())
+        {
+            return ParseResult<ExpressionNode>::error(
+                create_error("Expected end expression after range operator"));
+        }
+        range_expr->end = end_result.get_node();
+        
+        // Prefix ranges don't support 'by' clause
+        range_expr->byKeyword = nullptr;
+        range_expr->stepExpression = nullptr;
+        
+        range_expr->contains_errors = ast_has_errors(range_expr->end);
+        
+        return ParseResult<ExpressionNode>::success(range_expr);
     }
 
     // Literal parsing methods
@@ -157,7 +286,7 @@ namespace Myre
         context().advance();
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
-        literal->kind = LiteralKind::Integer;
+        literal->kind = LiteralKind::I32;
         literal->contains_errors = false;
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
@@ -191,7 +320,7 @@ namespace Myre
         context().advance();
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
-        literal->kind = LiteralKind::Boolean;
+        literal->kind = LiteralKind::Bool;
         literal->contains_errors = false;
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
@@ -208,7 +337,7 @@ namespace Myre
         context().advance();
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
-        literal->kind = LiteralKind::Float;
+        literal->kind = LiteralKind::F32;
         literal->contains_errors = false;
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
@@ -225,7 +354,7 @@ namespace Myre
         context().advance();
 
         auto *literal = parser_->get_allocator().alloc<LiteralExpressionNode>();
-        literal->kind = LiteralKind::Double;
+        literal->kind = LiteralKind::F64;
         literal->contains_errors = false;
 
         auto *token_node = parser_->get_allocator().alloc<TokenNode>();
@@ -349,7 +478,7 @@ namespace Myre
             return 4; // <, <=, >, >=
         case TokenKind::DotDot:
         case TokenKind::DotDotEquals:
-            return 5; // .. (range)
+            return 5; // .. (range) - handled specially in parse_binary_expression
         case TokenKind::Plus:
         case TokenKind::Minus:
             return 6; // +, -
@@ -464,6 +593,11 @@ namespace Myre
 
     ParseResult<ExpressionNode> ExpressionParser::parse_indexer_suffix(ExpressionNode *target)
     {
+        if (!context().check(TokenKind::LeftBracket))
+        {
+            return ParseResult<ExpressionNode>::none();
+        }
+
         context().advance(); // consume '['
 
         auto index_result = parse_expression();
@@ -486,6 +620,11 @@ namespace Myre
     // Parse new expressions: new TypeName() or new TypeName
     ParseResult<ExpressionNode> ExpressionParser::parse_new_expression()
     {
+        if (!context().check(TokenKind::New))
+        {
+            return ParseResult<ExpressionNode>::none();
+        }
+        
         const Token &new_token = context().current();
         context().advance(); // consume 'new'
 
@@ -503,7 +642,6 @@ namespace Myre
         // Create token node for the 'new' keyword
         auto *new_keyword = parser_->get_allocator().alloc<TokenNode>();
         new_keyword->text = new_token.text;
-        new_keyword->tokenKind = new_token.kind;
         new_keyword->contains_errors = false;
         new_expr->newKeyword = new_keyword;
 

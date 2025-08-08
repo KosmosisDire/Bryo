@@ -23,6 +23,7 @@ public:
     std::string name; // For named scopes (namespace, type, etc.)
     std::weak_ptr<Scope> parent;
     std::unordered_map<std::string, SymbolPtr> symbols;
+    std:: vector<ScopePtr> unnamedChildren; // For block scopes
     SymbolPtr scopeDefinition;
     
     SymbolPtr lookup(const std::string& name);
@@ -30,7 +31,6 @@ public:
     bool define(SymbolPtr sym);
     std::string get_full_name() const;
     std::string to_string(int indent = 0) const;
-    std::string to_string_recursive(int indent = 0) const;
 };
 
 using ScopePtr = std::shared_ptr<Scope>;

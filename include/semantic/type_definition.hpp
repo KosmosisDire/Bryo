@@ -24,7 +24,7 @@ struct TypeDefinition {
     std::string full_name;  // namespace.name
     
     // The scope containing all members
-    ScopePtr member_scope;
+    ScopePtr body_scope;
     
     // Type characteristics
     SymbolModifiers modifiers;  // abstract, ref, static, etc.
@@ -48,6 +48,7 @@ struct TypeDefinition {
     bool add_member(SymbolPtr member);
 };
 
+
 using TypeDefinitionPtr = std::shared_ptr<TypeDefinition>;
 
-} // namespace Myre
+} // namespace Myre 

@@ -14,7 +14,7 @@ The system consists of four main components with clear separation of concerns:
 
 ## Component Details
 
-### 1. Type Registry (`semantic/type_registry.hpp`, `semantic/type_registry.cpp`)
+### 1. Type Registry (`semantic/type_system.hpp`, `semantic/type_registry.cpp`)
 
 #### Purpose
 Manages and interns all type objects to ensure uniqueness and enable O(1) pointer-based type equality comparison.

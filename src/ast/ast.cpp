@@ -86,7 +86,6 @@ namespace Myre
     void AstNode::init_with_type_id(uint8_t id)
     {
         this->typeId = id;
-        this->tokenKind = TokenKind::None;
         this->location = SourceRange();
     }
 
@@ -97,15 +96,7 @@ namespace Myre
         // Dispatch to the correct visit method using our RTTI system.
         g_ordered_type_infos[this->typeId]->acceptFunc(this, visitor);
     }
-
-    std::string_view AstNode::to_string_view() const
-    {
-        // This requires access to the source file buffer, which is typically
-        // managed by the parser or a context object.
-        // For now, it returns an empty view.
-        return {};
-    }
-
+    
     // --- AST_DECL_IMPL Definitions ---
     // This defines the static sTypeInfo member for every AST node type,
     // effectively registering them with the RTTI system upon program startup.
@@ -132,7 +123,6 @@ namespace Myre
     AST_DECL_IMPL(MatchExpressionNode, ExpressionNode)
     AST_DECL_IMPL(ConditionalExpressionNode, ExpressionNode)
     AST_DECL_IMPL(RangeExpressionNode, ExpressionNode)
-    AST_DECL_IMPL(EnumMemberExpressionNode, ExpressionNode)
     AST_DECL_IMPL(FieldKeywordExpressionNode, ExpressionNode)
     AST_DECL_IMPL(ValueKeywordExpressionNode, ExpressionNode)
 
@@ -174,8 +164,9 @@ namespace Myre
     // Property accessor
     AST_DECL_IMPL(PropertyAccessorNode, AstNode)
 
+    // Types
+    AST_DECL_IMPL(QualifiedNameNode, AstNode)
     AST_DECL_IMPL(TypeNameNode, AstNode)
-    AST_DECL_IMPL(QualifiedTypeNameNode, TypeNameNode)
     AST_DECL_IMPL(ArrayTypeNameNode, TypeNameNode)
     AST_DECL_IMPL(GenericTypeNameNode, TypeNameNode)
 
@@ -207,7 +198,6 @@ namespace Myre
     void MatchExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<MatchExpressionNode*>(node)); }
     void ConditionalExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ConditionalExpressionNode*>(node)); }
     void RangeExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<RangeExpressionNode*>(node)); }
-    void EnumMemberExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<EnumMemberExpressionNode*>(node)); }
     void FieldKeywordExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<FieldKeywordExpressionNode*>(node)); }
     void ValueKeywordExpressionNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ValueKeywordExpressionNode*>(node)); }
 
@@ -252,8 +242,8 @@ namespace Myre
     void PropertyAccessorNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<PropertyAccessorNode*>(node)); }
 
     // Types
+    void QualifiedNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<QualifiedNameNode*>(node)); }
     void TypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<TypeNameNode*>(node)); }
-    void QualifiedTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<QualifiedTypeNameNode*>(node)); }
     void ArrayTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<ArrayTypeNameNode*>(node)); }
     void GenericTypeNameNode::class_accept(AstNode* node, StructuralVisitor* visitor) { visitor->visit(static_cast<GenericTypeNameNode*>(node)); }
 
@@ -292,13 +282,12 @@ namespace Myre
     DEF_VISITOR_IMPL(MatchExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(ConditionalExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(RangeExpressionNode, ExpressionNode)
-    DEF_VISITOR_IMPL(EnumMemberExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(FieldKeywordExpressionNode, ExpressionNode)
     DEF_VISITOR_IMPL(ValueKeywordExpressionNode, ExpressionNode)
 
     // Type Names
+    DEF_VISITOR_IMPL(QualifiedNameNode, AstNode)
     DEF_VISITOR_IMPL(TypeNameNode, AstNode)
-    DEF_VISITOR_IMPL(QualifiedTypeNameNode, TypeNameNode)
     DEF_VISITOR_IMPL(ArrayTypeNameNode, TypeNameNode)
     DEF_VISITOR_IMPL(GenericTypeNameNode, TypeNameNode)
 

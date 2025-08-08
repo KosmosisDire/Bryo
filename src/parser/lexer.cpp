@@ -485,10 +485,10 @@ namespace Myre
                 }
             }
 
-            return Token(TokenKind::FloatLiteral, SourceRange(start_location, current_offset_ - start), source_);
+            return Token(TokenKind::LiteralF32, SourceRange(start_location, current_offset_ - start), source_);
         }
 
-        return Token(TokenKind::IntegerLiteral, SourceRange(start_location, current_offset_ - start), source_);
+        return Token(TokenKind::LiteralI32, SourceRange(start_location, current_offset_ - start), source_);
     }
 
     Token Lexer::scan_string_literal()
@@ -529,7 +529,7 @@ namespace Myre
             report_error("Unterminated string literal");
         }
 
-        return Token(TokenKind::StringLiteral, SourceRange(start_location, current_offset_ - start), source_);
+        return Token(TokenKind::LiteralString, SourceRange(start_location, current_offset_ - start), source_);
     }
 
     Token Lexer::scan_char_literal()
@@ -565,7 +565,7 @@ namespace Myre
             report_error("Unterminated character literal");
         }
 
-        return Token(TokenKind::CharLiteral, SourceRange(start_location, current_offset_ - start), source_);
+        return Token(TokenKind::LiteralChar, SourceRange(start_location, current_offset_ - start), source_);
     }
 
     Token Lexer::scan_identifier_or_keyword()

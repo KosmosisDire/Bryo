@@ -12,8 +12,8 @@ namespace Myre {
 // Simple code generator that visits AST and emits IR commands
 class CodeGenerator : public StructuralVisitor {
 private:
-    SymbolTable& symbol_table_;
-    ErrorCollector& errors_;
+    SymbolTable& symbolTable;
+    ErrorCollector& errors;
     SimpleIRBuilder builder_;
     
     // Current state
@@ -23,8 +23,8 @@ private:
     
 public:
     CodeGenerator(SymbolTable& symbols, ErrorCollector& errors)
-        : symbol_table_(symbols)
-        , errors_(errors)
+        : symbolTable(symbols)
+        , errors(errors)
         , current_value_(ValueRef::invalid())
         , current_function_(nullptr)
         , in_loop_(false) {}
@@ -85,15 +85,14 @@ public:
     void visit(EnumDeclarationNode* node) override {}
     void visit(MemberDeclarationNode* node) override {}
     void visit(ParameterNode* node) override {}
+    void visit(QualifiedNameNode* node) override {}
     void visit(TypeNameNode* node) override {}
-    void visit(QualifiedTypeNameNode* node) override {}
     void visit(ArrayTypeNameNode* node) override {}
     void visit(GenericTypeNameNode* node) override {}
     void visit(GenericParameterNode* node) override {}
     void visit(MatchExpressionNode* node) override {}
     void visit(ConditionalExpressionNode* node) override {}
     void visit(RangeExpressionNode* node) override {}
-    void visit(EnumMemberExpressionNode* node) override {}
     void visit(FieldKeywordExpressionNode* node) override {}
     void visit(ValueKeywordExpressionNode* node) override {}
     void visit(PropertyDeclarationNode* node) override {}

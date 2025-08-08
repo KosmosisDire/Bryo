@@ -12,35 +12,35 @@ namespace Test.Bracketed.Namespace
     }
 }
 
-public enum Shape
-{
-    None,
-    Square(i32 x, i32 y, i32 width, i32 height),
-    Circle(i32 x, i32 y, i32 radius)
-}
+// public enum Shape
+// {
+//     None,
+//     Square(i32 x, i32 y, i32 width, i32 height),
+//     Circle(i32 x, i32 y, i32 radius)
+// }
 
-public enum Direction
-{
-    North,
-    East,
-    South,
-    West,
+// public enum Direction
+// {
+//     North,
+//     East,
+//     South,
+//     West,
 
-    public fn Opposite(): Direction
-    {
-        return match (this)
-        {
-            .North => .South,
-            .East =>
-                {
-                    Console.Log("West");
-                    return .West;
-                },
-            .South => .North,
-            .West => .East,
-        };
-    }
-}
+//     public fn Opposite(): Direction
+//     {
+//         return match (this)
+//         {
+//             .North => .South,
+//             .East =>
+//                 {
+//                     Console.Log("West");
+//                     return .West;
+//                 },
+//             .South => .North,
+//             .West => .East,
+//         };
+//     }
+// }
 
 public static type Console
 {
@@ -50,7 +50,7 @@ public static type Console
 	f64 doubleVar2 = 2.4;
 	string lastMessage;
 
-	public inline fn Log(string msg)
+	public fn Log(string msg)
 	{
 		Print(msg);
 		messageCount++;
@@ -71,136 +71,136 @@ public type Vector3
 	// An auto implemented constructor is provided if no constructor defined
 }
 
-ref type MutableConstraint<T, U>
-{
-    public T value;
+// ref type MutableConstraint<T, U>
+// {
+//     public T value;
 
-    public fn GetValue(): T
-    {
-        return value;
-    }
-}
+//     public fn GetValue(): T
+//     {
+//         return value;
+//     }
+// }
 
-public ref type Observable<T> where T : ref type, Updateable, new(i32, i32)
-{
-    public T value;
+// public ref type Observable<T> where T : ref type, Updateable, new(i32, i32)
+// {
+//     public T value;
 
-    // This is a simple observable that can be used to notify changes
-    public fn NotifyChange()
-    {
-        Console.Log("Value changed to: " + value.ToString());
-    }
+//     // This is a simple observable that can be used to notify changes
+//     public fn NotifyChange()
+//     {
+//         Console.Log("Value changed to: " + value.ToString());
+//     }
 
-    public fn GetValue(): T
-    {
-        return value;
-    }
-}
+//     public fn GetValue(): T
+//     {
+//         return value;
+//     }
+// }
 
-public type Updateable
-{
-    // This is an interface that can be used to mark types that can be updated
-    public abstract fn Update(f32 deltaTime);
-}
+// public type Updateable
+// {
+//     // This is an interface that can be used to mark types that can be updated
+//     public abstract fn Update(f32 deltaTime);
+// }
 
-public abstract type Health : Updateable
-{
-    // prop is used to declare a property with a getter and setter.
-    // properties can use the field keyword to access a backing field.
-    // the field keyword is optional, if not used no auto backing field is created and you must create your own field.
-    // Although an auto backing field will be created is the default getter and setter are used.
-    u32 health = 100
-    {
-        public get => field;
-        protected set =>
-        {
-            // value is a keyword that refers to the value being set
-            if (value < 0)
-            {
-                Console.Log("Health cannot be negative, setting to 0");
-                // field is a keyword that refers to the backing field
-                field = 0;
-            }
+// public abstract type Health : Updateable
+// {
+//     // prop is used to declare a property with a getter and setter.
+//     // properties can use the field keyword to access a backing field.
+//     // the field keyword is optional, if not used no auto backing field is created and you must create your own field.
+//     // Although an auto backing field will be created is the default getter and setter are used.
+//     u32 health = 100
+//     {
+//         public get => field;
+//         protected set =>
+//         {
+//             // value is a keyword that refers to the value being set
+//             if (value < 0)
+//             {
+//                 Console.Log("Health cannot be negative, setting to 0");
+//                 // field is a keyword that refers to the backing field
+//                 field = 0;
+//             }
 
-            field = value;
-        }
-    }
+//             field = value;
+//         }
+//     }
 
-    // you can also use default access modifiers for properties
-    // this will inherit access from the property declaration
-    // public u32 health = 100
-    //     get => field;
-    //     set =>
-    //     {
-    //         if (value < 0)
-    //         {
-    //             Console.Log("Health cannot be negative, setting to 0");
-    //             field = 0;
-    //         }
-    //         field = value;
-    //     }
+//     // you can also use default access modifiers for properties
+//     // this will inherit access from the property declaration
+//     // public u32 health = 100
+//     //     get => field;
+//     //     set =>
+//     //     {
+//     //         if (value < 0)
+//     //         {
+//     //             Console.Log("Health cannot be negative, setting to 0");
+//     //             field = 0;
+//     //         }
+//     //         field = value;
+//     //     }
 
-    // you can of course also use auto implemented properties
-    // public u32 health = 100 {get; set;}
-    // or 
-    // u32 health = 100 {get: public; set: protected;}
+//     // you can of course also use auto implemented properties
+//     // public u32 health = 100 {get; set;}
+//     // or 
+//     // u32 health = 100 {get: public; set: protected;}
 
     
     
-    // properties with only a getter can be creates with a simple arrow function
-    // the getter access level matches the level of the property
-    public bool isAlive => health > 0;
+//     // properties with only a getter can be creates with a simple arrow function
+//     // the getter access level matches the level of the property
+//     public bool isAlive => health > 0;
 
-    // or
-    // public bool isAlive =>
-    // {
-    //     return health > 0;
-    // }
+//     // or
+//     // public bool isAlive =>
+//     // {
+//     //     return health > 0;
+//     // }
     
 
-    public u32 maxHealth = 100;
+//     public u32 maxHealth = 100;
 
-    // this function is enforced meaning that any derived class must explicity choose whether to inherit this implementation or define their own implementation
-    // This help to make sure that the user of a derived class is aware that this function exists and can choose to override it if needed.
-    // This is basically just an abstract function with a default implementation.
-    public enforced fn TakeDamage(u32 amount)
-    {
-        health -= amount;
-    }
+//     // this function is enforced meaning that any derived class must explicity choose whether to inherit this implementation or define their own implementation
+//     // This help to make sure that the user of a derived class is aware that this function exists and can choose to override it if needed.
+//     // This is basically just an abstract function with a default implementation.
+//     public enforced fn TakeDamage(u32 amount)
+//     {
+//         health -= amount;
+//     }
 
-    // default implementations are not required. This means the derived class MUST implement this function.
-    // these can only be used in abstract classes.
-    public abstract fn Heal(u32 amount);
+//     // default implementations are not required. This means the derived class MUST implement this function.
+//     // these can only be used in abstract classes.
+//     public abstract fn Heal(u32 amount);
 
-    // We do nothing by default, but force the derived class to implement this function
-    public enforced fn Update(f32 deltaTime)
-    {
-    }
-}
+//     // We do nothing by default, but force the derived class to implement this function
+//     public enforced fn Update(f32 deltaTime)
+//     {
+//     }
+// }
 
-// if I extends health, I must implement the Heal function or choose to inherit the default implementation
-public type HealthWithRegeneration : Health
-{
-    public f32 regenerationRate;
+// // if I extends health, I must implement the Heal function or choose to inherit the default implementation
+// public type HealthWithRegeneration : Health
+// {
+//     public f32 regenerationRate;
 
-    // we must either implement a new TakeDamage function or choose to inherit the default implementation
-    // here we choose to inherit the existing implementation
-    // if we wanted to override it, we would use the override keyword
-    // since we kept the enforced keyword, anything that derives from this class must implement the TakeDamage function the same as here.
-    public inherit enforced fn TakeDamage(u32 amount);
+//     // we must either implement a new TakeDamage function or choose to inherit the default implementation
+//     // here we choose to inherit the existing implementation
+//     // if we wanted to override it, we would use the override keyword
+//     // since we kept the enforced keyword, anything that derives from this class must implement the TakeDamage function the same as here.
+//     public inherit enforced fn TakeDamage(u32 amount);
 
-    // here you can see we override the Heal function since it is abstract
-    public override fn Heal(u32 amount)
-    {
-        health += amount;
-    }
+//     // here you can see we override the Heal function since it is abstract
+//     public override fn Heal(u32 amount)
+//     {
+//         health += amount;
+//     }
 
-    // we can ommit the enforced function, to allow the derived class to silently inherit this new implementation
-    public fn Update(f32 deltaTime)
-    {
-        health += (regenerationRate * deltaTime);
-    }
-}
+//     // we can ommit the enforced function, to allow the derived class to silently inherit this new implementation
+//     public fn Update(f32 deltaTime)
+//     {
+//         health += (regenerationRate * deltaTime);
+//     }
+// }
 
 // ref types always passed by reference 
 public ref type Enemy
@@ -217,7 +217,7 @@ public ref type Enemy
 		attack = damage;
         enemies.Add(this);
 	}
-  
+    
     public enforced fn GetDamage(): u32
     {
         PrivateFunc(42, MutableConstraint<Shape, Health>(), (Direction direction) =>
@@ -236,7 +236,7 @@ public ref type Enemy
 
 	    return Random.Chance(hitChance) ? attack : 0;
     }
-    
+
     protected virtual fn PrivateFunc(i32 param, MutableConstraint<Shape, Health> bigType, Fn<Direction, Shape> functionParam): Observable<Health>
     {
         Console.Log("This is a private function");
@@ -253,7 +253,6 @@ public ref type Enemy
             _ => Console.Log("Enemy is healthy"),
         };
     }
-
 }
 
 fn Main()

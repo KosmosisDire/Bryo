@@ -1,5 +1,7 @@
 #pragma once
 #include "ast/ast.hpp"
+#include <type_traits>
+#include <variant>
 
 namespace Myre
 {
@@ -12,11 +14,13 @@ namespace Myre
         {
             Success,
             Error,
-            Fatal
+            Fatal,
+            None
         };
 
         union
         {
+            std::monostate none_node;
             T *success_node;
             ErrorNode *error_node;
         };
@@ -42,8 +46,15 @@ namespace Myre
         static ParseResult<T> fatal()
         {
             ParseResult result;
-            result.error_node = nullptr; // Use error_node member for fatal state
             result.state = State::Fatal;
+            return result;
+        }
+
+        static ParseResult<T> none()
+        {
+            ParseResult result;
+            result.none_node = std::monostate();
+            result.state = State::None;
             return result;
         }
 

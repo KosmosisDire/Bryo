@@ -61,8 +61,8 @@ namespace Myre
     struct CompilationUnitNode;
 
     // Types
+    struct QualifiedNameNode;
     struct TypeNameNode;
-    struct QualifiedTypeNameNode;
     struct ArrayTypeNameNode;
     struct GenericTypeNameNode;
     struct GenericParameterNode;
@@ -90,7 +90,6 @@ namespace Myre
     // Additional Expressions
     struct ConditionalExpressionNode;
     struct RangeExpressionNode;
-    struct EnumMemberExpressionNode;
     struct FieldKeywordExpressionNode;
     struct ValueKeywordExpressionNode;
 
@@ -164,7 +163,6 @@ namespace Myre
         virtual void visit(MatchExpressionNode* node);
         virtual void visit(ConditionalExpressionNode* node);
         virtual void visit(RangeExpressionNode* node);
-        virtual void visit(EnumMemberExpressionNode* node);
         virtual void visit(FieldKeywordExpressionNode* node);
         virtual void visit(ValueKeywordExpressionNode* node);
         
@@ -207,8 +205,8 @@ namespace Myre
         virtual void visit(LiteralPatternNode* node);
         
         // Types
+        virtual void visit(QualifiedNameNode* node);
         virtual void visit(TypeNameNode* node);
-        virtual void visit(QualifiedTypeNameNode* node);
         virtual void visit(ArrayTypeNameNode* node);
         virtual void visit(GenericTypeNameNode* node);
         
@@ -224,17 +222,16 @@ namespace Myre
 
         uint8_t typeId;
         bool contains_errors;  // Fast error detection flag
-        TokenKind tokenKind;
         SourceRange location;
 
         // Must be implemented in ast.cpp
         void init_with_type_id(uint8_t id);
         void accept(StructuralVisitor* visitor);
-        std::string_view to_string_view() const;
 
         // RTTI functions defined at the end of this file
         template <typename T> bool is_a() { return node_is<T>(this); }
         template <typename T> T* as() { return node_cast<T>(this); }
+        const char* node_type_name() { return get_type_name_from_id(typeId); }
     };
 
     struct ErrorNode : AstNode {
@@ -242,11 +239,10 @@ namespace Myre
 
         std::string error_message;
 
-        static ErrorNode* create(const char* msg, const Token& token, AstAllocator& allocator) {
+        static ErrorNode* create(const char* msg, const SourceRange location, AstAllocator& allocator) {
             auto* node = allocator.alloc<ErrorNode>();
-            node->tokenKind = token.kind;
             node->error_message = msg;
-            node->location = token.location;
+            node->location = location;
             node->contains_errors = true;  // ErrorNodes always contain errors
             return node;
         }
@@ -414,13 +410,8 @@ namespace Myre
         ExpressionNode* start;
         TokenNode* rangeOp; // .. or ..=
         ExpressionNode* end;
-    };
-
-    struct EnumMemberExpressionNode : ExpressionNode
-    {
-        AST_TYPE(EnumMemberExpressionNode, ExpressionNode)
-        TokenNode* dot;
-        IdentifierNode* memberName;
+        TokenNode* byKeyword; // optional
+        ExpressionNode* stepExpression; // var i or Type var or just an identifier, optional
     };
 
     struct FieldKeywordExpressionNode : ExpressionNode
@@ -533,18 +524,49 @@ namespace Myre
     };
 
     // --- Type Names ---
+
+    struct QualifiedNameNode : AstNode
+    {
+        AST_TYPE(QualifiedNameNode, AstNode)
+        SizedArray<IdentifierNode*> identifiers;
+
+        std::string get_full_name() const
+        {
+            std::string full_name;
+            for (const auto& id : identifiers)
+            {
+                if (!full_name.empty())
+                    full_name += ".";
+                full_name += id->name;
+            }
+            return full_name;
+        }
+
+        std::string_view get_name() const
+        {
+            if (identifiers.empty())
+                return "";
+            return identifiers.back()->name;
+        }
+    };
+
     struct TypeNameNode : AstNode
     {
         AST_TYPE(TypeNameNode, AstNode)
-        IdentifierNode* identifier;
-    };
+        QualifiedNameNode* name;
 
-    struct QualifiedTypeNameNode : TypeNameNode
-    {
-        AST_TYPE(QualifiedTypeNameNode, TypeNameNode)
-        TypeNameNode* left;
-        TokenNode* dotToken;
-        IdentifierNode* right;
+        std::string get_full_name() const
+        {
+            if (name)
+                return name->get_full_name();
+            return "";
+        }
+        std::string_view get_name() const
+        {
+            if (name)
+                return name->get_name();
+            return "";
+        }
     };
 
     struct ArrayTypeNameNode : TypeNameNode
@@ -570,12 +592,12 @@ namespace Myre
     {
         AST_TYPE(DeclarationNode, StatementNode)
         SizedArray<ModifierKind> modifiers;
-        IdentifierNode* name;
     };
 
     struct ParameterNode : DeclarationNode
     {
         AST_TYPE(ParameterNode, DeclarationNode)
+        IdentifierNode* name;
         TypeNameNode* type;
         TokenNode* equalsToken; // Optional, can be null
         ExpressionNode* defaultValue; // Optional, can be null
@@ -591,25 +613,29 @@ namespace Myre
         TokenNode* equalsToken; // Optional, can be null
         ExpressionNode* initializer; // Optional, can be null
         TokenNode* semicolon;
+
+        IdentifierNode* first_name() const {
+            return names.size > 0 ? names[0] : nullptr;
+        }
     };
 
     struct MemberDeclarationNode : DeclarationNode
     {
         AST_TYPE(MemberDeclarationNode, DeclarationNode)
+        IdentifierNode* name;
     };
-    
 
     struct GenericParameterNode : DeclarationNode
     {
         AST_TYPE(GenericParameterNode, DeclarationNode)
-        // Name is the only required part
+        IdentifierNode* name;
     };
 
     struct FunctionDeclarationNode : MemberDeclarationNode
     {
         AST_TYPE(FunctionDeclarationNode, MemberDeclarationNode)
         TokenNode* fnKeyword;
-        // name inherited from DeclarationNode
+        IdentifierNode* name;
         TokenNode* openParen;
         SizedArray<AstNode*> parameters;  // Can contain ParameterNodes or ErrorNodes
         TokenNode* closeParen;
@@ -624,6 +650,7 @@ namespace Myre
     {
         AST_TYPE(TypeDeclarationNode, DeclarationNode)
         TokenNode* typeKeyword; // always "type"
+        IdentifierNode* name;
         TokenNode* openBrace;
         SizedArray<AstNode*> members;  // Can contain MemberDeclarationNodes or ErrorNodes
         TokenNode* closeBrace;
@@ -633,7 +660,7 @@ namespace Myre
     {
         AST_TYPE(InterfaceDeclarationNode, DeclarationNode)
         TokenNode* interfaceKeyword;
-        // name inherited from DeclarationNode
+        IdentifierNode* name;
         TokenNode* openBrace;
         SizedArray<MemberDeclarationNode*> members;
         TokenNode* closeBrace;
@@ -643,7 +670,7 @@ namespace Myre
     {
         AST_TYPE(EnumDeclarationNode, DeclarationNode)
         TokenNode* enumKeyword;
-        // name inherited from DeclarationNode
+        IdentifierNode* name;
         TokenNode* openBrace;
         SizedArray<EnumCaseNode*> cases;
         SizedArray<FunctionDeclarationNode*> methods; // enums can have methods
@@ -654,7 +681,7 @@ namespace Myre
     {
         AST_TYPE(UsingDirectiveNode, StatementNode)
         TokenNode* usingKeyword;
-        TypeNameNode* namespaceName;
+        QualifiedNameNode* namespaceName;
         TokenNode* semicolon;
     };
 
@@ -662,6 +689,7 @@ namespace Myre
     {
         AST_TYPE(NamespaceDeclarationNode, DeclarationNode)
         TokenNode* namespaceKeyword;
+        QualifiedNameNode* name;
         BlockStatementNode* body; // File-scoped namespaces might not have braces
     };
 

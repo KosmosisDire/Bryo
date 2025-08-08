@@ -87,6 +87,7 @@ set(SOURCE_FILES
     src/semantic/type_definition.cpp
     src/semantic/scope.cpp
     src/semantic/symbol_table.cpp
+    src/semantic/declaration_collector.cpp
     
     # Code Generator
     src/codegen/jit_engine.cpp

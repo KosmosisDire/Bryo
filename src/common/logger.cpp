@@ -70,7 +70,7 @@ std::string Logger::level_to_string(LogLevel level) const {
         case LogLevel::DEBUG: return "DEBUG";
         case LogLevel::INFO:  return "INFO ";
         case LogLevel::WARN:  return "WARN ";
-        case LogLevel::ERR:   return "ERROR";
+        case LogLevel::ERROR:   return "ERROR";
         case LogLevel::FATAL: return "FATAL";
         default: return "UNKNOWN";
     }
@@ -99,7 +99,7 @@ std::string Logger::get_color_code(LogLevel level) const {
         case LogLevel::DEBUG: return Colors::CYAN;
         case LogLevel::INFO:  return Colors::GREEN;
         case LogLevel::WARN:  return Colors::YELLOW;
-        case LogLevel::ERR:   return Colors::RED;
+        case LogLevel::ERROR:   return Colors::RED;
         case LogLevel::FATAL: return Colors::BRIGHT_RED + Colors::BOLD;
         default: return "";
     }
@@ -159,7 +159,7 @@ void Logger::log(LogLevel level, LogCategory category, const std::string& messag
         std::string category_color = get_category_color(category);
         std::string reset = get_reset_color();
         
-        std::ostream& output = (level >= LogLevel::ERR) ? std::cerr : std::cout;
+        std::ostream& output = (level >= LogLevel::ERROR) ? std::cerr : std::cout;
         
         if (test_mode_) {
             // Simplified output for tests
@@ -191,7 +191,7 @@ void Logger::warn(const std::string& message, LogCategory category) {
 }
 
 void Logger::error(const std::string& message, LogCategory category) {
-    log(LogLevel::ERR, category, message);
+    log(LogLevel::ERROR, category, message);
 }
 
 void Logger::fatal(const std::string& message, LogCategory category) {

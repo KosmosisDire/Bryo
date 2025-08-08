@@ -19,7 +19,7 @@ namespace Myre
         DEBUG = 2,
         INFO = 3,
         WARN = 4,
-        ERR = 5,
+        ERROR = 5,
         FATAL = 6,
         NONE = 7
     };

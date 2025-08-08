@@ -9,7 +9,6 @@
 
 using namespace Myre;
 
-// A code-like visitor to print AST nodes as pseudo-code
 class AstPrinter : public StructuralVisitor
 {
 private:
@@ -31,15 +30,23 @@ private:
         output << text;
     }
 
-    void print_modifiers(const SizedArray<ModifierKind>& modifiers) {
-        for (int i = 0; i < modifiers.size; i++) {
-            output << to_string(modifiers[i]) << " ";
+    void print_node_open(const std::string& nodeType) {
+        print_inline(nodeType + " {");
+    }
+
+    void print_node_close() {
+        print_line("}");
+    }
+
+    void print_collection(const std::string& name, int count) {
+        if (count > 0) {
+            print_line(name + ": {");
         }
     }
 
     std::string get_node_content() {
         std::string result = output.str();
-        output.str(""); // Clear the stream
+        output.str("");
         output.clear();
         return result;
     }
@@ -48,178 +55,232 @@ public:
     // --- Base Node Types ---
     
     void visit(AstNode* node) override {
-        print_line("[UnhandledNode: " + std::string(g_ordered_type_infos[node->typeId]->name) + "]");
+        print_line(std::string(g_ordered_type_infos[node->typeId]->name));
     }
 
     void visit(TokenNode* node) override {
-        print_inline("\"" + std::string(node->text) + "\"");
+        print_line("Token");
     }
 
     void visit(IdentifierNode* node) override {
-        print_inline(std::string(node->name));
+        print_line("Identifier");
     }
 
     void visit(ErrorNode* node) override {
-        print_line("[ERROR: " + node->error_message + "]");
+        print_line("Error");
     }
 
     // --- Expression Base ---
     
     void visit(ExpressionNode* node) override {
-        print_line("[AbstractExpression]");
+        print_line("Expression");
     }
 
     // --- Expression Implementations ---
 
     void visit(LiteralExpressionNode* node) override {
-        print_inline(std::string(node->token->text));
+        print_line("LiteralExpression");
     }
 
     void visit(IdentifierExpressionNode* node) override {
-        print_inline(std::string(node->identifier->name));
+        print_line("IdentifierExpression");
     }
 
     void visit(ParenthesizedExpressionNode* node) override {
-        print_inline("(");
+        print_node_open("ParenthesizedExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->expression) {
             node->expression->accept(this);
         }
-        print_inline(")");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(UnaryExpressionNode* node) override {
-        if (node->isPostfix) {
-            if (node->operand) {
-                node->operand->accept(this);
-            }
-            print_inline(std::string(to_string(node->opKind)));
-        } else {
-            print_inline(std::string(to_string(node->opKind)));
-            if (node->operand) {
-                node->operand->accept(this);
-            }
+        print_node_open("UnaryExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->operand) {
+            node->operand->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(BinaryExpressionNode* node) override {
+        print_node_open("BinaryExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->left) {
             node->left->accept(this);
-        } else {
-            print_inline("[missing-left]");
         }
-        print_inline(" " + std::string(to_string(node->opKind)) + " ");
         if (node->right) {
             node->right->accept(this);
-        } else {
-            print_inline("[missing-right]");
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(AssignmentExpressionNode* node) override {
+        print_node_open("AssignmentExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->target) {
             node->target->accept(this);
         }
-        print_inline(" " + std::string(to_string(node->opKind)) + " ");
         if (node->source) {
             node->source->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(CallExpressionNode* node) override {
+        print_node_open("CallExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->target) {
             node->target->accept(this);
         }
-        print_inline("(");
-        for (int i = 0; i < node->arguments.size; i++) {
-            if (i > 0) print_inline(", ");
-            if (node->arguments[i]) {
-                node->arguments[i]->accept(this);
-            } else {
-                print_inline("[missing-arg]");
+        if (node->arguments.size > 0) {
+            print_collection("arguments", node->arguments.size);
+            indentLevel++;
+            for (int i = 0; i < node->arguments.size; i++) {
+                if (node->arguments[i]) {
+                    node->arguments[i]->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
-        print_inline(")");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(MemberAccessExpressionNode* node) override {
+        print_node_open("MemberAccessExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->target) {
             node->target->accept(this);
         }
-        print_inline(".");
         if (node->member) {
-            print_inline(std::string(node->member->name));
+            print_line("member");
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(NewExpressionNode* node) override {
-        print_inline("new ");
+        print_node_open("NewExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->type) {
             node->type->accept(this);
         }
-        if (node->constructorCall) {
-            // Print just the arguments part since type is already printed
-            print_inline("(");
+        if (node->constructorCall && node->constructorCall->arguments.size > 0) {
+            print_collection("arguments", node->constructorCall->arguments.size);
+            indentLevel++;
             for (int i = 0; i < node->constructorCall->arguments.size; i++) {
-                if (i > 0) print_inline(", ");
                 if (node->constructorCall->arguments[i]) {
                     node->constructorCall->arguments[i]->accept(this);
                 }
             }
-            print_inline(")");
+            indentLevel--;
+            print_node_close();
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ThisExpressionNode* node) override {
-        print_inline("this");
+        print_line("ThisExpression");
     }
 
     void visit(CastExpressionNode* node) override {
-        print_inline("(");
+        print_node_open("CastExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->targetType) {
             node->targetType->accept(this);
         }
-        print_inline(")");
         if (node->expression) {
             node->expression->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(IndexerExpressionNode* node) override {
+        print_node_open("IndexerExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->target) {
             node->target->accept(this);
         }
-        print_inline("[");
         if (node->index) {
             node->index->accept(this);
         }
-        print_inline("]");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(TypeOfExpressionNode* node) override {
-        print_inline("typeof(");
+        print_node_open("TypeOfExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->type) {
             node->type->accept(this);
         }
-        print_inline(")");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(SizeOfExpressionNode* node) override {
-        print_inline("sizeof(");
+        print_node_open("SizeOfExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->type) {
             node->type->accept(this);
         }
-        print_inline(")");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(MatchExpressionNode* node) override {
-        print_inline("match (");
+        print_node_open("MatchExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->expression) {
             node->expression->accept(this);
         }
-        print_inline(") {");
-        
-        if (!node->arms.empty()) {
-            print_line("");
+        if (node->arms.size > 0) {
+            print_collection("arms", node->arms.size);
             indentLevel++;
             for (auto arm : node->arms) {
                 if (arm) {
@@ -227,609 +288,706 @@ public:
                 }
             }
             indentLevel--;
-            print_line(get_indent() + "}");
-        } else {
-            print_inline(" }");
+            print_node_close();
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ConditionalExpressionNode* node) override {
+        print_node_open("ConditionalExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->condition) {
             node->condition->accept(this);
         }
-        print_inline(" ? ");
         if (node->whenTrue) {
             node->whenTrue->accept(this);
         }
-        print_inline(" : ");
         if (node->whenFalse) {
             node->whenFalse->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(RangeExpressionNode* node) override {
+        print_node_open("RangeExpression");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->start) {
             node->start->accept(this);
-        }
-        if (node->rangeOp) {
-            print_inline(std::string(node->rangeOp->text));
-        } else {
-            print_inline("..");
         }
         if (node->end) {
             node->end->accept(this);
         }
-    }
-
-    void visit(EnumMemberExpressionNode* node) override {
-        print_inline(".");
-        if (node->memberName) {
-            print_inline(std::string(node->memberName->name));
-        }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(FieldKeywordExpressionNode* node) override {
-        print_inline("field");
+        print_line("FieldKeywordExpression");
     }
 
     void visit(ValueKeywordExpressionNode* node) override {
-        print_inline("value");
+        print_line("ValueKeywordExpression");
     }
 
     // --- Statement Base ---
     
     void visit(StatementNode* node) override {
-        print_line("[AbstractStatement]");
+        print_line("Statement");
     }
 
     // --- Statement Implementations ---
 
     void visit(EmptyStatementNode* node) override {
-        print_line(";");
+        print_line("EmptyStatement");
     }
 
     void visit(BlockStatementNode* node) override {
-        print_line("{");
+        print_node_open("BlockStatement");
+        std::string header = get_node_content();
+        print_line(header);
+        
         indentLevel++;
         for (auto stmt : node->statements) {
             if (stmt) {
                 stmt->accept(this);
-                print_line(get_node_content());
             }
         }
         indentLevel--;
-        print_line("}");
+        print_node_close();
     }
 
     void visit(ExpressionStatementNode* node) override {
+        print_node_open("ExpressionStatement");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->expression) {
             node->expression->accept(this);
         }
-        print_inline(";");
-        print_line(get_node_content());
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(IfStatementNode* node) override {
-        print_inline("if (");
+        print_node_open("IfStatement");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->condition) {
             node->condition->accept(this);
         }
-        print_inline(") ");
-        
-        std::string condition_part = get_node_content();
-        print_line(condition_part);
-        
         if (node->thenStatement) {
             node->thenStatement->accept(this);
         }
-        
         if (node->elseStatement) {
-            print_line("else");
             node->elseStatement->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(WhileStatementNode* node) override {
-        print_inline("while (");
+        print_node_open("WhileStatement");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->condition) {
             node->condition->accept(this);
         }
-        print_inline(") ");
-        
-        std::string condition_part = get_node_content();
-        print_line(condition_part);
-        
         if (node->body) {
             node->body->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ForStatementNode* node) override {
-        print_inline("for (");
+        print_node_open("ForStatement");
+        std::string header = get_node_content();
+        print_line(header);
         
-        // Initializer
+        indentLevel++;
         if (node->initializer) {
             node->initializer->accept(this);
-            print_inline(" ");
         }
-        else
-        {
-            print_inline("; ");
-        }
-        
-        // Condition
         if (node->condition) {
             node->condition->accept(this);
         }
-        print_inline("; ");
-        
-        // Incrementors
-        for (int i = 0; i < node->incrementors.size; i++) {
-            if (i > 0) print_inline(", ");
-            if (node->incrementors[i]) {
-                node->incrementors[i]->accept(this);
+        if (node->incrementors.size > 0) {
+            print_collection("incrementors", node->incrementors.size);
+            indentLevel++;
+            for (int i = 0; i < node->incrementors.size; i++) {
+                if (node->incrementors[i]) {
+                    node->incrementors[i]->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
-        print_inline(") ");
-        
-        std::string header = get_node_content();
-        print_line(header);
-        
         if (node->body) {
             node->body->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ForInStatementNode* node) override {
-        print_inline("for (");
-        if (node->mainVariable) {
-            node->mainVariable->accept(this);
-        }
-        print_inline(" in ");
-        if (node->iterable) {
-            node->iterable->accept(this);
-        }
-        print_inline(") ");
-        
+        print_node_open("ForInStatement");
         std::string header = get_node_content();
         print_line(header);
         
+        indentLevel++;
+        if (node->mainVariable) {
+            node->mainVariable->accept(this);
+        }
+        if (node->iterable) {
+            node->iterable->accept(this);
+        }
         if (node->body) {
             node->body->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ReturnStatementNode* node) override {
-        print_inline("return");
+        print_node_open("ReturnStatement");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->expression) {
-            print_inline(" ");
             node->expression->accept(this);
         }
-        print_inline(";");
-        print_line(get_node_content());
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(BreakStatementNode* node) override {
-        print_line("break;");
+        print_line("BreakStatement");
     }
 
     void visit(ContinueStatementNode* node) override {
-        print_line("continue;");
+        print_line("ContinueStatement");
     }
 
     void visit(VariableDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
+        print_node_open("VariableDeclaration");
+        std::string header = get_node_content();
+        print_line(header);
         
-        if (node->varKeyword) {
-            print_inline("var ");
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
         }
-        else if (node->type) {
+        if (node->type) {
             node->type->accept(this);
-            print_inline(" ");
         }
-        else
-        {
-            print_inline("[Print Error: Missing var/type]");
-        }
-        
-        // Print names
         if (node->names.size > 0) {
-            for (int i = 0; i < node->names.size; i++) {
-                if (i > 0) print_inline(", ");
-                if (node->names[i]) {
-                    print_inline(std::string(node->names[i]->name));
-                }
-            }
-        } else if (node->name) {
-            print_inline(std::string(node->name->name));
+            print_line("names");
+        } else if (node->first_name()) {
+            print_line("name");
         }
-        
-        // Initializer
         if (node->initializer) {
-            print_inline(" = ");
             node->initializer->accept(this);
-        } 
-        
-        print_inline(";");
+        }
+        indentLevel--;
+        print_node_close();
     }
 
     // --- Declaration Base ---
     
     void visit(DeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        std::string name = node->name ? std::string(node->name->name) : "[unnamed]";
-        print_line("[AbstractDeclaration: " + name + "]");
+        print_node_open("Declaration");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        indentLevel--;
+        print_node_close();
     }
 
     // --- Declaration Implementations ---
 
     void visit(NamespaceDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("namespace ");
-        if (node->name) {
-            print_inline(std::string(node->name->name));
-        }
-        print_inline(" ");
-        
+        print_node_open("NamespaceDeclaration");
         std::string header = get_node_content();
         print_line(header);
         
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->name) {
+            print_line("name");
+        }
         if (node->body) {
             node->body->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(UsingDirectiveNode* node) override {
-        print_inline("using ");
+        print_node_open("UsingDirective");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->namespaceName) {
             node->namespaceName->accept(this);
         }
-        print_inline(";");
-        print_line(get_node_content());
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(TypeDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("type ");
-        if (node->name) {
-            print_inline(std::string(node->name->name));
-        }
-        print_inline(" {");
-        
+        print_node_open("TypeDeclaration");
         std::string header = get_node_content();
         print_line(header);
         
         indentLevel++;
-        for (auto member : node->members) {
-            if (member) {
-                member->accept(this);
-                print_line(get_node_content());
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->name) {
+            print_line("name");
+        }
+        if (node->members.size > 0) {
+            print_collection("members", node->members.size);
+            indentLevel++;
+            for (auto member : node->members) {
+                if (member) {
+                    member->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
         indentLevel--;
-        print_line("}");
+        print_node_close();
     }
 
     void visit(InterfaceDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("interface ");
-        if (node->name) {
-            print_inline(std::string(node->name->name));
-        }
-        print_inline(" {");
-        
+        print_node_open("InterfaceDeclaration");
         std::string header = get_node_content();
         print_line(header);
         
         indentLevel++;
-        for (auto member : node->members) {
-            if (member) {
-                member->accept(this);
-                print_line(get_node_content());
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->name) {
+            print_line("name");
+        }
+        if (node->members.size > 0) {
+            print_collection("members", node->members.size);
+            indentLevel++;
+            for (auto member : node->members) {
+                if (member) {
+                    member->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
         indentLevel--;
-        print_line("}");
+        print_node_close();
     }
 
     void visit(EnumDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("enum ");
-        if (node->name) {
-            print_inline(std::string(node->name->name));
-        }
-        print_inline(" {");
-        
+        print_node_open("EnumDeclaration");
         std::string header = get_node_content();
         print_line(header);
         
         indentLevel++;
-        
-        // Print cases
-        for (auto enumCase : node->cases) {
-            if (enumCase) {
-                enumCase->accept(this);
-                print_line(get_node_content());
-            }
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
         }
-        
-        // Print methods
-        for (auto method : node->methods) {
-            if (method) {
-                method->accept(this);
-                print_line(get_node_content());
-            }
+        if (node->name) {
+            print_line("name");
         }
-        
+        if (node->cases.size > 0) {
+            print_collection("cases", node->cases.size);
+            indentLevel++;
+            for (auto enumCase : node->cases) {
+                if (enumCase) {
+                    enumCase->accept(this);
+                }
+            }
+            indentLevel--;
+            print_node_close();
+        }
+        if (node->methods.size > 0) {
+            print_collection("methods", node->methods.size);
+            indentLevel++;
+            for (auto method : node->methods) {
+                if (method) {
+                    method->accept(this);
+                }
+            }
+            indentLevel--;
+            print_node_close();
+        }
         indentLevel--;
-        print_line("}");
+        print_node_close();
     }
 
     void visit(MemberDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        std::string name = node->name ? std::string(node->name->name) : "[unnamed]";
-        print_line("[AbstractMember: " + name + "]");
+        print_node_open("MemberDeclaration");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->name) {
+            print_line("name");
+        }
+        indentLevel--;
+        print_node_close();
     }
 
-
     void visit(FunctionDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("fn ");
+        print_node_open("FunctionDeclaration");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
         if (node->name) {
-            print_inline(std::string(node->name->name));
+            print_line("name");
         }
-        
-        print_inline("(");
-        for (int i = 0; i < node->parameters.size; i++) {
-            if (i > 0) print_inline(", ");
-            if (node->parameters[i]) {
-                node->parameters[i]->accept(this);
-                // Don't clear content - parameters are building inline
+        if (node->parameters.size > 0) {
+            print_collection("parameters", node->parameters.size);
+            indentLevel++;
+            for (int i = 0; i < node->parameters.size; i++) {
+                if (node->parameters[i]) {
+                    node->parameters[i]->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
-        print_inline(")");
-        
-        // Return type
         if (node->returnType) {
-            print_inline(": ");
             node->returnType->accept(this);
         }
-        
-        std::string signature = get_node_content();
-        
         if (node->body) {
-            print_line(signature + " ");
             node->body->accept(this);
-        } else {
-            print_line(signature + ";");
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ParameterNode* node) override {
-        print_modifiers(node->modifiers);
+        print_node_open("Parameter");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
         if (node->type) {
             node->type->accept(this);
-            print_inline(" ");
         }
         if (node->name) {
-            print_inline(std::string(node->name->name));
+            print_line("name");
         }
         if (node->defaultValue) {
-            print_inline(" = ");
             node->defaultValue->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(GenericParameterNode* node) override {
-        print_modifiers(node->modifiers);
-        if (node->name) {
-            print_inline(std::string(node->name->name));
+        print_node_open("GenericParameter");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
         }
+        if (node->name) {
+            print_line("name");
+        }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(PropertyDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
+        print_node_open("PropertyDeclaration");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
         if (node->name) {
-            print_inline(std::string(node->name->name));
+            print_line("name");
         }
         if (node->type) {
-            print_inline(": ");
             node->type->accept(this);
         }
-        
         if (node->getterExpression) {
-            print_inline(" => ");
             node->getterExpression->accept(this);
-            print_inline(";");
-        } else if (!node->accessors.empty()) {
-            print_inline(" {");
-            std::string header = get_node_content();
-            print_line(header);
-            
+        }
+        if (node->accessors.size > 0) {
+            print_collection("accessors", node->accessors.size);
             indentLevel++;
             for (auto accessor : node->accessors) {
                 if (accessor) {
                     accessor->accept(this);
-                    print_line(get_node_content());
                 }
             }
             indentLevel--;
-            print_line("}");
-        } else {
-            print_inline(";");
+            print_node_close();
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(PropertyAccessorNode* node) override {
-        print_modifiers(node->modifiers);
+        print_node_open("PropertyAccessor");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
         if (node->accessorKeyword) {
-            print_inline(std::string(node->accessorKeyword->text));
+            print_line("accessorKeyword");
         }
-        
         if (node->expression) {
-            print_inline(" => ");
             node->expression->accept(this);
-            print_inline(";");
-        } else if (node->body) {
-            print_inline(" ");
-            std::string header = get_node_content();
-            print_line(header);
-            node->body->accept(this);
-        } else {
-            print_inline(";");
         }
-    }
-
-    void visit(ConstructorDeclarationNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("new(");
-        for (int i = 0; i < node->parameters.size; i++) {
-            if (i > 0) print_inline(", ");
-            if (node->parameters[i]) {
-                node->parameters[i]->accept(this);
-                // Don't clear content - parameters are building inline
-            }
-        }
-        print_inline(") ");
-        
-        std::string signature = get_node_content();
-        print_line(signature);
-        
         if (node->body) {
             node->body->accept(this);
         }
+        indentLevel--;
+        print_node_close();
+    }
+
+    void visit(ConstructorDeclarationNode* node) override {
+        print_node_open("ConstructorDeclaration");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->parameters.size > 0) {
+            print_collection("parameters", node->parameters.size);
+            indentLevel++;
+            for (int i = 0; i < node->parameters.size; i++) {
+                if (node->parameters[i]) {
+                    node->parameters[i]->accept(this);
+                }
+            }
+            indentLevel--;
+            print_node_close();
+        }
+        if (node->body) {
+            node->body->accept(this);
+        }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(EnumCaseNode* node) override {
-        print_modifiers(node->modifiers);
-        print_inline("case ");
-        if (node->name) {
-            print_inline(std::string(node->name->name));
-        }
+        print_node_open("EnumCase");
+        std::string header = get_node_content();
+        print_line(header);
         
-        if (!node->associatedData.empty()) {
-            print_inline("(");
+        indentLevel++;
+        if (node->modifiers.size > 0) {
+            print_line("modifiers");
+        }
+        if (node->name) {
+            print_line("name");
+        }
+        if (node->associatedData.size > 0) {
+            print_collection("associatedData", node->associatedData.size);
+            indentLevel++;
             for (int i = 0; i < node->associatedData.size; i++) {
-                if (i > 0) print_inline(", ");
                 if (node->associatedData[i]) {
                     node->associatedData[i]->accept(this);
-                    // Don't clear content - parameters are building inline
                 }
             }
-            print_inline(")");
+            indentLevel--;
+            print_node_close();
         }
-        
-        print_inline(";");
+        indentLevel--;
+        print_node_close();
     }
 
     // --- Match Pattern Implementations ---
 
     void visit(MatchArmNode* node) override {
+        print_node_open("MatchArm");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->pattern) {
             node->pattern->accept(this);
         }
-        print_inline(" => ");
         if (node->result) {
             node->result->accept(this);
         }
-        print_inline(",");
-        
-        std::string arm = get_node_content();
-        print_line(arm);
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(MatchPatternNode* node) override {
-        print_inline("[AbstractPattern]");
+        print_line("MatchPattern");
     }
 
     void visit(EnumPatternNode* node) override {
-        print_inline(".");
+        print_node_open("EnumPattern");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->enumCase) {
-            print_inline(std::string(node->enumCase->name));
+            print_line("enumCase");
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(RangePatternNode* node) override {
+        print_node_open("RangePattern");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->start) {
             node->start->accept(this);
-        }
-        if (node->rangeOp) {
-            print_inline(std::string(node->rangeOp->text));
-        } else {
-            print_inline("..");
         }
         if (node->end) {
             node->end->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(ComparisonPatternNode* node) override {
+        print_node_open("ComparisonPattern");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->comparisonOp) {
-            print_inline(std::string(node->comparisonOp->text));
+            print_line("comparisonOp");
         }
-        print_inline(" ");
         if (node->value) {
             node->value->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(WildcardPatternNode* node) override {
-        print_inline("_");
+        print_line("WildcardPattern");
     }
 
     void visit(LiteralPatternNode* node) override {
+        print_node_open("LiteralPattern");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->literal) {
             node->literal->accept(this);
         }
+        indentLevel--;
+        print_node_close();
     }
 
     // --- Type Name Implementations ---
 
-    void visit(TypeNameNode* node) override {
-        if (node->identifier) {
-            print_inline(std::string(node->identifier->name));
-        }
+    void visit(QualifiedNameNode* node) override {
+        print_inline("QualifiedName");
     }
 
-    void visit(QualifiedTypeNameNode* node) override {
-        if (node->left) {
-            node->left->accept(this);
-        }
-        print_inline(".");
-        if (node->right) {
-            print_inline(std::string(node->right->name));
-        }
+    void visit(TypeNameNode* node) override {
+        print_line("TypeName");
     }
 
     void visit(ArrayTypeNameNode* node) override {
+        print_node_open("ArrayTypeName");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->elementType) {
             node->elementType->accept(this);
         }
-        print_inline("[]");
+        indentLevel--;
+        print_node_close();
     }
 
     void visit(GenericTypeNameNode* node) override {
+        print_node_open("GenericTypeName");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         if (node->baseType) {
             node->baseType->accept(this);
         }
-        print_inline("<");
-        for (int i = 0; i < node->arguments.size; i++) {
-            if (i > 0) print_inline(", ");
-            if (node->arguments[i]) {
-                node->arguments[i]->accept(this);
+        if (node->arguments.size > 0) {
+            print_collection("arguments", node->arguments.size);
+            indentLevel++;
+            for (int i = 0; i < node->arguments.size; i++) {
+                if (node->arguments[i]) {
+                    node->arguments[i]->accept(this);
+                }
             }
+            indentLevel--;
+            print_node_close();
         }
-        print_inline(">");
+        indentLevel--;
+        print_node_close();
     }
 
     // --- Root ---
     
     void visit(CompilationUnitNode* node) override {
+        print_node_open("CompilationUnit");
+        std::string header = get_node_content();
+        print_line(header);
+        
+        indentLevel++;
         for (auto stmt : node->statements) {
             if (stmt) {
                 stmt->accept(this);
-                print_line(get_node_content());
             }
         }
+        indentLevel--;
+        print_node_close();
     }
 };

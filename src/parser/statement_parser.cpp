@@ -17,74 +17,6 @@ namespace Myre
     {
         auto &ctx = context();
 
-        // Handle variable declarations as statements
-        if (ctx.check(TokenKind::Var))
-        {
-            auto decl_result = parser_->get_declaration_parser().parse_variable_declaration();
-            if (decl_result.is_success())
-            {
-                auto *var_decl = decl_result.get_node();
-
-                // Handle semicolon
-                if (ctx.check(TokenKind::Semicolon))
-                {
-                    auto *semicolon = parser_->get_allocator().alloc<TokenNode>();
-                    semicolon->text = ctx.current().text;
-                    semicolon->contains_errors = false;
-                    var_decl->semicolon = semicolon;
-                    ctx.advance();
-                }
-                else
-                {
-                    create_error("Expected ';' after variable declaration");
-                    var_decl->contains_errors = true;
-                }
-
-                // Return as StatementNode - VariableDeclarationNode is a StatementNode
-                return ParseResult<StatementNode>::success(var_decl);
-            }
-            else
-            {
-                return ParseResult<StatementNode>::error(decl_result.get_error());
-            }
-        }
-
-        // Check for typed variable declarations: Type name1, name2 = value;
-        // We need to lookahead to distinguish from expression statements
-        if (ctx.check(TokenKind::Identifier))
-        {
-            // Check if next token is also an identifier (Type name pattern)
-            if (ctx.peek().kind == TokenKind::Identifier)
-            {
-                auto typed_decl_result = parser_->get_declaration_parser().parse_typed_variable_declaration();
-                if (typed_decl_result.is_success())
-                {
-                    auto *var_decl = typed_decl_result.get_node();
-
-                    // Handle semicolon
-                    if (ctx.check(TokenKind::Semicolon))
-                    {
-                        auto *semicolon = parser_->get_allocator().alloc<TokenNode>();
-                        semicolon->text = ctx.current().text;
-                        semicolon->contains_errors = false;
-                        var_decl->semicolon = semicolon;
-                        ctx.advance();
-                    }
-                    else
-                    {
-                        create_error("Expected ';' after variable declaration");
-                        var_decl->contains_errors = true;
-                    }
-
-                    return ParseResult<StatementNode>::success(var_decl);
-                }
-                else
-                {
-                    return ParseResult<StatementNode>::error(typed_decl_result.get_error());
-                }
-            }
-        }
-
         // Handle control flow statements
         if (ctx.check(TokenKind::If))
         {
@@ -98,6 +30,11 @@ namespace Myre
 
         if (ctx.check(TokenKind::For))
         {
+            if (ctx.check_until(TokenKind::In, {TokenKind::RightParen}) > 0)
+            {
+                return parse_for_in_statement();
+            }
+
             return parse_for_statement();
         }
 
@@ -123,6 +60,21 @@ namespace Myre
         if (ctx.check(TokenKind::LeftBrace))
         {
             return parse_block_statement();
+        }
+
+        // try to parse a declaration
+        if (parser_->get_declaration_parser().check_declaration())
+        {
+            auto decl_result = parser_->get_declaration_parser().parse_declaration();
+            if (decl_result.is_success())
+            {
+                return ParseResult<StatementNode>::success(decl_result.get_node());
+            }
+            else if (decl_result.is_error())
+            {
+                // If declaration parsing failed, return the error
+                return ParseResult<StatementNode>::error(decl_result.get_error());
+            }
         }
 
         // Handle expression statements
@@ -241,7 +193,7 @@ namespace Myre
         auto *if_stmt = parser_->get_allocator().alloc<IfStatementNode>();
         if_stmt->condition = static_cast<ExpressionNode *>(condition_result.get_ast_node()); // Could be ErrorNode
         if_stmt->thenStatement = static_cast<StatementNode *>(then_result.get_ast_node());   // Could be ErrorNode
-        
+
         // Initialize else clause fields
         if_stmt->elseKeyword = nullptr;
         if_stmt->elseStatement = nullptr;
@@ -252,11 +204,10 @@ namespace Myre
             // Create and store else keyword token
             auto *else_token = parser_->get_allocator().alloc<TokenNode>();
             else_token->text = ctx.current().text;
-            else_token->tokenKind = ctx.current().kind;
             else_token->location = ctx.current().location;
             else_token->contains_errors = false;
             if_stmt->elseKeyword = else_token;
-            
+
             ctx.advance(); // consume 'else'
 
             // Parse else statement
@@ -329,7 +280,7 @@ namespace Myre
         ParseResult<StatementNode> init_result = ParseResult<StatementNode>::success(nullptr);
         if (!ctx.check(TokenKind::Semicolon))
         {
-            if (ctx.check(TokenKind::Var))
+            if (ctx.check(TokenKind::Var) || ctx.check(TokenKind::Identifier) && ctx.peek().kind == TokenKind::Identifier)
             {
                 auto var_result = parser_->get_declaration_parser().parse_variable_declaration();
                 if (var_result.is_success())
@@ -339,19 +290,6 @@ namespace Myre
                 else
                 {
                     init_result = ParseResult<StatementNode>::error(var_result.get_error());
-                }
-            }
-            else if (ctx.check(TokenKind::Identifier) && ctx.peek().kind == TokenKind::Identifier)
-            {
-                // Typed variable declaration: Type name = value
-                auto typed_var_result = parser_->get_declaration_parser().parse_typed_variable_declaration();
-                if (typed_var_result.is_success())
-                {
-                    init_result = ParseResult<StatementNode>::success(typed_var_result.get_node());
-                }
-                else
-                {
-                    init_result = ParseResult<StatementNode>::error(typed_var_result.get_error());
                 }
             }
             else
@@ -479,8 +417,121 @@ namespace Myre
 
     ParseResult<StatementNode> StatementParser::parse_for_in_statement()
     {
-        return ParseResult<StatementNode>::error(
-            create_error("For-in statements not implemented yet"));
+        auto &ctx = context();
+
+        // Create the for-in node
+        auto *for_in_stmt = parser_->get_allocator().alloc<ForInStatementNode>();
+        for_in_stmt->contains_errors = false;
+
+        // Store 'for' keyword
+        auto *for_token = parser_->get_allocator().alloc<TokenNode>();
+        for_token->text = ctx.current().text;
+        for_token->location = ctx.current().location;
+        for_token->contains_errors = false;
+        for_in_stmt->forKeyword = for_token;
+
+        ctx.advance(); // consume 'for'
+
+        // Store '('
+        if (!ctx.check(TokenKind::LeftParen))
+        {
+            return ParseResult<StatementNode>::error(
+                create_error("Expected '(' after 'for'"));
+        }
+        auto *open_paren = parser_->get_allocator().alloc<TokenNode>();
+        open_paren->text = ctx.current().text;
+        open_paren->location = ctx.current().location;
+        open_paren->contains_errors = false;
+        for_in_stmt->openParen = open_paren;
+        ctx.advance(); // consume '('
+
+        // Parse main variable using declaration parser helper
+        auto main_var_result = parser_->get_declaration_parser().parse_for_variable_declaration();
+        if (!main_var_result.is_success())
+        {
+            return ParseResult<StatementNode>::error(main_var_result.get_error());
+        }
+        for_in_stmt->mainVariable = main_var_result.get_node();
+
+        // Expect 'in' keyword
+        if (!ctx.check(TokenKind::In))
+        {
+            return ParseResult<StatementNode>::error(
+                create_error("Expected 'in' in for-in statement"));
+        }
+        auto *in_token = parser_->get_allocator().alloc<TokenNode>();
+        in_token->text = ctx.current().text;
+        in_token->location = ctx.current().location;
+        in_token->contains_errors = false;
+        for_in_stmt->inKeyword = in_token;
+        ctx.advance(); // consume 'in'
+
+        // Parse iterable expression (could be range or collection)
+        auto iterable_result = parser_->get_expression_parser().parse_expression();
+        if (!iterable_result.is_success())
+        {
+            return ParseResult<StatementNode>::error(
+                create_error("Expected iterable expression after 'in'"));
+        }
+        for_in_stmt->iterable = iterable_result.get_node();
+
+        // Check for optional 'at' clause
+        for_in_stmt->atKeyword = nullptr;
+        for_in_stmt->indexVariable = nullptr;
+        if (ctx.check(TokenKind::At))
+        {
+            auto *at_token = parser_->get_allocator().alloc<TokenNode>();
+            at_token->text = ctx.current().text;
+            at_token->location = ctx.current().location;
+            at_token->contains_errors = false;
+            for_in_stmt->atKeyword = at_token;
+            ctx.advance(); // consume 'at'
+
+            // Parse index variable using declaration parser helper
+            auto index_var_result = parser_->get_declaration_parser().parse_for_variable_declaration();
+            if (!index_var_result.is_success())
+            {
+                return ParseResult<StatementNode>::error(index_var_result.get_error());
+            }
+            for_in_stmt->indexVariable = index_var_result.get_node();
+        }
+
+        // Expect ')'
+        if (!ctx.check(TokenKind::RightParen))
+        {
+            return ParseResult<StatementNode>::error(
+                create_error("Expected ')' after for-in clauses"));
+        }
+        auto *close_paren = parser_->get_allocator().alloc<TokenNode>();
+        close_paren->text = ctx.current().text;
+        close_paren->location = ctx.current().location;
+        close_paren->contains_errors = false;
+        for_in_stmt->closeParen = close_paren;
+        ctx.advance(); // consume ')'
+
+        // Enter loop context for break/continue validation
+        auto loop_guard = ctx.save_context();
+        ctx.set_loop_context(true);
+
+        // Parse body with loop context active
+        auto body_result = parse_statement();
+        if (!body_result.is_success())
+        {
+            return ParseResult<StatementNode>::error(body_result.get_error());
+        }
+        for_in_stmt->body = body_result.get_node();
+
+        // Update error flag
+        bool has_errors = ast_has_errors(for_in_stmt->mainVariable) ||
+                          ast_has_errors(for_in_stmt->iterable) ||
+                          ast_has_errors(for_in_stmt->body);
+        if (for_in_stmt->indexVariable && ast_has_errors(for_in_stmt->indexVariable))
+        {
+            has_errors = true;
+        }
+        for_in_stmt->contains_errors = has_errors;
+
+        return ParseResult<StatementNode>::success(for_in_stmt);
     }
 
     ParseResult<StatementNode> StatementParser::parse_return_statement()

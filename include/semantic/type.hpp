@@ -10,6 +10,10 @@ namespace Myre {
 // Forward declarations
 struct Type;
 struct TypeDefinition;
+struct ExpressionNode;
+struct TypeNameNode;
+struct Scope;
+using ScopePtr = std::shared_ptr<Scope>;
 using TypePtr = std::shared_ptr<Type>;
 
 // ============= Types =============
@@ -49,19 +53,24 @@ struct FunctionType {
 
 // Represents unresolved type references
 struct UnresolvedType {
-    std::string name;
+    int id = 0; // Unique ID for this unresolved type
+    ExpressionNode* initializer = nullptr;
+    TypeNameNode* type_name = nullptr;
+    ScopePtr defining_scope = nullptr;
+
+    inline bool can_infer() const { return (initializer != nullptr || type_name != nullptr) && defining_scope != nullptr; }
 };
 
 // The Type variant
 class Type {
-    // Make TypeRegistry a friend so it can create Types
-    friend class TypeRegistry;
+    // Make TypeSystem a friend so it can create Types
+    friend class TypeSystem;
     
-    // Private constructor - only TypeRegistry can create Types
+    // Private constructor - only TypeSystem can create Types
     Type(std::variant<PrimitiveType, ArrayType, DefinedType, InstantiatedType, FunctionType, UnresolvedType> v)
         : value(std::move(v)) {}
     
-    // Static factory for TypeRegistry to use with std::make_shared
+    // Static factory for TypeSystem to use with std::make_shared
     template<typename T>
     static TypePtr create(T&& variant_value) {
         struct EnableMakeShared : Type {
@@ -133,7 +142,7 @@ inline std::string Type::get_name() const {
         } else if constexpr (std::is_same_v<T, FunctionType>) {
             return "function";
         } else if constexpr (std::is_same_v<T, UnresolvedType>) {
-            return v.name;
+            return "var:" + std::to_string(v.id);
         }
         return "unknown";
     }, value);

@@ -12,6 +12,48 @@ namespace Myre
     {
     }
 
+    bool DeclarationParser::check_declaration()
+    {
+        // check forward until the next semicolon and see if we come across a declaration keyword
+        auto &ctx = context();
+        if (ctx.at_end())
+            return false;
+
+        // Check for declaration keywords
+        int offset = 0;
+        while (true)
+        {
+            auto token = ctx.peek(offset);
+            if (token.is(TokenKind::Semicolon) || token.is(TokenKind::RightBrace) || token.is(TokenKind::EndOfFile) || token.is(TokenKind::RightParen))
+            {
+                // Reached a semicolon, no declaration found
+                return false;
+            }
+
+            if (token.is_eof())
+            {
+                // Reached end of file, no declaration found
+                return false;
+            }
+
+            if (offset > 20)
+            {
+                // Too far ahead, stop checking
+                return false;
+            }
+
+            if (token.is_any({TokenKind::Fn, TokenKind::Var, TokenKind::Type, TokenKind::Enum, TokenKind::Using, TokenKind::Namespace}))
+            {
+                // Found a declaration keyword
+                return true;
+            }
+
+            offset++;
+        }
+
+        return false;
+    }
+
     // Main declaration parsing entry point
     ParseResult<DeclarationNode> DeclarationParser::parse_declaration()
     {
@@ -33,6 +75,15 @@ namespace Myre
             return parse_function_declaration();
         }
 
+        if (ctx.check(TokenKind::New))
+        {
+            // Lookahead to confirm it's a constructor (has left paren)
+            if (ctx.peek(1).kind == TokenKind::LeftParen)
+            {
+                return parse_constructor_declaration();
+            }
+        }
+
         if (ctx.check(TokenKind::Type))
         {
             return parse_type_declaration();
@@ -43,8 +94,12 @@ namespace Myre
             return parse_enum_declaration();
         }
 
-        return ParseResult<DeclarationNode>::error(
-            create_error("Expected declaration"));
+        if (ctx.check(TokenKind::Var) || (ctx.check(TokenKind::Identifier) && ctx.peek().kind == TokenKind::Identifier))
+        {
+            return parse_variable_declaration();
+        }
+
+        return ParseResult<DeclarationNode>::none();
     }
 
     // Function declaration parsing
@@ -171,6 +226,111 @@ namespace Myre
         return ParseResult<DeclarationNode>::success(func_decl);
     }
 
+    ParseResult<DeclarationNode> DeclarationParser::parse_constructor_declaration()
+    {
+        auto &ctx = context();
+
+        // Store the 'new' keyword
+        auto *new_keyword = parser_->get_allocator().alloc<TokenNode>();
+        new_keyword->text = ctx.current().text;
+        new_keyword->contains_errors = false;
+        ctx.advance(); // consume 'new'
+
+        auto *ctor_decl = parser_->get_allocator().alloc<ConstructorDeclarationNode>();
+        ctor_decl->contains_errors = false;
+        ctor_decl->newKeyword = new_keyword;
+
+        // Parse opening paren
+        if (!ctx.check(TokenKind::LeftParen))
+        {
+            return ParseResult<DeclarationNode>::error(
+                create_error("Expected '(' after 'new' in constructor"));
+        }
+
+        auto *open_paren = parser_->get_allocator().alloc<TokenNode>();
+        open_paren->text = ctx.current().text;
+        open_paren->contains_errors = false;
+        ctor_decl->openParen = open_paren;
+        ctx.advance(); // consume '('
+
+        // Parse parameters (reuse existing parameter parsing logic)
+        std::vector<ParameterNode *> params;
+        while (!ctx.check(TokenKind::RightParen) && !ctx.at_end())
+        {
+            auto param_result = parse_parameter();
+            if (param_result.is_success())
+            {
+                params.push_back(param_result.get_node());
+            }
+            else
+            {
+                ctor_decl->contains_errors = true;
+                parser_->recover_to_safe_point(ctx);
+                if (ctx.check(TokenKind::RightParen))
+                    break;
+            }
+
+            if (ctx.check(TokenKind::Comma))
+            {
+                ctx.advance();
+            }
+            else if (!ctx.check(TokenKind::RightParen))
+            {
+                create_error("Expected ',' or ')' in parameter list");
+                ctor_decl->contains_errors = true;
+                break;
+            }
+        }
+
+        // Store parameters
+        if (!params.empty())
+        {
+            auto *param_array = parser_->get_allocator().alloc_array<ParameterNode *>(params.size());
+            for (size_t i = 0; i < params.size(); ++i)
+            {
+                param_array[i] = params[i];
+            }
+            ctor_decl->parameters.values = param_array;
+            ctor_decl->parameters.size = static_cast<int>(params.size());
+        }
+
+        // Parse closing paren
+        if (!ctx.check(TokenKind::RightParen))
+        {
+            create_error("Expected ')' after constructor parameters");
+            ctor_decl->contains_errors = true;
+            ctor_decl->closeParen = nullptr;
+        }
+        else
+        {
+            auto *close_paren = parser_->get_allocator().alloc<TokenNode>();
+            close_paren->text = ctx.current().text;
+            close_paren->contains_errors = false;
+            ctor_decl->closeParen = close_paren;
+            ctx.advance(); // consume ')'
+        }
+
+        // Parse constructor body
+        if (!ctx.check(TokenKind::LeftBrace))
+        {
+            return ParseResult<DeclarationNode>::error(
+                create_error("Expected '{' for constructor body"));
+        }
+
+        // Parse body (can reuse block statement parsing)
+        auto body_result = parser_->get_statement_parser().parse_block_statement();
+        if (body_result.is_success())
+        {
+            ctor_decl->body = static_cast<BlockStatementNode *>(body_result.get_node());
+        }
+        else
+        {
+            ctor_decl->contains_errors = true;
+        }
+
+        return ParseResult<DeclarationNode>::success(ctor_decl);
+    }
+
     // Type declaration parsing
     ParseResult<DeclarationNode> DeclarationParser::parse_type_declaration()
     {
@@ -179,7 +339,6 @@ namespace Myre
         // Store the type keyword token
         auto *type_keyword = parser_->get_allocator().alloc<TokenNode>();
         type_keyword->text = ctx.current().text;
-        type_keyword->tokenKind = TokenKind::Type;
         type_keyword->contains_errors = false;
 
         ctx.advance(); // consume 'type'
@@ -213,7 +372,6 @@ namespace Myre
         // Store the opening brace
         auto *open_brace = parser_->get_allocator().alloc<TokenNode>();
         open_brace->text = "{";
-        open_brace->tokenKind = TokenKind::LeftBrace;
         open_brace->contains_errors = false;
         type_decl->openBrace = open_brace;
 
@@ -221,7 +379,13 @@ namespace Myre
 
         while (!ctx.check(TokenKind::RightBrace) && !ctx.at_end())
         {
-            auto member_result = parse_type_member();
+            auto member_result = parse_declaration();
+
+            // consume semicolon if present
+            if (ctx.check(TokenKind::Semicolon))
+            {
+                ctx.advance();
+            }
 
             if (member_result.is_success())
             {
@@ -254,7 +418,6 @@ namespace Myre
             // Store the closing brace
             auto *close_brace = parser_->get_allocator().alloc<TokenNode>();
             close_brace->text = "}";
-            close_brace->tokenKind = TokenKind::RightBrace;
             close_brace->contains_errors = false;
             type_decl->closeBrace = close_brace;
         }
@@ -359,11 +522,11 @@ namespace Myre
 
         ctx.advance(); // consume 'using'
 
-        auto type_result = parser_->parse_type_expression();
+        auto type_result = parser_->parse_qualified_name();
         if (!type_result.is_success())
         {
             return ParseResult<StatementNode>::error(
-                create_error("Expected type name after 'using'"));
+                create_error("Expected qualified name after 'using'"));
         }
 
         auto *using_stmt = parser_->get_allocator().alloc<UsingDirectiveNode>();
@@ -412,93 +575,6 @@ namespace Myre
         // We'll return a wrapper node that contains the parameter list
         // For now, just return success to indicate we processed parameters
         return ParseResult<AstNode>::success(nullptr);
-    }
-
-    ParseResult<AstNode> DeclarationParser::parse_type_member()
-    {
-        auto &ctx = context();
-
-        // Check for access modifiers first
-        std::vector<ModifierKind> modifiers = parse_all_modifiers();
-
-        // Handle function declarations as type members
-        if (ctx.check(TokenKind::Fn))
-        {
-            auto func_result = parse_function_declaration();
-            if (func_result.is_success())
-            {
-                return ParseResult<AstNode>::success(func_result.get_node());
-            }
-            else
-            {
-                return ParseResult<AstNode>::error(func_result.get_error());
-            }
-        }
-
-        // Handle nested type declarations
-        if (ctx.check(TokenKind::Type))
-        {
-            auto type_result = parse_type_declaration();
-            if (type_result.is_success())
-            {
-                return ParseResult<AstNode>::success(type_result.get_node());
-            }
-            else
-            {
-                return ParseResult<AstNode>::error(type_result.get_error());
-            }
-        }
-
-        // Handle nested enum declarations
-        if (ctx.check(TokenKind::Enum))
-        {
-            auto enum_result = parse_enum_declaration();
-            if (enum_result.is_success())
-            {
-                return ParseResult<AstNode>::success(enum_result.get_node());
-            }
-            else
-            {
-                return ParseResult<AstNode>::error(enum_result.get_error());
-            }
-        }
-
-        // Handle var declarations: var name = value; or public static var name = value;
-        if (ctx.check(TokenKind::Var))
-        {
-            return parse_var_field_declaration(modifiers);
-        }
-
-        // Otherwise, assume explicit type field declaration
-        // Myre syntax: Type name; or public Type name1, name2;
-
-        // Use the typed variable declaration parser
-        auto typed_result = parse_typed_variable_declaration();
-        if (!typed_result.is_success())
-        {
-            return ParseResult<AstNode>::error(typed_result.get_error());
-        }
-
-        auto *var_decl = typed_result.get_node();
-
-        // Handle semicolon
-        if (context().check(TokenKind::Semicolon))
-        {
-            auto *semicolon = parser_->get_allocator().alloc<TokenNode>();
-            semicolon->tokenKind = TokenKind::Semicolon;
-            semicolon->text = context().current().text;
-            semicolon->contains_errors = false;
-            var_decl->semicolon = semicolon;
-            context().advance();
-        }
-        else
-        {
-            create_error("Expected ';' after variable declaration");
-            var_decl->contains_errors = true;
-        }
-
-        // Return VariableDeclarationNode directly - no wrapping needed
-        return ParseResult<AstNode>::success(var_decl);
     }
 
     ParseResult<EnumCaseNode> DeclarationParser::parse_enum_case()
@@ -675,30 +751,11 @@ namespace Myre
 
         while (true)
         {
-            if (ctx.check(TokenKind::Public))
+            auto token = ctx.current();
+            if (token.is_modifier())
             {
-                modifiers.push_back(ModifierKind::Public);
-                ctx.advance();
-            }
-            else if (ctx.check(TokenKind::Private))
-            {
-                modifiers.push_back(ModifierKind::Private);
-                ctx.advance();
-            }
-            else if (ctx.check(TokenKind::Protected))
-            {
-                modifiers.push_back(ModifierKind::Protected);
-                ctx.advance();
-            }
-            else if (ctx.check(TokenKind::Static))
-            {
-                modifiers.push_back(ModifierKind::Static);
-                ctx.advance();
-            }
-            else if (ctx.check(TokenKind::Ref))
-            {
-                modifiers.push_back(ModifierKind::Ref);
-                ctx.advance();
+                ctx.advance(); // consume modifier
+                modifiers.push_back(token.to_modifier_kind());
             }
             else
             {
@@ -709,34 +766,56 @@ namespace Myre
         return modifiers;
     }
 
-    ModifierKind DeclarationParser::parse_access_modifiers()
+    ParseResult<DeclarationNode> DeclarationParser::parse_namespace_declaration()
     {
         auto &ctx = context();
 
-        if (ctx.check(TokenKind::Public))
+        ctx.advance(); // consume 'namespace'
+
+        if (!ctx.check(TokenKind::Identifier))
         {
-            ctx.advance();
-            return ModifierKind::Public;
-        }
-        else if (ctx.check(TokenKind::Private))
-        {
-            ctx.advance();
-            return ModifierKind::Private;
-        }
-        else if (ctx.check(TokenKind::Protected))
-        {
-            ctx.advance();
-            return ModifierKind::Protected;
+            return ParseResult<DeclarationNode>::error(
+                create_error("Expected namespace name"));
         }
 
-        return ModifierKind::Private; // Default
-    }
+        // Set up name
+        auto name_node = parser_->parse_qualified_name();
+        if (name_node.is_error())
+        {
+            return ParseResult<DeclarationNode>::error(create_error("Failed to parse namespace name"));
+        }
 
-    // Placeholder implementations for complex features
-    ParseResult<DeclarationNode> DeclarationParser::parse_namespace_declaration()
-    {
-        return ParseResult<DeclarationNode>::error(
-            create_error("Namespace declarations not implemented yet"));
+        auto *namespace_decl = parser_->get_allocator().alloc<NamespaceDeclarationNode>();
+        namespace_decl->name = name_node.get_node();
+
+        // Parse namespace body
+        if (!ctx.check(TokenKind::LeftBrace))
+        {
+            // look for a semicolon instead because it may be a file-level namespace
+            if (parser_->match(TokenKind::Semicolon))
+            {
+                // File-level namespace, no body
+                return ParseResult<DeclarationNode>::success(namespace_decl);
+            }
+            else
+            {
+                return ParseResult<DeclarationNode>::error(
+                    create_error("Expected '{' for namespace body or ';' for file-scoped namespace"));
+            }
+        }
+
+        // use statement parser for block
+        auto body_result = parser_->get_statement_parser().parse_block_statement();
+        if (body_result.is_success())
+        {
+            namespace_decl->body = static_cast<BlockStatementNode *>(body_result.get_node());
+        }
+        else
+        {
+            namespace_decl->contains_errors = true;
+        }
+
+        return ParseResult<DeclarationNode>::success(namespace_decl);
     }
 
     ParseResult<AstNode> DeclarationParser::parse_generic_parameters()
@@ -751,24 +830,153 @@ namespace Myre
             create_error("Generic constraints not implemented yet"));
     }
 
-    // Unified variable declaration parsing - handles both "var name = value" syntax
-    ParseResult<VariableDeclarationNode> DeclarationParser::parse_variable_declaration()
+    // Helper method for parsing variable declarations in for-in context
+    ParseResult<StatementNode> DeclarationParser::parse_for_variable_declaration()
     {
         auto &ctx = context();
 
-        // Store the var keyword token
-        auto *var_keyword = parser_->get_allocator().alloc<TokenNode>();
-        var_keyword->text = ctx.current().text;
-        var_keyword->contains_errors = false;
+        // Check for 'var' keyword
+        if (ctx.check(TokenKind::Var))
+        {
+            // Store var keyword
+            auto *var_keyword = parser_->get_allocator().alloc<TokenNode>();
+            var_keyword->text = ctx.current().text;
+            var_keyword->location = ctx.current().location;
+            var_keyword->contains_errors = false;
 
-        ctx.advance(); // consume 'var'
+            ctx.advance(); // consume 'var'
+
+            if (!ctx.check(TokenKind::Identifier))
+            {
+                return ParseResult<StatementNode>::error(
+                    create_error("Expected identifier after 'var'"));
+            }
+
+            // Create a simplified variable declaration node
+            auto *var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
+            var_decl->varKeyword = var_keyword;
+            var_decl->type = nullptr; // var declarations don't have explicit type
+
+            // Store identifier in names array (single element)
+            auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
+            id_node->name = ctx.current().text;
+            id_node->location = ctx.current().location;
+            id_node->contains_errors = false;
+
+            auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(1);
+            names_array[0] = id_node;
+            var_decl->names.values = names_array;
+            var_decl->names.size = 1;
+
+            ctx.advance(); // consume identifier
+
+            // No initializer in for-in context
+            var_decl->initializer = nullptr;
+            var_decl->equalsToken = nullptr;
+            var_decl->semicolon = nullptr;
+            var_decl->contains_errors = false;
+
+            return ParseResult<StatementNode>::success(var_decl);
+        }
+
+        // Check for TypeName identifier pattern or just identifier
+        if (ctx.check(TokenKind::Identifier))
+        {
+            // Save position in case we need to backtrack
+            size_t saved_pos = ctx.position;
+
+            // Try to parse as type + identifier
+            auto type_result = parser_->parse_type_expression();
+            if (type_result.is_success() && ctx.check(TokenKind::Identifier))
+            {
+                // Create typed variable declaration
+                auto *var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
+                var_decl->varKeyword = nullptr;
+                var_decl->type = type_result.get_node();
+
+                // Store identifier in names array
+                auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
+                id_node->name = ctx.current().text;
+                id_node->location = ctx.current().location;
+                id_node->contains_errors = false;
+
+                auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(1);
+                names_array[0] = id_node;
+                var_decl->names.values = names_array;
+                var_decl->names.size = 1;
+
+                ctx.advance(); // consume identifier
+
+                var_decl->initializer = nullptr;
+                var_decl->equalsToken = nullptr;
+                var_decl->semicolon = nullptr;
+                var_decl->contains_errors = ast_has_errors(var_decl->type);
+
+                return ParseResult<StatementNode>::success(var_decl);
+            }
+
+            // Reset position if type parsing failed or no identifier follows
+            ctx.position = saved_pos;
+
+            // Treat as just an identifier reference (pre-declared variable)
+            auto *id_node = parser_->get_allocator().alloc<IdentifierNode>();
+            id_node->name = ctx.current().text;
+            id_node->location = ctx.current().location;
+            id_node->contains_errors = false;
+            ctx.advance(); // consume identifier
+
+            // Create an IdentifierExpressionNode for consistency
+            auto *id_expr = parser_->get_allocator().alloc<IdentifierExpressionNode>();
+            id_expr->identifier = id_node;
+            id_expr->contains_errors = false;
+
+            // Wrap in an expression statement to match StatementNode type
+            auto *expr_stmt = parser_->get_allocator().alloc<ExpressionStatementNode>();
+            expr_stmt->expression = id_expr;
+            expr_stmt->contains_errors = false;
+
+            return ParseResult<StatementNode>::success(expr_stmt);
+        }
+
+        return ParseResult<StatementNode>::error(
+            create_error("Expected variable declaration in for-in statement"));
+    }
+
+    ParseResult<DeclarationNode> DeclarationParser::parse_variable_declaration()
+    {
+        auto &ctx = context();
+        TokenNode *var_keyword = nullptr;
+        TypeNameNode *type = nullptr;
+        if (ctx.check(TokenKind::Var))
+        {
+            // Store the var keyword token
+            var_keyword = parser_->get_allocator().alloc<TokenNode>();
+            var_keyword->text = ctx.current().text;
+            var_keyword->contains_errors = false;
+
+            ctx.advance(); // consume 'var'
+        }
+        else if (ctx.check(TokenKind::Identifier) && ctx.peek().kind == TokenKind::Identifier)
+        {
+            // Typed variable declaration: Type name = value
+            auto type_name = parser_->parse_type_expression();
+            if (type_name.is_success())
+            {
+                type = type_name.get_node();
+            }
+        }
+        else
+        {
+            return ParseResult<DeclarationNode>::error(
+                create_error("Unsupported variable declaration syntax"));
+        }
 
         // Parse variable names (can be multiple: var x, y, z = 0)
         std::vector<IdentifierNode *> names;
 
         if (!ctx.check(TokenKind::Identifier))
         {
-            return ParseResult<VariableDeclarationNode>::error(
+            return ParseResult<DeclarationNode>::error(
                 create_error("Expected identifier after 'var'"));
         }
 
@@ -788,7 +996,7 @@ namespace Myre
 
             if (!ctx.check(TokenKind::Identifier))
             {
-                return ParseResult<VariableDeclarationNode>::error(
+                return ParseResult<DeclarationNode>::error(
                     create_error("Expected identifier after ','"));
             }
 
@@ -804,10 +1012,7 @@ namespace Myre
         auto *var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
         var_decl->contains_errors = false;
         var_decl->varKeyword = var_keyword;
-        var_decl->type = nullptr; // var declarations don't have explicit type
-
-        // Set both name and names fields
-        var_decl->name = first_name; // For single variable case
+        var_decl->type = type;
 
         // Allocate and populate names array
         auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(names.size());
@@ -850,151 +1055,7 @@ namespace Myre
         // Note: Semicolon handling is done by the caller
         var_decl->semicolon = nullptr;
 
-        return ParseResult<VariableDeclarationNode>::success(var_decl);
-    }
-
-    // Parse typed variable declaration: Type name1, name2 = value
-    ParseResult<VariableDeclarationNode> DeclarationParser::parse_typed_variable_declaration()
-    {
-        auto &ctx = context();
-
-        // Parse type first
-        auto type_result = parser_->parse_type_expression();
-        if (!type_result.is_success())
-        {
-            return ParseResult<VariableDeclarationNode>::error(
-                create_error("Expected type in variable declaration"));
-        }
-
-        // Parse variable names (can be multiple: i32 x, y, z;)
-        std::vector<IdentifierNode *> names;
-
-        if (!ctx.check(TokenKind::Identifier))
-        {
-            return ParseResult<VariableDeclarationNode>::error(
-                create_error("Expected variable name after type"));
-        }
-
-        // Parse first name
-        const Token &first_name_token = ctx.current();
-        ctx.advance();
-
-        auto *first_name = parser_->get_allocator().alloc<IdentifierNode>();
-        first_name->name = first_name_token.text;
-        first_name->contains_errors = false;
-        names.push_back(first_name);
-
-        // Parse additional names if comma-separated
-        while (ctx.check(TokenKind::Comma))
-        {
-            ctx.advance(); // consume comma
-
-            if (!ctx.check(TokenKind::Identifier))
-            {
-                return ParseResult<VariableDeclarationNode>::error(
-                    create_error("Expected identifier after ','"));
-            }
-
-            const Token &name_token = ctx.current();
-            ctx.advance();
-
-            auto *name_node = parser_->get_allocator().alloc<IdentifierNode>();
-            name_node->name = name_token.text;
-            name_node->contains_errors = false;
-            names.push_back(name_node);
-        }
-
-        auto *var_decl = parser_->get_allocator().alloc<VariableDeclarationNode>();
-        var_decl->contains_errors = false;
-        var_decl->varKeyword = nullptr; // No var keyword for typed declarations
-        var_decl->type = type_result.get_node();
-
-        // Set both name and names fields
-        var_decl->name = first_name; // For single variable case
-
-        // Allocate and populate names array
-        auto *names_array = parser_->get_allocator().alloc_array<IdentifierNode *>(names.size());
-        for (size_t i = 0; i < names.size(); ++i)
-        {
-            names_array[i] = names[i];
-        }
-        var_decl->names.values = names_array;
-        var_decl->names.size = static_cast<int>(names.size());
-
-        // Parse optional initializer
-        var_decl->equalsToken = nullptr;
-        var_decl->initializer = nullptr;
-
-        if (ctx.check(TokenKind::Assign))
-        {
-            auto *equals_token = parser_->get_allocator().alloc<TokenNode>();
-            equals_token->text = ctx.current().text;
-            equals_token->contains_errors = false;
-            var_decl->equalsToken = equals_token;
-            ctx.advance(); // consume '='
-
-            auto init_result = parser_->get_expression_parser().parse_expression();
-            if (init_result.is_success())
-            {
-                var_decl->initializer = init_result.get_node();
-            }
-            else
-            {
-                var_decl->contains_errors = true;
-            }
-        }
-
-        // Update error flag
-        bool has_errors = false;
-        if (var_decl->type && ast_has_errors(var_decl->type))
-            has_errors = true;
-        if (var_decl->initializer && ast_has_errors(var_decl->initializer))
-            has_errors = true;
-        var_decl->contains_errors = has_errors;
-
-        // Note: Semicolon handling is done by the caller
-        var_decl->semicolon = nullptr;
-
-        return ParseResult<VariableDeclarationNode>::success(var_decl);
-    }
-
-    // Parse var field declarations: var name = value; or static var name = value;
-    ParseResult<AstNode> DeclarationParser::parse_var_field_declaration(const std::vector<ModifierKind> &modifiers)
-    {
-        // Use the unified variable declaration parser
-        auto var_result = parse_variable_declaration();
-        if (!var_result.is_success())
-        {
-            return ParseResult<AstNode>::error(var_result.get_error());
-        }
-
-        auto *var_decl = var_result.get_node();
-
-        // For field declarations, initializer is required for var declarations
-        if (!var_decl->initializer)
-        {
-            return ParseResult<AstNode>::error(
-                create_error("Expected '=' in var field declaration"));
-        }
-
-        // Handle semicolon
-        if (context().check(TokenKind::Semicolon))
-        {
-            auto *semicolon = parser_->get_allocator().alloc<TokenNode>();
-            semicolon->text = context().current().text;
-            semicolon->contains_errors = false;
-            var_decl->semicolon = semicolon;
-            context().advance();
-        }
-        else
-        {
-            create_error("Expected ';' after var field declaration");
-            var_decl->contains_errors = true;
-        }
-
-        // Return the VariableDeclarationNode directly - no wrapping needed
-        // var declarations have the same syntax whether local or field
-        return ParseResult<AstNode>::success(var_decl);
+        return ParseResult<DeclarationNode>::success(var_decl);
     }
 
 } // namespace Myre

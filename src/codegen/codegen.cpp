@@ -48,14 +48,14 @@ void CodeGenerator::visit(LiteralExpressionNode* node) {
     }
     
     switch (node->kind) {
-        case LiteralKind::Integer: {
+        case LiteralKind::I32: {
             // Parse the integer value
             std::string text(node->token->text);
             int32_t value = std::stoi(text);
             current_value_ = builder_.emit_constant_i32(value);
             break;
         }
-        case LiteralKind::Boolean: {
+        case LiteralKind::Bool: {
             std::string text(node->token->text);
             bool value = (text == "true");
             current_value_ = builder_.emit_constant_bool(value);
@@ -76,9 +76,9 @@ void CodeGenerator::visit(IdentifierExpressionNode* node) {
     std::string name(node->name->name);
     
     // Look up variable in symbol table
-    Symbol* symbol = symbol_table_.lookup_symbol(name);
+    Symbol* symbol = symbolTable.lookup_symbol(name);
     if (!symbol || symbol->kind != Symbol::Variable) {
-        errors_.add_error(SemanticError::SymbolNotFound, "Variable not found: " + name);
+        errors.add_error(SemanticError::SymbolNotFound, "Variable not found: " + name);
         current_value_ = ValueRef::invalid();
         return;
     }
@@ -88,7 +88,7 @@ void CodeGenerator::visit(IdentifierExpressionNode* node) {
     if (var_ptr.is_valid()) {
         current_value_ = builder_.emit_load(var_ptr);
     } else {
-        errors_.add_error(SemanticError::SymbolNotFound, "Variable storage not found: " + name);
+        errors.add_error(SemanticError::SymbolNotFound, "Variable storage not found: " + name);
         current_value_ = ValueRef::invalid();
     }
 }
@@ -145,7 +145,7 @@ void CodeGenerator::visit(BinaryExpressionNode* node) {
             current_value_ = builder_.emit_or(left_val, right_val);
             break;
         default:
-            errors_.add_error(SemanticError::InvalidOperation, "Unsupported binary operator");
+            errors.add_error(SemanticError::InvalidOperation, "Unsupported binary operator");
             current_value_ = ValueRef::invalid();
             break;
     }
@@ -179,7 +179,7 @@ void CodeGenerator::visit(UnaryExpressionNode* node) {
             current_value_ = operand_val;
             break;
         default:
-            errors_.add_error(SemanticError::InvalidOperation, "Unsupported unary operator");
+            errors.add_error(SemanticError::InvalidOperation, "Unsupported unary operator");
             current_value_ = ValueRef::invalid();
             break;
     }
@@ -214,11 +214,11 @@ void CodeGenerator::visit(AssignmentExpressionNode* node) {
             builder_.emit_store(rhs_val, var_ptr);
             current_value_ = rhs_val;  // Assignment returns the assigned value
         } else {
-            errors_.add_error(SemanticError::SymbolNotFound, "Cannot assign to: " + name);
+            errors.add_error(SemanticError::SymbolNotFound, "Cannot assign to: " + name);
             current_value_ = ValueRef::invalid();
         }
     } else {
-        errors_.add_error(SemanticError::InvalidAssignment, "Invalid assignment target");
+        errors.add_error(SemanticError::InvalidAssignment, "Invalid assignment target");
         current_value_ = ValueRef::invalid();
     }
 }
@@ -232,7 +232,7 @@ void CodeGenerator::visit(CallExpressionNode* node) {
     // For now, only support identifier function calls
     auto* id_expr = node->callee->as<IdentifierExpressionNode>();
     if (!id_expr || !id_expr->name) {
-        errors_.add_error(SemanticError::NotCallable, "Invalid function call");
+        errors.add_error(SemanticError::NotCallable, "Invalid function call");
         current_value_ = ValueRef::invalid();
         return;
     }
@@ -240,9 +240,9 @@ void CodeGenerator::visit(CallExpressionNode* node) {
     std::string func_name(id_expr->name->name);
     
     // Look up function in symbol table
-    Symbol* func_symbol = symbol_table_.lookup_symbol(func_name);
+    Symbol* func_symbol = symbolTable.lookup_symbol(func_name);
     if (!func_symbol || func_symbol->kind != Symbol::Function) {
-        errors_.add_error(SemanticError::FunctionNotFound, "Function not found: " + func_name);
+        errors.add_error(SemanticError::FunctionNotFound, "Function not found: " + func_name);
         current_value_ = ValueRef::invalid();
         return;
     }
@@ -270,7 +270,7 @@ void CodeGenerator::visit(CallExpressionNode* node) {
 
 void CodeGenerator::visit(MemberAccessExpressionNode* node) {
     // Not implemented yet
-    errors_.add_error(SemanticError::InvalidOperation, "Member access not implemented");
+    errors.add_error(SemanticError::InvalidOperation, "Member access not implemented");
     current_value_ = ValueRef::invalid();
 }
 
@@ -452,24 +452,24 @@ void CodeGenerator::visit(ReturnStatementNode* node) {
 
 void CodeGenerator::visit(BreakStatementNode* node) {
     if (!in_loop_) {
-        errors_.add_error(SemanticError::BreakNotInLoop, "Break statement not in loop");
+        errors.add_error(SemanticError::BreakNotInLoop, "Break statement not in loop");
         return;
     }
     
     // For now, just emit unreachable - proper break handling needs loop context
     // This would need loop context tracking to jump to proper end labels
-    errors_.add_error(SemanticError::InvalidOperation, "Break statement not fully implemented");
+    errors.add_error(SemanticError::InvalidOperation, "Break statement not fully implemented");
 }
 
 void CodeGenerator::visit(ContinueStatementNode* node) {
     if (!in_loop_) {
-        errors_.add_error(SemanticError::ContinueNotInLoop, "Continue statement not in loop");
+        errors.add_error(SemanticError::ContinueNotInLoop, "Continue statement not in loop");
         return;
     }
     
     // For now, just emit unreachable - proper continue handling needs loop context
     // This would need loop context tracking to jump to proper increment/condition labels
-    errors_.add_error(SemanticError::InvalidOperation, "Continue statement not fully implemented");
+    errors.add_error(SemanticError::InvalidOperation, "Continue statement not fully implemented");
 }
 
 void CodeGenerator::visit(VariableDeclarationNode* node) {
@@ -478,9 +478,9 @@ void CodeGenerator::visit(VariableDeclarationNode* node) {
     std::string name(node->name->name);
     
     // Look up symbol for type information
-    Symbol* symbol = symbol_table_.lookup_symbol(name);
+    Symbol* symbol = symbolTable.lookup_symbol(name);
     if (!symbol) {
-        errors_.add_error(SemanticError::SymbolNotFound, "Variable symbol not found: " + name);
+        errors.add_error(SemanticError::SymbolNotFound, "Variable symbol not found: " + name);
         return;
     }
     
@@ -505,7 +505,7 @@ void CodeGenerator::visit(FunctionDeclarationNode* node) {
     current_function_ = nullptr;
     
     // Look up function symbol
-    Symbol* func_symbol = symbol_table_.lookup_symbol(func_name);
+    Symbol* func_symbol = symbolTable.lookup_symbol(func_name);
     if (func_symbol && func_symbol->kind == Symbol::Function) {
         current_function_ = func_symbol->type->as<FunctionType>();
     }

@@ -34,6 +34,7 @@ namespace Myre
         ParseResult<StatementNode> parse_while_statement();
         ParseResult<StatementNode> parse_for_statement();
         ParseResult<StatementNode> parse_for_in_statement();
+        ParseResult<StatementNode> parse_for_variable_declaration();
         ParseResult<StatementNode> parse_return_statement();
         ParseResult<StatementNode> parse_break_statement();
         ParseResult<StatementNode> parse_continue_statement();

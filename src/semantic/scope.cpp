@@ -3,7 +3,8 @@
 
 namespace Myre {
 
-SymbolPtr Scope::lookup(const std::string& name) {
+SymbolPtr Scope::lookup(const std::string& name)
+{
     auto it = symbols.find(name);
     if (it != symbols.end()) {
         return it->second;
@@ -23,6 +24,7 @@ bool Scope::define(SymbolPtr sym) {
     if (symbols.find(sym->name) != symbols.end()) {
         return false; // Already defined
     }
+    
     symbols[sym->name] = sym;
     return true;
 }
@@ -42,64 +44,81 @@ std::string Scope::get_full_name() const {
 std::string Scope::to_string(int indent) const {
     std::string indentStr(indent * 2, ' ');
     std::string result;
+
+    result += "\n";
+    result += indentStr + "{\n";
     
-    // Scope header
-    std::string kindStr;
-    switch (kind) {
-        case Global: kindStr = "Global"; break;
-        case Namespace: kindStr = "Namespace"; break;
-        case Type: kindStr = "Type"; break;
-        case Function: kindStr = "Function"; break;
-        case Block: kindStr = "Block"; break;
-    }
-    
-    result += indentStr + kindStr + " Scope";
-    if (!name.empty()) {
-        result += " '" + name + "'";
-    }
-    result += " {\n";
-    
-    // List symbols
+    // List symbols with cleaner formatting
     for (const auto& [symbolName, symbol] : symbols) {
-        result += indentStr + "  " + symbolName + ": ";
+        result += indentStr + "  ";
         
-        std::string kindStr;
-        switch (symbol->kind) {
-            case SymbolKind::Type: kindStr = "Type"; break;
-            case SymbolKind::Field: kindStr = "Field"; break;
-            case SymbolKind::Function: kindStr = "Function"; break;
-            case SymbolKind::Variable: kindStr = "Variable"; break;
-            case SymbolKind::Parameter: kindStr = "Parameter"; break;
-            case SymbolKind::Property: kindStr = "Property"; break;
-            case SymbolKind::Namespace: kindStr = "Namespace"; break;
-        }
-        result += kindStr;
-        
-        if (symbol->type) {
-            result += " : " + symbol->type->get_name();
+        // Format like test3.myre syntax
+        switch (symbol->kind)
+        {
+            case SymbolKind::Type:
+                result += "type " + symbolName;
+                // Show type members inline if they exist
+                if (auto* typeInfo = std::get_if<TypeInfo>(&symbol->data)) {
+                    if (typeInfo->body_scope && !typeInfo->body_scope->symbols.empty()) {
+                        result += typeInfo->body_scope->to_string(indent + 1);
+                    }
+                }
+                break;
+            case SymbolKind::Function:
+                result += "fn " + symbolName;
+                // Get function info from variant
+                if (auto* funcInfo = std::get_if<FunctionInfo>(&symbol->data)) {
+                    if (funcInfo->return_type) {
+                        result += ": " + funcInfo->return_type->get_name();
+                    }
+                    
+                    // Show function scope inline if it exists
+                    if (funcInfo->body_scope && !funcInfo->body_scope->symbols.empty())
+                    {
+                        result += funcInfo->body_scope->to_string(indent + 1);
+                    }
+                }
+                break;
+            case SymbolKind::Field:
+            case SymbolKind::Variable:
+            case SymbolKind::Parameter:
+            case SymbolKind::Property:
+                if (auto* varInfo = std::get_if<VariableInfo>(&symbol->data)) {
+                    if (varInfo->type) {
+                        result += varInfo->type->get_name() + " " + symbolName;
+                    } else {
+                        result += "var " + symbolName;
+                    }
+                } else {
+                    result += "unknown var " + symbolName;
+                }
+                break;
+            case SymbolKind::Namespace:
+
+                if (auto* nsInfo = std::get_if<NamespaceInfo>(&symbol->data)) {
+                    result += "namespace " + symbolName;
+                    if (nsInfo->scope && !nsInfo->scope->symbols.empty()) {
+                        result += nsInfo->scope->to_string(indent + 1);
+                    }
+                }
+                else
+                {
+                    result += "namespace " + symbolName;
+                }
+                break;
         }
         result += "\n";
     }
-    
-    result += indentStr + "}\n";
-    return result;
-}
 
-std::string Scope::to_string_recursive(int indent) const {
-    std::string result = to_string(indent);
-    
-    // Find and print child scopes by looking through all symbols for nested scopes
-    for (const auto& [name, symbol] : symbols) {
-        if (symbol->kind == SymbolKind::Type) {
-            // Get the type definition and print its member scope
-            if (auto typeDef = symbol->type->get_type_definition()) {
-                if (typeDef->member_scope && !typeDef->member_scope->symbols.empty()) {
-                    result += typeDef->member_scope->to_string_recursive(indent + 1);
-                }
-            }
-        }
+    // Also show unnamed child scopes (like block scopes)
+    for (const auto& childScope : unnamedChildren) {
+        result += indentStr + "  " + childScope->name + " ";
+        result += childScope->to_string(indent + 1);
+        result += "\n";
     }
-    
+
+    result += indentStr + "}";
+
     return result;
 }
 

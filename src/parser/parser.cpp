@@ -89,25 +89,14 @@ namespace Myre
     {
         auto &ctx = context_;
 
-        // Try parsing as declaration first (using, namespace, fn, type, enum)
-        if (ctx.check(TokenKind::Using) ||
-            ctx.check(TokenKind::Namespace) ||
-            ctx.check(TokenKind::Fn) ||
-            ctx.check(TokenKind::Type) ||
-            ctx.check(TokenKind::Enum) ||
-            ctx.check(TokenKind::Public) ||
-            ctx.check(TokenKind::Private) ||
-            ctx.check(TokenKind::Protected) ||
-            ctx.check(TokenKind::Static) ||
-            ctx.check(TokenKind::Ref))
+        if (ctx.check(TokenKind::Using))
         {
+            return decl_parser_->parse_using_directive();
+        }
 
-            // Handle using directive specially since it's a StatementNode
-            if (ctx.check(TokenKind::Using))
-            {
-                return decl_parser_->parse_using_directive();
-            }
-
+        // Try parsing as declaration first (using, namespace, fn, type, enum)
+        if (get_declaration_parser().check_declaration())
+        {
             auto decl_result = decl_parser_->parse_declaration();
 
             // DeclarationNode* is automatically StatementNode* due to inheritance
@@ -127,7 +116,7 @@ namespace Myre
             }
         }
 
-        // Otherwise parse as executable statement (var, if, while, for, expressions, etc.)
+        // Otherwise parse as executable statement (if, while, for, expressions, etc.)
         return get_statement_parser().parse_statement();
     }
 

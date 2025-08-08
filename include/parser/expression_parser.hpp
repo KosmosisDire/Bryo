@@ -33,6 +33,8 @@ namespace Myre
         ParseResult<ExpressionNode> parse_primary();
 
         // Literal parsing methods
+        ParseResult<ExpressionNode> parse_range_expression(ExpressionNode* left);
+        ParseResult<ExpressionNode> parse_prefix_range_expression();
         ParseResult<ExpressionNode> parse_integer_literal();
         ParseResult<ExpressionNode> parse_float_literal();
         ParseResult<ExpressionNode> parse_double_literal();

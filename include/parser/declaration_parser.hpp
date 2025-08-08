@@ -25,35 +25,31 @@ namespace Myre
         explicit DeclarationParser(Parser *parser);
 
         // Main declaration parsing entry point
+        bool check_declaration();
         ParseResult<DeclarationNode> parse_declaration();
 
         // Specific declaration type parsers
         ParseResult<DeclarationNode> parse_function_declaration();
+        ParseResult<DeclarationNode> parse_constructor_declaration();
         ParseResult<DeclarationNode> parse_type_declaration();
         ParseResult<DeclarationNode> parse_enum_declaration();
         ParseResult<StatementNode> parse_using_directive();
         ParseResult<DeclarationNode> parse_namespace_declaration();
 
         // Variable declaration parsing - used by both StatementParser and DeclarationParser
-        ParseResult<VariableDeclarationNode> parse_variable_declaration();
-        ParseResult<VariableDeclarationNode> parse_typed_variable_declaration();
+        ParseResult<DeclarationNode> parse_variable_declaration();
 
         // Supporting parsers
         ParseResult<AstNode> parse_parameter_list();
         ParseResult<ParameterNode> parse_parameter();
         ParseResult<ParameterNode> parse_enum_parameter();
-        ParseResult<AstNode> parse_type_member();
-        ParseResult<AstNode> parse_var_field_declaration(const std::vector<ModifierKind> &modifiers);
         ParseResult<EnumCaseNode> parse_enum_case();
         ParseResult<AstNode> parse_generic_parameters();
         ParseResult<AstNode> parse_generic_constraints();
+        ParseResult<StatementNode> parse_for_variable_declaration();
 
     private:
-        // Helper methods
-        ModifierKind parse_access_modifiers();
         std::vector<ModifierKind> parse_all_modifiers();
-        bool is_declaration_start();
-        ParseResult<AstNode> parse_member_declaration();
     };
 
 } // namespace Myre

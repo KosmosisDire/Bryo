@@ -72,32 +72,56 @@ type GameCharacter {
     }
 }
 
+type Item {
+    string name;
+    i32 cost;
+    i32 sellValue;
+
+    new(string n, i32 c, i32 s) {
+        name = n;
+        cost = c;
+        sellValue = s;
+    }
+
+    fn getName(): string {
+        return name;
+    }
+
+    fn getCost(): i32 {
+        return cost;
+    }
+
+    fn getSellValue(): i32 {
+        return sellValue;
+    }
+}
+
 type Shop {
     var gold = 100;
-    var items = 0;
-    var maxItems = 5;
-    
+    f64 maxItems = 5;
+    Item inventory;
+
     fn canAfford(i32 cost): bool {
         return gold >= cost;
     }
     
     fn hasSpace(): bool {
-        return items < maxItems;
+        return inventory.size() < maxItems;
     }
     
-    fn buyItem(i32 cost): bool {
-        if (canAfford(cost) && hasSpace()) {
-            gold = gold - cost;
-            items = items + 1;
+    fn buyItem(Item item): bool {
+        if (canAfford(item.getCost()) && hasSpace()) {
+            gold = gold - item.getCost();
+            inventory.push(item);
             return true;
         }
         return false;
     }
     
-    fn sellItem(i32 value): bool {
-        if (items > 0) {
-            gold = gold + value;
-            items = items - 1;
+    fn sellItem(): bool {
+        if (inventory.size() > 0) {
+            var item = inventory.pop();
+            gold = gold + item.getSellValue();
             return true;
         }
         return false;
@@ -109,23 +133,25 @@ type Shop {
     
     fn trade(): i32 {
         var profit = 0;
-        
+
         // Buy cheap items
-        if (buyItem(20)) {
-            profit = profit - 20;
+        var potion = new Item("Potion", 20, 35);
+        if (buyItem(potion)) {
+            profit = profit - potion.getCost();
         }
         
-        if (buyItem(25)) {
-            profit = profit - 25;
+        var sword = new Item("Sword", 25, 40);
+        if (buyItem(sword)) {
+            profit = profit - sword.getCost();
         }
         
-        // Sell for higher price
-        if (sellItem(35)) {
-            profit = profit + 35;
+        // Sell items for higher price
+        if (sellItem()) {
+            profit = profit + 35; // from potion
         }
         
-        if (sellItem(40)) {
-            profit = profit + 40;
+        if (sellItem()) {
+            profit = profit + 40; // from sword
         }
         
         return profit;
@@ -142,31 +168,34 @@ fn main(): i32 {
     var initialHealth = character.getHealth();
     totalScore = totalScore + initialHealth;  // +100
     
-    // Test combat with member function calls
+    // Test combat
     var combatDamage = character.combatRound();
     totalScore = totalScore + combatDamage;
     
-    // Test healing after combat
+    // Heal
     if (character.isAlive()) {
         var healResult = character.heal(30);
         totalScore = totalScore + healResult;
     }
     
-    // Test shop trading
+    // Shop trading
     var shopProfit = shop.trade();
     totalScore = totalScore + shopProfit;
     
     var finalGold = shop.getGold();
     totalScore = totalScore + finalGold;
     
-    // Test more combat if character is alive
-    if (character.isAlive()) {
-        var secondCombat = character.combatRound();
-        totalScore = totalScore + secondCombat;
-        
-        // Final health check
-        var finalHealth = character.getHealth();
-        totalScore = totalScore + finalHealth;
+    // More combat
+    if (character.isAlive())
+    {
+        for (var i in 0..10 by 2 at var i)
+        {
+            var secondCombat = character.combatRound();
+            totalScore = totalScore + secondCombat;
+            
+            var finalHealth = character.getHealth();
+            totalScore = totalScore + finalHealth;
+        }
     }
     
     return totalScore;

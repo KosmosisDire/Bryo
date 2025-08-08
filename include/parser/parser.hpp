@@ -107,6 +107,25 @@ namespace Myre
             return position >= tokens_.size() || (position < tokens_.size() && current().kind == TokenKind::EndOfFile);
         }
 
+        int check_until(TokenKind find, std::vector<TokenKind> stop_kinds = {}, int max_offset = 20)
+        {
+            size_t offset = 0;
+            while (offset < max_offset)
+            {
+                if (at_end())
+                    return -1;
+
+                const Token &token = peek(offset);
+                if (token.kind == find)
+                    return offset;
+
+                if (token.is_eof() || std::find(stop_kinds.begin(), stop_kinds.end(), token.kind) != stop_kinds.end())
+                    return -1;
+
+                offset++;
+            }
+        }
+
     private:
         // Static EOF token to avoid repeated allocation
         static const Token &eof_token()
@@ -188,7 +207,7 @@ namespace Myre
                     kind == TokenKind::For)          // For statement
                 { 
                     // Skip semicolon, but stop at other safe points
-                    if (kind == TokenKind::Semicolon)
+                    if (kind == TokenKind::Semicolon || kind == TokenKind::RightBrace)
                         context.advance();
                     break;
                 }
@@ -220,26 +239,71 @@ namespace Myre
             return false;
         }
 
-        // Type parsing helper
-        ParseResult<TypeNameNode> parse_type_expression()
+        ParseResult<QualifiedNameNode> parse_qualified_name()
         {
             if (!context_.check(TokenKind::Identifier))
             {
-                return ParseResult<TypeNameNode>::error(
-                    create_error("Expected type name"));
+                return ParseResult<QualifiedNameNode>::error(create_error("Expected identifier"));
             }
 
-            const Token &type_token = context_.current();
-            context_.advance();
+            auto *name = allocator_.alloc<QualifiedNameNode>();
+            name->contains_errors = false;
+
+            std::vector<IdentifierNode*> identifiers;
+
+            // Parse first identifier
+            while (true)
+            {
+                if (!context_.check(TokenKind::Identifier))
+                {
+                    name->contains_errors = true;
+                    diagnostics_.add(Diagnostic{"Expected identifier in type name", context_.current().location});
+                    break;
+                }
+
+                const Token &id_token = context_.current();
+                context_.advance();
+
+                auto *identifier = allocator_.alloc<IdentifierNode>();
+                identifier->name = id_token.text;
+                identifier->contains_errors = false;
+                identifiers.push_back(identifier);
+
+                // If next token is '.', continue parsing next identifier
+                if (context_.check(TokenKind::Dot))
+                {
+                    context_.advance(); // consume '.'
+                    continue;
+                }
+                break;
+            }
+
+            // allocate sized array for identifiers
+            name->identifiers.values = allocator_.alloc_array<IdentifierNode*>(identifiers.size());
+            name->identifiers.size = static_cast<int>(identifiers.size());
+            for (size_t i = 0; i < identifiers.size(); ++i)
+            {
+                name->identifiers.values[i] = identifiers[i];
+            }
+
+            return ParseResult<QualifiedNameNode>::success(name);
+        }
+
+        // Type parsing helper
+        ParseResult<TypeNameNode> parse_type_expression()
+        {
+            // Parse qualified name
+            auto qname_result = parse_qualified_name();
+            if (qname_result.is_error())
+            {
+                return ParseResult<TypeNameNode>::error(create_error("Expected type name"));
+            }
 
             auto *type_name = allocator_.alloc<TypeNameNode>();
-            type_name->tokenKind = type_token.kind;
             type_name->contains_errors = false;
-            auto *identifier = allocator_.alloc<IdentifierNode>();
-            identifier->tokenKind = TokenKind::Identifier;
-            identifier->name = type_token.text;
-            identifier->contains_errors = false;
-            type_name->identifier = identifier;
+            type_name->name = qname_result.get_node();
+            type_name->location = type_name->name->location;
+            type_name->contains_errors = type_name->name->contains_errors;
 
             // Check for array type suffix []
             if (context_.check(TokenKind::LeftBracket))
@@ -263,7 +327,6 @@ namespace Myre
 
                     // Create ArrayTypeNameNode
                     auto *array_type = allocator_.alloc<ArrayTypeNameNode>();
-                    array_type->tokenKind = TokenKind::Identifier;
                     array_type->contains_errors = false;
                     array_type->elementType = type_name;
 
@@ -290,7 +353,7 @@ namespace Myre
         // Direct error creation for helper parsers
         ErrorNode *create_error(const char *msg)
         {
-            auto error = ErrorNode::create(msg, context_.current(), allocator_);
+            auto error = ErrorNode::create(msg, context_.current().location, allocator_);
             diagnostics_.add(Diagnostic::from_error_node(error));
             return error;
         }

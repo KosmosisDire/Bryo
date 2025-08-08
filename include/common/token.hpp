@@ -18,13 +18,13 @@ namespace Myre
         Invalid,
 
         // Literals
-        IntegerLiteral,
-        LongLiteral,
-        FloatLiteral,
-        DoubleLiteral,
-        StringLiteral,
-        CharLiteral,
-        BooleanLiteral,
+        LiteralI32,
+        LiteralI64,
+        LiteralF32,
+        LiteralF64,
+        LiteralString,
+        LiteralChar,
+        LiteralBool,
         Null,
 
         // Identifiers and keywords
@@ -277,13 +277,13 @@ namespace Myre
     enum class LiteralKind
     {
         Invalid = (int)TokenKind::Invalid,
-        Integer = (int)TokenKind::IntegerLiteral,
-        Long = (int)TokenKind::LongLiteral,
-        Float = (int)TokenKind::FloatLiteral,
-        Double = (int)TokenKind::DoubleLiteral,
-        String = (int)TokenKind::StringLiteral,
-        Char = (int)TokenKind::CharLiteral,
-        Boolean = (int)TokenKind::BooleanLiteral,
+        I32 = (int)TokenKind::LiteralI32,
+        I64 = (int)TokenKind::LiteralI64,
+        F32 = (int)TokenKind::LiteralF32,
+        F64 = (int)TokenKind::LiteralF64,
+        String = (int)TokenKind::LiteralString,
+        Char = (int)TokenKind::LiteralChar,
+        Bool = (int)TokenKind::LiteralBool,
         Null = (int)TokenKind::Null,
     };
 
@@ -579,8 +579,27 @@ namespace Myre
 
     inline std::string_view to_string(LiteralKind kind)
     {
-        auto name = magic_enum::enum_name(kind);
-        return name.empty() ? "unknown literal" : name;
+        switch (kind)
+        {
+        case LiteralKind::Invalid:
+            return "invalid";
+        case LiteralKind::I32:
+            return "i32";
+        case LiteralKind::I64:
+            return "i64";
+        case LiteralKind::F32:
+            return "f32";
+        case LiteralKind::F64:
+            return "f64";
+        case LiteralKind::String:
+            return "string";
+        case LiteralKind::Char:
+            return "char";
+        case LiteralKind::Bool:
+            return "bool";
+        case LiteralKind::Null:
+            return "null";
+        }
     }
 
     // Main token structure with absolute position and relative trivia
@@ -888,13 +907,13 @@ namespace Myre
             switch (kind)
             {
             // Literals
-            case TokenKind::IntegerLiteral:
-            case TokenKind::LongLiteral:
-            case TokenKind::FloatLiteral:
-            case TokenKind::DoubleLiteral:
-            case TokenKind::StringLiteral:
-            case TokenKind::CharLiteral:
-            case TokenKind::BooleanLiteral:
+            case TokenKind::LiteralI32:
+            case TokenKind::LiteralI64:
+            case TokenKind::LiteralF32:
+            case TokenKind::LiteralF64:
+            case TokenKind::LiteralString:
+            case TokenKind::LiteralChar:
+            case TokenKind::LiteralBool:
             case TokenKind::Null:
             // Identifiers and keywords
             case TokenKind::Identifier:
@@ -1031,7 +1050,7 @@ namespace Myre
             {"in", TokenKind::In},
             {"at", TokenKind::At},
             {"by", TokenKind::By},
-            {"true", TokenKind::BooleanLiteral},
-            {"false", TokenKind::BooleanLiteral}};
+            {"true", TokenKind::LiteralBool},
+            {"false", TokenKind::LiteralBool}};
 
 } // namespace Myre
