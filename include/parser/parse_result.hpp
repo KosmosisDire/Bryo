@@ -1,92 +1,67 @@
 #pragma once
+
 #include "ast/ast.hpp"
-#include <type_traits>
-#include <variant>
 
 namespace Myre
 {
-    template <typename T>
+    // Simplified ParseResult - just success or failure
+    // ErrorNodes are created in the AST for failures
+    template<typename T>
     struct ParseResult
-    {
-        static_assert(std::is_base_of_v<AstNode, T>, "T must derive from AstNode");
-
-        enum class State
-        {
-            Success,
-            Error,
-            Fatal,
-            None
-        };
-
-        union
-        {
-            std::monostate none_node;
-            T *success_node;
-            ErrorNode *error_node;
-        };
-        State state;
-
-        // Factory methods - no casting, type-safe by construction
-        static ParseResult<T> success(T *node)
-        {
-            ParseResult result;
-            result.success_node = node;
-            result.state = State::Success;
-            return result;
-        }
-
-        static ParseResult<T> error(Myre::ErrorNode *error)
-        {
-            ParseResult result;
-            result.error_node = error;
-            result.state = State::Error;
-            return result;
-        }
-
-        static ParseResult<T> fatal()
-        {
-            ParseResult result;
-            result.state = State::Fatal;
-            return result;
-        }
-
-        static ParseResult<T> none()
-        {
-            ParseResult result;
-            result.none_node = std::monostate();
-            result.state = State::None;
-            return result;
-        }
-
+    {        
+        T* node = nullptr;
+        
+        // Factory methods
+        static ParseResult ok(T* n) { return ParseResult{n}; }
+        static ParseResult fail() { return ParseResult{nullptr}; }
+        
         // Query methods
-        bool is_success() const { return state == State::Success; }
-        bool is_error() const { return state == State::Error; }
-        bool is_fatal() const { return state == State::Fatal; }
+        bool success() const { return node != nullptr; }
+        bool failed() const { return node == nullptr; }
+        
+        // Convenient operators
+        operator bool() const { return success(); }
+        T* operator->() const { return node; }
+        T* get() const { return node; }
 
-        // Safe access - compiler guarantees correct types
-        T *get_node() const
-        {
-            return is_success() ? success_node : nullptr;
-        }
-
-        ErrorNode *get_error() const
-        {
-            return is_error() ? error_node : nullptr;
-        }
-
-        // AST integration - static_assert ensures T derives from AstNode
-        AstNode *get_ast_node() const
-        {
-            switch (state)
-            {
-            case State::Success:
-                return success_node; // T* → AstNode* (guaranteed safe)
-            case State::Error:
-                return error_node; // ErrorNode* → AstNode* (guaranteed safe)
-            case State::Fatal:
-                return nullptr;
+        template <typename AsType>
+        ParseResult<AsType> as() const {
+            if (node) {
+                return ParseResult<AsType>::ok(static_cast<AsType*>(node));
             }
-            return nullptr;
+            return ParseResult<AsType>::fail();
         }
+        
+        // Get node with specific type or create error node
+        template<typename Parser>
+        T* get_or_error(const char* msg, Parser* parser) {
+            if (node) return node;
+            return reinterpret_cast<T*>(parser->create_error_node(msg));
+        }
+    };
+    
+    // Helper struct for variable patterns
+    struct TypedIdentifier {
+        TypeNameNode* type;
+        IdentifierNode* name;
+        
+        static ParseResult<TypedIdentifier> ok(TypeNameNode* t, IdentifierNode* n) {
+            auto* result = new TypedIdentifier{t, n};
+            return ParseResult<TypedIdentifier>{reinterpret_cast<TypedIdentifier*>(result)};
+        }
+    };
+    
+    // Variable pattern types
+    enum class VarPattern {
+        TYPED,      // Type identifier
+        VAR,        // var identifier  
+        IDENTIFIER  // just identifier (existing variable)
+    };
+    
+    struct VariablePattern {
+        VarPattern pattern;
+        TypeNameNode* type = nullptr;
+        IdentifierNode* name = nullptr;
+        TokenNode* varKeyword = nullptr;
     };
 }

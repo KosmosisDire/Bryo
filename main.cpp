@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
     logger.set_console_level(LogLevel::TRACE);
 
     Compiler compiler;
-    auto source = read_file("../test2.myre");
+    auto source = read_file("../basic_enum_prop.myre");
     compiler.compile(source);
     
 

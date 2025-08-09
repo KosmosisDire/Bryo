@@ -21,34 +21,32 @@ void Compiler::compile(const std::string& source_file)
 
     auto parser = Parser(tokens);
     auto ast = parser.parse();
-
-    if (parser.diag.size() > 0)
-    {
-        LOG_HEADER("Parser errors encountered:", LogCategory::COMPILER);
-        parser.diag.print();
-    }
-
-    if (ast.is_error())
-    {
-        LOG_ERROR("Failed to parse source file", LogCategory::COMPILER);
-        return;
-    }
     
     AstPrinter printer;
-    printer.visit(ast.get_node());
+    printer.visit(ast.get());
 
     AstToCodePrinter code_printer;
-    code_printer.visit(ast.get_node());
+    code_printer.visit(ast.get());
     code_printer.get_result();
 
     SymbolTable symbol_table;
     DeclarationCollector collector(symbol_table);
 
-    auto* unit = ast.get_node();
+    auto* unit = ast.get();
     if (!unit)
     {
         std::cout << "Invalid AST: expected CompilationUnitNode\n";
         return;
+    }
+
+    auto parsing_errs = parser.get_errors();
+    if (!parsing_errs.empty())
+    {
+        LOG_HEADER("Parser errors encountered:", LogCategory::COMPILER);
+        for (const auto& error : parsing_errs)
+        {
+            LOG_ERROR(error.location.start.to_string() + ": " + error.message, LogCategory::COMPILER);
+        }
     }
 
     collector.collect(unit);
@@ -73,4 +71,13 @@ void Compiler::compile(const std::string& source_file)
     //     std::cerr << "Error: No commands generated from AST" << std::endl;
     //     return 1;
     // }
+
+    if (!parsing_errs.empty())
+    {
+        LOG_HEADER("Parser errors encountered:", LogCategory::COMPILER);
+        for (const auto& error : parsing_errs)
+        {
+            LOG_ERROR(error.location.start.to_string() + ": " + error.message, LogCategory::COMPILER);
+        }
+    }
 }

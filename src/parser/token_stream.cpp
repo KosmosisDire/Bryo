@@ -1,129 +1,131 @@
 #include "parser/token_stream.hpp"
 #include <algorithm>
-#include <sstream>
 #include <stdexcept>
+#include <sstream>
 #include <iomanip>
-#include <iostream>
 
 namespace Myre
 {
-    const Token &TokenStream::current() const
-    {
+    const Token& TokenStream::current() const {
         ensure_valid_position();
         return tokens_[position_];
     }
-
-    const Token &TokenStream::peek(int offset) const
-    {
-        if (offset < 0)
-        {
+    
+    const Token& TokenStream::peek(int offset) const {
+        if (offset < 0) {
             // Handle negative offsets (looking backward)
-            if (static_cast<size_t>(-offset) > position_)
-            {
-                // Would go before the beginning, return first token
+            size_t back_offset = static_cast<size_t>(-offset);
+            if (back_offset > position_) {
                 return tokens_[0];
             }
-            return tokens_[position_ - static_cast<size_t>(-offset)];
+            return tokens_[position_ - back_offset];
         }
-
+        
         size_t target_pos = position_ + static_cast<size_t>(offset);
-        if (target_pos >= tokens_.size())
-        {
-            // Return last token (should be EOF) if position is beyond available tokens
-            return tokens_.back();
+        if (target_pos >= tokens_.size()) {
+            return tokens_.back(); // Return EOF token
         }
-
         return tokens_[target_pos];
     }
-
-    void TokenStream::advance()
-    {
-        if (!at_end())
-        {
+    
+    const Token& TokenStream::previous() const {
+        if (position_ == 0) {
+            return tokens_[0];
+        }
+        return tokens_[position_ - 1];
+    }
+    
+    void TokenStream::advance() {
+        if (!at_end()) {
             position_++;
         }
     }
-
-    bool TokenStream::match(TokenKind kind)
-    {
-        if (check(kind))
-        {
+    
+    bool TokenStream::at_end() const {
+        return position_ >= tokens_.size() || 
+               (position_ < tokens_.size() && tokens_[position_].kind == TokenKind::EndOfFile);
+    }
+    
+    bool TokenStream::check(TokenKind kind) const {
+        if (at_end()) return false;
+        return current().kind == kind;
+    }
+    
+    bool TokenStream::check_any(std::initializer_list<TokenKind> kinds) const {
+        if (at_end()) return false;
+        TokenKind current_kind = current().kind;
+        return std::any_of(kinds.begin(), kinds.end(), 
+            [current_kind](TokenKind k) { return k == current_kind; });
+    }
+    
+    bool TokenStream::check_sequence(std::initializer_list<TokenKind> sequence) const {
+        size_t offset = 0;
+        for (TokenKind kind : sequence) {
+            if (peek(offset).kind != kind) {
+                return false;
+            }
+            offset++;
+        }
+        return true;
+    }
+    
+    bool TokenStream::consume(TokenKind kind) {
+        if (check(kind)) {
             advance();
             return true;
         }
         return false;
     }
-
-    bool TokenStream::match(std::initializer_list<TokenKind> kinds)
-    {
-        for (TokenKind kind : kinds)
-        {
-            if (match(kind))
-            {
-                return true;
-            }
+    
+    bool TokenStream::consume_any(std::initializer_list<TokenKind> kinds) {
+        if (check_any(kinds)) {
+            advance();
+            return true;
         }
         return false;
     }
-
-    bool TokenStream::at_end() const
-    {
-
-        return position_ >= tokens_.size() ||
-               (position_ < tokens_.size() && tokens_[position_].kind == TokenKind::EndOfFile);
+    
+    TokenKind TokenStream::consume_any_get(std::initializer_list<TokenKind> kinds) {
+        if (at_end()) return TokenKind::EndOfFile;
+        
+        TokenKind current_kind = current().kind;
+        if (std::any_of(kinds.begin(), kinds.end(), 
+            [current_kind](TokenKind k) { return k == current_kind; })) {
+            advance();
+            return current_kind;
+        }
+        return TokenKind::EndOfFile;
     }
-
-    SourceRange TokenStream::location() const
-    {
+    
+    void TokenStream::skip_to(TokenKind kind) {
+        while (!at_end() && !check(kind)) {
+            advance();
+        }
+    }
+    
+    void TokenStream::skip_to_any(std::initializer_list<TokenKind> kinds) {
+        while (!at_end() && !check_any(kinds)) {
+            advance();
+        }
+    }
+    
+    void TokenStream::skip_past(TokenKind kind) {
+        skip_to(kind);
+        if (check(kind)) {
+            advance();
+        }
+    }
+    
+    SourceRange TokenStream::location() const {
         ensure_valid_position();
         return tokens_[position_].location;
     }
-
-    bool TokenStream::check(TokenKind kind) const
-    {
-        return current().kind == kind;
-    }
-
-    bool TokenStream::check(std::initializer_list<TokenKind> kinds) const
-    {
-        TokenKind current_kind = current().kind;
-        for (TokenKind kind : kinds)
-        {
-            if (current_kind == kind)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool TokenStream::check_until(TokenKind kind, std::initializer_list<TokenKind> until) const
-    {
-        int offset = 0;
-        while (!at_end())
-        {
-            const Token &token = peek(offset);
-            if (token.kind == kind)
-            {
-                return true; // Found the target token
-            }
-            if (std::find(until.begin(), until.end(), token.kind) != until.end())
-            {
-                return false; // Found an "until" token, stop checking
-            }
-            offset++;
-        }
-        return false;
-    }
-
-    void TokenStream::ensure_valid_position() const
-    {
-        if (tokens_.empty())
-        {
+    
+    void TokenStream::ensure_valid_position() const {
+        if (tokens_.empty()) {
             throw std::runtime_error("TokenStream is empty");
         }
-        if (position_ >= tokens_.size())
-        {
+        if (position_ >= tokens_.size()) {
             throw std::runtime_error("TokenStream position out of bounds");
         }
     }

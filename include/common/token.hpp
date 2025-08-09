@@ -348,7 +348,7 @@ namespace Myre
         case TokenKind::RightShiftAssign:
             return ">>=";
         case TokenKind::NullCoalesceAssign:
-            return "??=";
+            return "?\?=";
 
         // Operators - Comparison
         case TokenKind::Equal:
@@ -562,7 +562,7 @@ namespace Myre
         case AssignmentOperatorKind::RightShift:
             return ">>=";
         case AssignmentOperatorKind::Coalesce:
-            return "??=";
+            return "?\?=";
         default:
         {
             auto name = magic_enum::enum_name(kind);
@@ -600,6 +600,8 @@ namespace Myre
         case LiteralKind::Null:
             return "null";
         }
+
+        return "unknown literal";
     }
 
     // Main token structure with absolute position and relative trivia

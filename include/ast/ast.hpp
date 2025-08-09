@@ -742,12 +742,11 @@ namespace Myre
     struct PropertyDeclarationNode : MemberDeclarationNode
     {
         AST_TYPE(PropertyDeclarationNode, MemberDeclarationNode)
-        // name inherited from DeclarationNode
-        TokenNode* colon;
-        TokenNode* propKeyword; // optional for full syntax
+        TokenNode* varKeyword;
         TypeNameNode* type;
         TokenNode* arrow; // optional for expression-bodied getter
         ExpressionNode* getterExpression; // for => syntax
+        TokenNode* semicolon; // for => syntax
         TokenNode* openBrace; // optional for accessor block
         SizedArray<PropertyAccessorNode*> accessors;
         TokenNode* closeBrace; // optional

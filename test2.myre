@@ -73,9 +73,10 @@ type GameCharacter {
 }
 
 type Item {
-    string name;
+    var name = "test";
     i32 cost;
     i32 sellValue;
+    f64 testing = 10;
 
     new(string n, i32 c, i32 s) {
         name = n;
@@ -157,6 +158,8 @@ type Shop {
         return profit;
     }
 }
+
+var testVar = 100;
 
 fn main(): i32 {
     var character = new GameCharacter();
