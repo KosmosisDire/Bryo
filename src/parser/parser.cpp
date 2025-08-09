@@ -116,7 +116,7 @@ namespace Myre
 
         if (tokens.check(TokenKind::For))
         {
-            if (tokens.check(Tok(TokenKind::For), OnePlus(Any()), Tok(TokenKind::In)))
+            if (tokens.check_until(TokenKind::In, {TokenKind::RightParen, TokenKind::Semicolon, TokenKind::RightBrace, TokenKind::LeftBrace }))
             {
                 return parse_for_in_statement();
             }

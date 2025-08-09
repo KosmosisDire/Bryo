@@ -66,28 +66,6 @@ namespace Myre
         return false;
     }
 
-
-    bool TokenStream::check_list(const std::vector<PatternPtr> &patterns)
-    {
-        size_t offset = 0;
-        for (size_t i = 0; i < patterns.size(); ++i)
-        {
-            // Create remaining patterns vector
-            std::vector<PatternPtr> remaining;
-            for (size_t j = i + 1; j < patterns.size(); ++j)
-            {
-                remaining.push_back(patterns[j]);
-            }
-
-            if (!patterns[i]->match(*this, offset, remaining))
-            {
-                return false;
-            }
-        }
-        position_ += offset;
-        return true;
-    }
-
     bool TokenStream::at_end() const
     {
 
@@ -115,6 +93,25 @@ namespace Myre
             {
                 return true;
             }
+        }
+        return false;
+    }
+
+    bool TokenStream::check_until(TokenKind kind, std::initializer_list<TokenKind> until) const
+    {
+        int offset = 0;
+        while (!at_end())
+        {
+            const Token &token = peek(offset);
+            if (token.kind == kind)
+            {
+                return true; // Found the target token
+            }
+            if (std::find(until.begin(), until.end(), token.kind) != until.end())
+            {
+                return false; // Found an "until" token, stop checking
+            }
+            offset++;
         }
         return false;
     }

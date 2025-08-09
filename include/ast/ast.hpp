@@ -92,32 +92,9 @@ namespace Myre
     struct RangeExpressionNode;
     struct FieldKeywordExpressionNode;
     struct ValueKeywordExpressionNode;
+    const char* get_type_name_from_id(uint8_t typeId);
 
-
-    // --- SizedArray Utility ---
-    // A simple, non-owning array view for collections of AST nodes.
-    // Memory is managed by the AstAllocator.
-    template <typename T>
-    struct SizedArray
-    {
-        T* values;
-        int size;
-
-        SizedArray() : values(nullptr), size(0) {}
-
-        T& operator[](int index) const {
-            // Add assertion for bounds checking in debug builds
-            return values[index];
-        }
-
-        T* begin() const { return values; }
-        T* end() const { return values + size; }
-        bool empty() const { return size == 0; }
-        T back() const { return values[size - 1]; }
-    };
-
-
-    // --- Enhanced Structural Visitor ---
+    
     // The base class for all AST traversal and analysis passes.
     // Now includes type-safe error handling capabilities.
     class StructuralVisitor
@@ -204,7 +181,27 @@ namespace Myre
         virtual void visit(CompilationUnitNode* node);
     };
 
-    const char* get_type_name_from_id(uint8_t typeId);
+    // A non-owning array view for collections of AST nodes.
+    // Memory is managed by the AstAllocator.
+    template <typename T>
+    struct SizedArray
+    {
+        T* values;
+        int size;
+
+        SizedArray() : values(nullptr), size(0) {}
+
+        T& operator[](int index) const {
+            // Add assertion for bounds checking in debug builds
+            return values[index];
+        }
+
+        T* begin() const { return values; }
+        T* end() const { return values + size; }
+        bool empty() const { return size == 0; }
+        T back() const { return values[size - 1]; }
+    };
+
 
     // --- Base AST Node ---
     struct AstNode
