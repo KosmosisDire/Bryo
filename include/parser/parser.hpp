@@ -11,11 +11,6 @@
 namespace Myre
 {
 
-    // Forward declarations for helper parsers
-    class ExpressionParser;
-    class StatementParser;
-    class DeclarationParser;
-
     // Diagnostic collection for error reporting
     struct Diagnostic
     {
@@ -61,139 +56,26 @@ namespace Myre
         }
     };
 
-    // High-performance ParseContext with RAII guards
-    class ParseContext
-    {
-    private:
-        TokenStream &tokens_;
-        bool in_loop_context_;
-        bool in_function_context_;
-
-    public:
-        size_t position; // Public for recovery progress checking
-
-        ParseContext(TokenStream &t)
-            : tokens_(t), position(0), in_loop_context_(false), in_function_context_(false) {}
-
-        // Hot path methods - zero overhead
-        void advance()
-        {
-            if (position < tokens_.size())
-            {
-                position++;
-            }
-        }
-
-        const Token &current() const
-        {
-            return position < tokens_.size() ? tokens_[position] : eof_token();
-        }
-
-        const Token &peek(int offset = 1) const
-        {
-            size_t target_pos = position + offset;
-            return target_pos < tokens_.size() ? tokens_[target_pos] : eof_token();
-        }
-
-        bool check(TokenKind kind) const
-        {
-            return !at_end() && current().kind == kind;
-        }
-
-        bool at_end() const
-        {
-            return position >= tokens_.size() || (position < tokens_.size() && current().kind == TokenKind::EndOfFile);
-        }
-
-        int check_until(TokenKind find, std::vector<TokenKind> stop_kinds = {}, int max_offset = 20)
-        {
-            size_t offset = 0;
-            while (offset < max_offset)
-            {
-                if (at_end())
-                    return -1;
-
-                const Token &token = peek(offset);
-                if (token.kind == find)
-                    return offset;
-
-                if (token.is_eof() || std::find(stop_kinds.begin(), stop_kinds.end(), token.kind) != stop_kinds.end())
-                    return -1;
-
-                offset++;
-            }
-        }
-
-    private:
-        // Static EOF token to avoid repeated allocation
-        static const Token &eof_token()
-        {
-            static Token eof;
-            eof.kind = TokenKind::EndOfFile;
-            return eof;
-        }
-
-    public:
-        // Context queries
-        bool in_loop() const { return in_loop_context_; }
-        bool in_function() const { return in_function_context_; }
-
-        // Simple RAII for context
-        struct ContextSaver
-        {
-            ParseContext &ctx;
-            bool old_loop, old_function;
-
-            ContextSaver(ParseContext &c)
-                : ctx(c), old_loop(c.in_loop_context_), old_function(c.in_function_context_) {}
-
-            ~ContextSaver()
-            {
-                ctx.in_loop_context_ = old_loop;
-                ctx.in_function_context_ = old_function;
-            }
-
-            ContextSaver(const ContextSaver &) = delete;
-            ContextSaver &operator=(const ContextSaver &) = delete;
-        };
-
-        // Factory method for context saving
-        ContextSaver save_context() { return ContextSaver(*this); }
-
-        // Direct context modification
-        void set_loop_context(bool value) { in_loop_context_ = value; }
-        void set_function_context(bool value) { in_function_context_ = value; }
-
-        // Access to underlying token stream
-        TokenStream &tokens() { return tokens_; }
-    };
-
     // Main Parser class
     class Parser
     {
     private:
-        AstAllocator allocator_;
-        ParseContext context_;
-        DiagnosticCollection diagnostics_;
-        
-
-        // Forward declarations for helper parsers
-        std::unique_ptr<ExpressionParser> expr_parser_;
-        std::unique_ptr<StatementParser> stmt_parser_;
-        std::unique_ptr<DeclarationParser> decl_parser_;
+        AstAllocator alloc;
+        TokenStream &tokens;
 
     public:
+        DiagnosticCollection diag;
         Parser(TokenStream &tokens);
         ~Parser();
 
         // Main parsing entry point
         ParseResult<CompilationUnitNode> parse();
 
-        void recover_to_safe_point(ParseContext &context)
+        void recover_to_safe_point()
         {
-            while (!context.at_end())
+            while (!tokens.at_end())
             {
-                TokenKind kind = context.current().kind;
+                TokenKind kind = tokens.current().kind;
 
                 if (kind == TokenKind::Semicolon ||  // Statement separator
                     kind == TokenKind::LeftBrace ||  // Block start
@@ -206,75 +88,51 @@ namespace Myre
                 { 
                     // Skip semicolon, but stop at other safe points
                     if (kind == TokenKind::Semicolon || kind == TokenKind::RightBrace)
-                        context.advance();
+                        tokens.advance();
                     break;
                 }
-                context.advance();
+                tokens.advance();
             }
-        }
-
-        // Token management with synthetic token insertion for recovery
-        bool match(TokenKind kind)
-        {
-            if (context_.check(kind))
-            {
-                context_.advance();
-                return true;
-            }
-            return false;
-        }
-
-        bool expect(TokenKind expected, const char *error_msg)
-        {
-            if (context_.check(expected))
-            {
-                context_.advance();
-                return true;
-            }
-
-            // Report error and return false
-            create_error(error_msg);
-            return false;
         }
 
         ParseResult<QualifiedNameNode> parse_qualified_name()
         {
-            if (!context_.check(TokenKind::Identifier))
+            if (!tokens.check(TokenKind::Identifier))
             {
-                return ParseResult<QualifiedNameNode>::error(create_error("Expected identifier"));
+                return create_error<QualifiedNameNode>("Expected identifier");
             }
 
-            auto *name = allocator_.alloc<QualifiedNameNode>();
+            auto *name = alloc.alloc<QualifiedNameNode>();
 
             std::vector<IdentifierNode*> identifiers;
 
             // Parse first identifier
             while (true)
             {
-                if (!context_.check(TokenKind::Identifier))
+                if (!tokens.check(TokenKind::Identifier))
                 {
-                    diagnostics_.add(Diagnostic{"Expected identifier in type name", context_.current().location});
+                    diag.add(Diagnostic("Expected identifier in type name", tokens.location()));
                     break;
                 }
 
-                const Token &id_token = context_.current();
-                context_.advance();
+                const Token &id_token = tokens.current();
+                tokens.advance();
 
-                auto *identifier = allocator_.alloc<IdentifierNode>();
+                auto *identifier = alloc.alloc<IdentifierNode>();
                 identifier->name = id_token.text;
                 identifiers.push_back(identifier);
 
                 // If next token is '.', continue parsing next identifier
-                if (context_.check(TokenKind::Dot))
+                if (tokens.check(TokenKind::Dot))
                 {
-                    context_.advance(); // consume '.'
+                    tokens.advance(); // consume '.'
                     continue;
                 }
                 break;
             }
 
             // allocate sized array for identifiers
-            name->identifiers.values = allocator_.alloc_array<IdentifierNode*>(identifiers.size());
+            name->identifiers.values = alloc.alloc_array<IdentifierNode*>(identifiers.size());
             name->identifiers.size = static_cast<int>(identifiers.size());
             for (size_t i = 0; i < identifiers.size(); ++i)
             {
@@ -291,69 +149,142 @@ namespace Myre
             auto qname_result = parse_qualified_name();
             if (qname_result.is_error())
             {
-                return ParseResult<TypeNameNode>::error(create_error("Expected type name"));
+                return create_error<TypeNameNode>("Expected type name");
             }
 
-            auto *type_name = allocator_.alloc<TypeNameNode>();
+            auto *type_name = alloc.alloc<TypeNameNode>();
             type_name->name = qname_result.get_node();
             type_name->location = type_name->name->location;
 
             // Check for array type suffix []
-            if (context_.check(TokenKind::LeftBracket))
+            if (tokens.check(TokenKind::LeftBracket))
             {
-                context_.advance(); // consume [
+                tokens.advance(); // consume [
 
                 // For now, we only support empty brackets [] for dynamic arrays
                 // Later we can add support for fixed size arrays like [5]
-                if (!context_.check(TokenKind::RightBracket))
+                if (!tokens.check(TokenKind::RightBracket))
                 {
                     // Skip to closing bracket
-                    while (!context_.check(TokenKind::RightBracket) && !context_.at_end())
+                    while (!tokens.check(TokenKind::RightBracket) && !tokens.at_end())
                     {
-                        context_.advance();
+                        tokens.advance();
                     }
                 }
 
-                if (context_.check(TokenKind::RightBracket))
+                if (tokens.check(TokenKind::RightBracket))
                 {
-                    context_.advance(); // consume ]
+                    tokens.advance(); // consume ]
 
                     // Create ArrayTypeNameNode
-                    auto *array_type = allocator_.alloc<ArrayTypeNameNode>();
+                    auto *array_type = alloc.alloc<ArrayTypeNameNode>();
                     array_type->elementType = type_name;
 
                     return ParseResult<TypeNameNode>::success(array_type);
                 }
                 else
                 {
-                    return ParseResult<TypeNameNode>::error(
-                        create_error("Expected ']' after '['"));
+                    return create_error<TypeNameNode>("Expected ']' after '['");
                 }
             }
 
             return ParseResult<TypeNameNode>::success(type_name);
         }
 
-        // Helper access methods
-        AstAllocator &get_allocator() { return allocator_; }
-        ParseContext &get_context() { return context_; }
-        DiagnosticCollection &get_diagnostics() { return diagnostics_; }
-        ExpressionParser &get_expression_parser() const { return *expr_parser_; }
-        StatementParser &get_statement_parser() const { return *stmt_parser_; }
-        DeclarationParser &get_declaration_parser() const { return *decl_parser_; }
-
         // Direct error creation for helper parsers
-        ErrorNode *create_error(const char *msg)
+        template<typename T>
+        ParseResult<T> create_error(const char *msg)
         {
-            auto* node = allocator_.alloc<ErrorNode>();
-            node->location = context_.current().location;
-            diagnostics_.add(Diagnostic(msg, node->location));
-            return node;
+            auto* node = alloc.alloc<ErrorNode>();
+            node->location = tokens.current().location;
+            diag.add(Diagnostic(msg, node->location));
+            return ParseResult<T>::error(node);
         }
 
     private:
         // Top-level parsing dispatcher
         ParseResult<StatementNode> parse_top_level_construct();
+
+        // Main statement parsing entry point
+        ParseResult<StatementNode> parse_statement();
+
+        // Specific statement type parsers
+        ParseResult<StatementNode> parse_block_statement();
+        ParseResult<StatementNode> parse_expression_statement();
+
+        // Future statement types (to be implemented)
+        ParseResult<StatementNode> parse_if_statement();
+        ParseResult<StatementNode> parse_while_statement();
+        ParseResult<StatementNode> parse_for_statement();
+        ParseResult<StatementNode> parse_for_in_statement();
+        ParseResult<StatementNode> parse_for_variable_declaration();
+        ParseResult<StatementNode> parse_return_statement();
+        ParseResult<StatementNode> parse_break_statement();
+        ParseResult<StatementNode> parse_continue_statement();
+
+        // Main declaration parsing entry point
+        bool check_declaration();
+        ParseResult<DeclarationNode> parse_declaration();
+
+        // Specific declaration type parsers
+        ParseResult<DeclarationNode> parse_function_declaration();
+        ParseResult<DeclarationNode> parse_constructor_declaration();
+        ParseResult<DeclarationNode> parse_type_declaration();
+        ParseResult<DeclarationNode> parse_enum_declaration();
+        ParseResult<StatementNode> parse_using_directive();
+        ParseResult<DeclarationNode> parse_namespace_declaration();
+
+        // Variable declaration parsing - used by both Parser and Parser
+        ParseResult<DeclarationNode> parse_variable_declaration();
+
+        // Supporting parsers
+        ParseResult<AstNode> parse_parameter_list();
+        ParseResult<ParameterNode> parse_parameter();
+        ParseResult<ParameterNode> parse_enum_parameter();
+        ParseResult<EnumCaseNode> parse_enum_case();
+        ParseResult<AstNode> parse_generic_parameters();
+        ParseResult<AstNode> parse_generic_constraints();
+
+        // Pratt parser implementation for binary expressions
+        ParseResult<ExpressionNode> parse_binary_expression(int min_precedence);
+
+        std::vector<ModifierKind> parse_all_modifiers();
+
+        // Main expression parsing entry point
+        ParseResult<ExpressionNode> parse_expression(int min_precedence = 0);
+
+        // Primary expression parsing - handles literals, identifiers, parentheses
+        ParseResult<ExpressionNode> parse_primary();
+
+        // Literal parsing methods
+        ParseResult<ExpressionNode> parse_range_expression(ExpressionNode* left);
+        ParseResult<ExpressionNode> parse_prefix_range_expression();
+        ParseResult<ExpressionNode> parse_integer_literal();
+        ParseResult<ExpressionNode> parse_float_literal();
+        ParseResult<ExpressionNode> parse_double_literal();
+        ParseResult<ExpressionNode> parse_string_literal();
+        ParseResult<ExpressionNode> parse_boolean_literal();
+        ParseResult<ExpressionNode> parse_identifier_or_call();
+        ParseResult<ExpressionNode> parse_parenthesized_expression();
+
+        // Unary expression parsing
+        ParseResult<ExpressionNode> parse_unary_expression();
+
+        // Postfix expression parsing helpers
+        ParseResult<ExpressionNode> parse_call_suffix(ExpressionNode *target);
+        ParseResult<ExpressionNode> parse_member_access_suffix(ExpressionNode *target);
+        ParseResult<ExpressionNode> parse_indexer_suffix(ExpressionNode *target);
+
+        // Operator precedence
+        int get_precedence(TokenKind op);
+
+        // Future expression types (to be implemented)
+        ParseResult<ExpressionNode> parse_call_expression();
+        ParseResult<ExpressionNode> parse_member_access();
+        ParseResult<ExpressionNode> parse_new_expression();
+        ParseResult<ExpressionNode> parse_match_expression();
+        ParseResult<ExpressionNode> parse_enum_variant();
+
     };
 
 } // namespace Myre

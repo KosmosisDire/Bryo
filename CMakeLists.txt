@@ -77,10 +77,6 @@ set(SOURCE_FILES
     src/parser/lexer.cpp
     src/parser/token_stream.cpp
     src/parser/parser.cpp
-    src/parser/parser_base.cpp
-    src/parser/expression_parser.cpp
-    src/parser/statement_parser.cpp
-    src/parser/declaration_parser.cpp
 
     # Semantic Analysis
     src/semantic/type.cpp

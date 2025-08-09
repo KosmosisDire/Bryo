@@ -22,10 +22,10 @@ void Compiler::compile(const std::string& source_file)
     auto parser = Parser(tokens);
     auto ast = parser.parse();
 
-    if (parser.get_diagnostics().size() > 0)
+    if (parser.diag.size() > 0)
     {
         LOG_HEADER("Parser errors encountered:", LogCategory::COMPILER);
-        parser.get_diagnostics().print();
+        parser.diag.print();
     }
 
     if (ast.is_error())

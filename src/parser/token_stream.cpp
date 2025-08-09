@@ -7,7 +7,6 @@
 
 namespace Myre
 {
-
     const Token &TokenStream::current() const
     {
         ensure_valid_position();
@@ -47,7 +46,7 @@ namespace Myre
 
     bool TokenStream::match(TokenKind kind)
     {
-        if (current().kind == kind)
+        if (check(kind))
         {
             advance();
             return true;
@@ -55,46 +54,38 @@ namespace Myre
         return false;
     }
 
-    bool TokenStream::match_any(std::initializer_list<TokenKind> kinds)
+    bool TokenStream::match(std::initializer_list<TokenKind> kinds)
     {
         for (TokenKind kind : kinds)
         {
-            if (current().kind == kind)
+            if (match(kind))
             {
-                advance();
                 return true;
             }
         }
         return false;
     }
 
-    Token TokenStream::consume(TokenKind expected)
-    {
-        const Token &token = current();
-        if (token.kind == expected)
-        {
-            advance();
-            return token;
-        }
 
-        // In a real implementation, this would report through a diagnostic system
-        throw std::runtime_error(get_expected_message(expected));
-    }
-
-    Token TokenStream::consume_any(std::initializer_list<TokenKind> kinds)
+    bool TokenStream::check_list(const std::vector<PatternPtr> &patterns)
     {
-        const Token &token = current();
-        for (TokenKind kind : kinds)
+        size_t offset = 0;
+        for (size_t i = 0; i < patterns.size(); ++i)
         {
-            if (token.kind == kind)
+            // Create remaining patterns vector
+            std::vector<PatternPtr> remaining;
+            for (size_t j = i + 1; j < patterns.size(); ++j)
             {
-                advance();
-                return token;
+                remaining.push_back(patterns[j]);
+            }
+
+            if (!patterns[i]->match(*this, offset, remaining))
+            {
+                return false;
             }
         }
-
-        // In a real implementation, this would report through a diagnostic system
-        throw std::runtime_error(get_expected_message(kinds));
+        position_ += offset;
+        return true;
     }
 
     bool TokenStream::at_end() const
@@ -104,10 +95,10 @@ namespace Myre
                (position_ < tokens_.size() && tokens_[position_].kind == TokenKind::EndOfFile);
     }
 
-    SourceLocation TokenStream::location() const
+    SourceRange TokenStream::location() const
     {
         ensure_valid_position();
-        return tokens_[position_].location.start;
+        return tokens_[position_].location;
     }
 
     bool TokenStream::check(TokenKind kind) const
@@ -115,7 +106,7 @@ namespace Myre
         return current().kind == kind;
     }
 
-    bool TokenStream::check_any(std::initializer_list<TokenKind> kinds) const
+    bool TokenStream::check(std::initializer_list<TokenKind> kinds) const
     {
         TokenKind current_kind = current().kind;
         for (TokenKind kind : kinds)
@@ -126,55 +117,6 @@ namespace Myre
             }
         }
         return false;
-    }
-
-    bool TokenStream::match_sequence(std::initializer_list<TokenKind> sequence) const
-    {
-        size_t offset = 0;
-        for (TokenKind kind : sequence)
-        {
-            if (peek(offset).kind != kind)
-            {
-                return false;
-            }
-            offset++;
-        }
-        return true;
-    }
-
-    std::string TokenStream::get_expected_message(TokenKind expected) const
-    {
-        std::ostringstream oss;
-        oss << "Expected " << Myre::to_string(expected)
-            << " but found " << Myre::to_string(current().kind);
-        return oss.str();
-    }
-
-    std::string TokenStream::get_expected_message(std::initializer_list<TokenKind> expected) const
-    {
-        std::ostringstream oss;
-        oss << "Expected ";
-
-        if (expected.size() == 1)
-        {
-            oss << Myre::to_string(*expected.begin());
-        }
-        else
-        {
-            bool first = true;
-            for (TokenKind kind : expected)
-            {
-                if (!first)
-                {
-                    oss << ", ";
-                }
-                oss << Myre::to_string(kind);
-                first = false;
-            }
-        }
-
-        oss << " but found " << Myre::to_string(current().kind);
-        return oss.str();
     }
 
     void TokenStream::ensure_valid_position() const
