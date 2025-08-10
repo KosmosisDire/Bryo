@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-using namespace Myre;
+using namespace Myre; 
 
 
 std::string read_file(const std::string& filename) {
@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
     logger.set_console_level(LogLevel::TRACE);
 
     Compiler compiler;
-    auto source = read_file("../basic_enum_prop.myre");
+    auto source = read_file("basic_enum_prop.myre");
     compiler.compile(source);
     
 

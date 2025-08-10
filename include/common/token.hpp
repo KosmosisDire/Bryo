@@ -573,8 +573,35 @@ namespace Myre
 
     inline std::string_view to_string(ModifierKind kind)
     {
-        auto name = magic_enum::enum_name(kind);
-        return name.empty() ? "unknown modifier" : name;
+        switch (kind)
+        {
+        case ModifierKind::Public:
+            return "public";
+        case ModifierKind::Private:
+            return "private";
+        case ModifierKind::Protected:
+            return "protected";
+        case ModifierKind::Static:
+            return "static";
+        case ModifierKind::Ref:
+            return "ref";
+        case ModifierKind::Virtual:
+            return "virtual";
+        case ModifierKind::Override:
+            return "override";
+        case ModifierKind::Abstract:
+            return "abstract";
+        case ModifierKind::Extern:
+            return "extern";
+        case ModifierKind::Enforced:
+            return "enforced";
+        case ModifierKind::Inherit:
+            return "inherit";
+        case ModifierKind::Async:
+            return "async";
+        }
+
+        return "unknown modifier";
     }
 
     inline std::string_view to_string(LiteralKind kind)

@@ -132,7 +132,7 @@ private:
     }
 
     TypePtr analyze_type_name(TypeNameNode* type_name, ScopePtr scope) {
-        if (!type_name || !type_name->name->identifiers.size == 0) return nullptr;
+        if (!type_name || type_name->name->identifiers.size == 0) return nullptr;
         
         // Resolve type name in current scope
         std::string type_name_str(type_name->get_full_name());

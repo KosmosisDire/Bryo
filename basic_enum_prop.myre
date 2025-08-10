@@ -349,6 +349,15 @@ fn Main(): i32
         }
         counter = counter + n;
     }
+
+    while (counter < 200)
+    {
+        counter++;
+        if (counter == 150)
+        {
+            break; // Exit loop when counter reaches 150
+        }
+    }
     
     // Return statement
     return 0;
@@ -356,3 +365,4 @@ fn Main(): i32
 
 // Call main
 Main();
+
