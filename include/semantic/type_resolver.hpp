@@ -91,11 +91,11 @@ private:
     bool generate_constraints() {
         bool any_new_constraints = false;
         
-        for (auto symbol : symbolTable.get_unresolved_symbols()) {
+        for (auto* symbol : symbolTable.get_unresolved_symbols()) {
             // Skip if we already have a constraint for this symbol
             bool already_has_constraint = false;
             for (const auto& constraint : constraints) {
-                if (constraint.left_type == std::get<VariableInfo>(symbol->data).type) {
+                if (constraint.left_type == symbol->type) {
                     already_has_constraint = true;
                     break;
                 }
@@ -111,9 +111,8 @@ private:
         return any_new_constraints;
     }
     
-    bool generate_constraints_for_symbol(SymbolPtr symbol) {
-        auto& var_info = std::get<VariableInfo>(symbol->data);
-        auto& unresolved = std::get<UnresolvedType>(var_info.type->value);
+    bool generate_constraints_for_symbol(Symbol* symbol) {
+        auto& unresolved = std::get<UnresolvedType>(symbol->type->value);
         
         if (!unresolved.can_infer()) {
             errors.push_back("Symbol " + symbol->name + " marked as unresolved but has no initializer, type name, or defining scope");
@@ -127,16 +126,16 @@ private:
             if (!expr_type) return false;
         }
         
-        add_constraint(var_info.type, expr_type);
+        add_constraint(symbol->type, expr_type);
         return true;
     }
 
-    TypePtr analyze_type_name(TypeNameNode* type_name, ScopePtr scope) {
+    TypePtr analyze_type_name(TypeNameNode* type_name, ScopeNode* scope) {
         if (!type_name || type_name->name->identifiers.size == 0) return nullptr;
         
-        // Resolve type name in current scope
+        // Resolve type name starting from the given scope
         std::string type_name_str(type_name->get_full_name());
-        TypePtr resolved_type = symbolTable.resolve_type_name(type_name_str, scope, true);
+        TypePtr resolved_type = symbolTable.resolve_type_name(type_name_str, scope);
         
         if (!resolved_type) {
             errors.push_back("Unresolved type: " + type_name_str);
@@ -146,7 +145,7 @@ private:
         return resolved_type;
     }
     
-    TypePtr analyze_expression(ExpressionNode* expr, ScopePtr scope) {
+    TypePtr analyze_expression(ExpressionNode* expr, ScopeNode* scope) {
         if (expr->is_a<LiteralExpressionNode>()) {
             return analyze_literal(expr->as<LiteralExpressionNode>());
         }
@@ -173,13 +172,13 @@ private:
         return typeSystem.get_primitive(std::string(Myre::to_string(lit->kind)));
     }
     
-    TypePtr analyze_new_expression(NewExpressionNode* new_expr, ScopePtr scope)
+    TypePtr analyze_new_expression(NewExpressionNode* new_expr, ScopeNode* scope)
     {
         // TODO: Handle constructor call validation later
-        return symbolTable.resolve_type_name(new_expr->type->get_full_name(), scope, true);
+        return symbolTable.resolve_type_name(new_expr->type->get_full_name(), scope);
     }
     
-    TypePtr analyze_binary_expression(BinaryExpressionNode* binary, ScopePtr scope) {
+    TypePtr analyze_binary_expression(BinaryExpressionNode* binary, ScopeNode* scope) {
         // Analyze left operand
         if (!binary->left || !binary->left->is_a<ExpressionNode>()) {
             errors.push_back("Invalid left operand in binary expression");
@@ -251,29 +250,30 @@ private:
         return type; // Return original if no constraint found
     }
     
-    TypePtr analyze_identifier(IdentifierExpressionNode* ident, ScopePtr scope) {
+    TypePtr analyze_identifier(IdentifierExpressionNode* ident, ScopeNode* scope) {
         std::string var_name(ident->identifier->name);
         
         // Look up the identifier in the current scope
-        SymbolPtr symbol = scope->lookup(var_name);
+        Symbol* symbol = scope->lookup(var_name);
         if (!symbol) {
             errors.push_back("Undefined identifier: " + var_name);
             return nullptr;
         }
-        // Check if the symbol has VariableInfo or FunctionInfo before getting the type
-        if (std::holds_alternative<VariableInfo>(symbol->data)) {
-            auto& var_info = std::get<VariableInfo>(symbol->data);
-            return var_info.type;
-        } else if (std::holds_alternative<FunctionInfo>(symbol->data)) {
-            auto& func_info = std::get<FunctionInfo>(symbol->data);
-            return func_info.return_type;
+        
+        // For variables, parameters, and fields, return their type
+        if (symbol->is_variable() || symbol->is_parameter() || symbol->is_field()) {
+            return symbol->type;
+        } 
+        // For functions, return their return type
+        else if (symbol->is_function()) {
+            return symbol->type; // type field holds return type for functions
         }
 
         errors.push_back("Identifier '" + var_name + "' is not a variable or function");
         return nullptr;
     }
     
-    TypePtr analyze_call_expression(CallExpressionNode* call, ScopePtr scope) {
+    TypePtr analyze_call_expression(CallExpressionNode* call, ScopeNode* scope) {
         // Analyze the target being called
         TypePtr target_type = analyze_expression(call->target, scope);
         if (!target_type) {
@@ -286,7 +286,7 @@ private:
         return target_type;
     }
 
-    TypePtr analyze_member_access(MemberAccessExpressionNode* member, ScopePtr scope) {
+    TypePtr analyze_member_access(MemberAccessExpressionNode* member, ScopeNode* scope) {
         // First, resolve the object being accessed
         TypePtr object_type = analyze_expression(member->target, scope);
         if (!object_type) {
@@ -297,27 +297,25 @@ private:
         // Try to resolve through constraints if it's unresolved
         object_type = resolve_through_constraints(object_type);
         
-        // Get the method name
-        std::string method_name(member->member->name);
+        // Get the member name
+        std::string member_name(member->member->name);
         
-        // Look up the type symbol to get its scope
-        SymbolPtr type_symbol = symbolTable.lookup(object_type->get_name());
+        // Get the type symbol from the type
+        Symbol* type_symbol = object_type->get_type_symbol();
         if (!type_symbol) {
             errors.push_back("Could not find type symbol for: " + object_type->get_name());
             return nullptr;
         }
         
-        auto& type_info = std::get<TypeInfo>(type_symbol->data);
-        
-        // Look up the method in the type's body scope
-        SymbolPtr method_symbol = type_info.body_scope->lookup_local(method_name);
-        if (!method_symbol) {
-            errors.push_back("Method '" + method_name + "' not found in type '" + object_type->get_name() + "'");
+        // Look up the member in the type's children
+        Symbol* member_symbol = type_symbol->lookup_local(member_name);
+        if (!member_symbol) {
+            errors.push_back("Member '" + member_name + "' not found in type '" + object_type->get_name() + "'");
             return nullptr;
         }
         
-        auto& function_info = std::get<FunctionInfo>(method_symbol->data);
-        return function_info.return_type;
+        // Return the member's type
+        return member_symbol->type;
     }
     
     void add_constraint(TypePtr left, TypePtr right) {
@@ -336,17 +334,15 @@ private:
 
         for (const auto& constraint : constraints) {
             // Find the symbol whose type matches this constraint's left_type
-            for (auto symbol : symbolTable.get_unresolved_symbols()) {
-                auto& var_info = std::get<VariableInfo>(symbol->data);
-                
-                if (var_info.type == constraint.left_type) {
+            for (auto* symbol : symbolTable.get_unresolved_symbols()) {
+                if (symbol->type == constraint.left_type) {
                     // Update the symbol's type to the resolved type
-                    var_info.type = constraint.right_type;
+                    symbol->type = constraint.right_type;
                     
                     // Only remove from unresolved list if the resolved type is concrete
                     // Check if the right_type is actually resolved (not an UnresolvedType)
                     if (!std::holds_alternative<UnresolvedType>(constraint.right_type->value)) {
-                        symbolTable.set_symbol_resolved(symbol);
+                        symbolTable.mark_symbol_resolved(symbol);
                     }
                     break; // Found the symbol for this constraint
                 }

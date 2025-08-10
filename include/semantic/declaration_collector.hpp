@@ -2,8 +2,6 @@
 
 #include "ast/ast.hpp"
 #include "symbol_table.hpp"
-#include "type_system.hpp"
-#include "type_definition.hpp"
 #include <string>
 #include <vector>
 

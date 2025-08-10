@@ -1,124 +1,127 @@
 #include "semantic/scope.hpp"
-#include "semantic/type_definition.hpp"
+#include "semantic/symbol.hpp"
+#include <functional>
 
 namespace Myre {
 
-SymbolPtr Scope::lookup(const std::string& name)
-{
-    auto it = symbols.find(name);
-    if (it != symbols.end()) {
-        return it->second;
+// ScopeNode implementation
+Symbol* ScopeNode::lookup(const std::string& name) {
+    // Look for the name in our children
+    auto it = children.find(name);
+    if (it != children.end()) {
+        return it->second->as_symbol();
     }
-    if (auto p = parent.lock()) {
-        return p->lookup(name);
+    
+    // Not found locally, continue up the tree
+    return parent ? parent->lookup(name) : nullptr;
+}
+
+Symbol* ScopeNode::lookup_local(const std::string& name) {
+    // Only look in direct children
+    auto it = children.find(name);
+    if (it != children.end()) {
+        return it->second->as_symbol();
+    }
+    
+    return nullptr;
+}
+
+// Context query implementations
+Symbol* ScopeNode::get_enclosing_namespace() const {
+    const ScopeNode* node = this;
+    while (node) {
+        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+            if (sym->is_namespace()) {
+                return sym;
+            }
+        }
+        node = node->parent;
     }
     return nullptr;
 }
 
-SymbolPtr Scope::lookup_local(const std::string& name) {
-    auto it = symbols.find(name);
-    return (it != symbols.end()) ? it->second : nullptr;
-}
-
-bool Scope::define(SymbolPtr sym) {
-    if (symbols.find(sym->name) != symbols.end()) {
-        return false; // Already defined
-    }
-    
-    symbols[sym->name] = sym;
-    return true;
-}
-
-std::string Scope::get_full_name() const {
-    if (kind == Global) return "";
-    
-    std::string fullName = name;
-    auto p = parent.lock();
-    while (p && p->kind == Namespace) {
-        fullName = p->name + "." + fullName;
-        p = p->parent.lock();
-    }
-    return fullName;
-}
-
-std::string Scope::to_string(int indent) const {
-    std::string indentStr(indent * 2, ' ');
-    std::string result;
-
-    result += "\n";
-    result += indentStr + "{\n";
-    
-    // List symbols with cleaner formatting
-    for (const auto& [symbolName, symbol] : symbols) {
-        result += indentStr + "  ";
-        
-        // Format like test3.myre syntax
-        switch (symbol->kind)
-        {
-            case SymbolKind::Type:
-                result += "type " + symbolName;
-                // Show type members inline if they exist
-                if (auto* typeInfo = std::get_if<TypeInfo>(&symbol->data)) {
-                    if (typeInfo->body_scope && !typeInfo->body_scope->symbols.empty()) {
-                        result += typeInfo->body_scope->to_string(indent + 1);
-                    }
-                }
-                break;
-            case SymbolKind::Function:
-                result += "fn " + symbolName;
-                // Get function info from variant
-                if (auto* funcInfo = std::get_if<FunctionInfo>(&symbol->data)) {
-                    if (funcInfo->return_type) {
-                        result += ": " + funcInfo->return_type->get_name();
-                    }
-                    
-                    // Show function scope inline if it exists
-                    if (funcInfo->body_scope && !funcInfo->body_scope->symbols.empty())
-                    {
-                        result += funcInfo->body_scope->to_string(indent + 1);
-                    }
-                }
-                break;
-            case SymbolKind::Field:
-            case SymbolKind::Variable:
-            case SymbolKind::Parameter:
-            case SymbolKind::Property:
-                if (auto* varInfo = std::get_if<VariableInfo>(&symbol->data)) {
-                    if (varInfo->type) {
-                        result += varInfo->type->get_name() + " " + symbolName;
-                    } else {
-                        result += "var " + symbolName;
-                    }
-                } else {
-                    result += "unknown var " + symbolName;
-                }
-                break;
-            case SymbolKind::Namespace:
-
-                if (auto* nsInfo = std::get_if<NamespaceInfo>(&symbol->data)) {
-                    result += "namespace " + symbolName;
-                    if (nsInfo->scope && !nsInfo->scope->symbols.empty()) {
-                        result += nsInfo->scope->to_string(indent + 1);
-                    }
-                }
-                else
-                {
-                    result += "namespace " + symbolName;
-                }
-                break;
+Symbol* ScopeNode::get_enclosing_type() const {
+    const ScopeNode* node = this;
+    while (node) {
+        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+            if (sym->is_type()) {
+                return sym;
+            }
         }
-        result += "\n";
+        node = node->parent;
     }
+    return nullptr;
+}
 
-    // Also show unnamed child scopes (like block scopes)
-    for (const auto& childScope : unnamedChildren) {
-        result += indentStr + "  " + childScope->name + " ";
-        result += childScope->to_string(indent + 1);
-        result += "\n";
+Symbol* ScopeNode::get_enclosing_function() const {
+    const ScopeNode* node = this;
+    while (node) {
+        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+            if (sym->is_function()) {
+                return sym;
+            }
+        }
+        node = node->parent;
     }
+    return nullptr;
+}
 
-    result += indentStr + "}";
+std::string ScopeNode::build_qualified_name(const std::string& name) const {
+    std::vector<std::string> parts;
+    
+    // Walk up to collect namespace/type names
+    const ScopeNode* node = this;
+    while (node) {
+        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+            if (sym->is_namespace() || sym->is_type()) {
+                if (sym->name != "global") {  // Skip the global namespace
+                    parts.push_back(sym->name);
+                }
+            }
+        }
+        node = node->parent;
+    }
+    
+    // Build the qualified name
+    std::string result;
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+        if (!result.empty()) {
+            result += ".";
+        }
+        result += *it;
+    }
+    
+    if (!result.empty()) {
+        result += ".";
+    }
+    result += name;
+    
+    return result;
+}
 
+// Symbol implementation
+std::string Symbol::get_qualified_name() const {
+    std::vector<std::string> names;
+    names.push_back(name);
+    
+    const ScopeNode* current = parent;
+    while (current) {
+        if (auto* sym = const_cast<ScopeNode*>(current)->as_symbol()) {
+            if (sym->is_namespace() || sym->is_type()) {
+                names.push_back(sym->name);
+            }
+        }
+        current = current->parent;
+    }
+    
+    std::string result;
+    for (auto it = names.rbegin(); it != names.rend(); ++it) {
+        if (!result.empty()) {
+            result += ".";
+        }
+        result += *it;
+    }
+    
     return result;
 }
 

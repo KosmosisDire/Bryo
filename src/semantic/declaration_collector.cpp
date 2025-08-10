@@ -26,12 +26,13 @@ void DeclarationCollector::visit(NamespaceDeclarationNode* node)
     std::string ns_name(node->name->get_full_name());
 
     // If there is already a current namespace, do not allow file-scoped namespace
-    if (!node->body && symbolTable.currentNamespace) {
+    if (!node->body && symbolTable.get_current_namespace() && 
+        symbolTable.get_current_namespace()->name != "global") {
         errors.push_back("File-scoped namespace cannot be declared inside another namespace");
         return;
     }
 
-    auto ns_symbol = symbolTable.enter_namespace(ns_name);
+    symbolTable.enter_namespace(ns_name);
 
     // If there is a body, visit it; otherwise, treat as file-scoped namespace
     if (node->body) {
@@ -51,50 +52,33 @@ void DeclarationCollector::visit(TypeDeclarationNode* node) {
     if (!node->name) return;
     
     std::string type_name(node->name->name);
-    std::string full_name = symbolTable.build_qualified_name(type_name);
     
-    // Create type definition
-    auto type_def = std::make_shared<TypeDefinition>(type_name, full_name);
+    // Enter type scope - this creates the symbol
+    auto type_symbol = symbolTable.enter_type(type_name);
     
     // Apply modifiers
     for (int i = 0; i < node->modifiers.size; ++i) {
         switch (node->modifiers[i]) {
             case ModifierKind::Static:
-                type_def->modifiers |= SymbolModifiers::Static;
+                type_symbol->add_modifier(SymbolModifiers::Static);
                 break;
             case ModifierKind::Abstract:
-                type_def->modifiers |= SymbolModifiers::Abstract;
+                type_symbol->add_modifier(SymbolModifiers::Abstract);
                 break;
             case ModifierKind::Ref:
-                type_def->modifiers |= SymbolModifiers::Ref;
+                type_symbol->add_modifier(SymbolModifiers::Ref);
                 break;
             default:
                 break;
         }
     }
     
-    // Register type definition
-    typeSystem.register_type_definition(full_name, type_def);
-    
-    // Enter type scope - this creates the symbol and defines it
-    auto type_symbol = symbolTable.enter_type(type_name);
-    
-    // Apply modifiers to the symbol
-    type_symbol->modifiers = type_def->modifiers;
     type_symbol->access = AccessLevel::Public;
-    
-    // Create type info and store it in the symbol
-    TypeInfo type_info;
-    type_info.definition = type_def;
-    type_info.body_scope = symbolTable.get_current_scope();
-    type_symbol->data = type_info;
     
     // Visit members
     for (int i = 0; i < node->members.size; ++i) {
-        auto m = node->members[i];
-        auto memberType = m->node_type_name();
-        if (m) {
-            m->accept(this);
+        if (node->members[i]) {
+            node->members[i]->accept(this);
         }
     }
     
@@ -112,10 +96,8 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
     for (int i = 0; i < node->parameters.size; ++i) {
         if (auto* param = node->parameters[i]->as<ParameterNode>()) {
             if (param->type && param->type->name->identifiers.size > 0) {
-                TypePtr param_type = symbolTable.resolve_type_name(param->type->get_full_name(), symbolTable.get_current_scope());
-                if (param_type) {
-                    param_types.push_back(param_type);
-                }
+                TypePtr param_type = symbolTable.resolve_type_name(param->type->get_full_name());
+                param_types.push_back(param_type);
             }
             else
             {
@@ -128,26 +110,26 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
     // Get return type
     TypePtr return_type = typeSystem.get_primitive("void");
     if (node->returnType && node->returnType->name->identifiers.size > 0) {
-        return_type = symbolTable.resolve_type_name(node->returnType->get_full_name(), symbolTable.get_current_scope());
+        return_type = symbolTable.resolve_type_name(node->returnType->get_full_name());
     }
     
-    // Enter function scope - this creates the symbol and defines it
+    // Enter function scope - this creates the symbol
     auto func_symbol = symbolTable.enter_function(func_name, return_type, param_types);
     
     // Apply modifiers
     for (int i = 0; i < node->modifiers.size; ++i) {
         switch (node->modifiers[i]) {
             case ModifierKind::Static:
-                func_symbol->modifiers |= SymbolModifiers::Static;
+                func_symbol->add_modifier(SymbolModifiers::Static);
                 break;
             case ModifierKind::Virtual:
-                func_symbol->modifiers |= SymbolModifiers::Virtual;
+                func_symbol->add_modifier(SymbolModifiers::Virtual);
                 break;
             case ModifierKind::Override:
-                func_symbol->modifiers |= SymbolModifiers::Override;
+                func_symbol->add_modifier(SymbolModifiers::Override);
                 break;
             case ModifierKind::Abstract:
-                func_symbol->modifiers |= SymbolModifiers::Abstract;
+                func_symbol->add_modifier(SymbolModifiers::Abstract);
                 break;
             default:
                 break;
@@ -163,7 +145,7 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
         {
             if (param->name) {
                 std::string param_name(param->name->name);
-                auto param_symbol = symbolTable.make_parameter(param_name, param_type, AccessLevel::Private);
+                auto param_symbol = symbolTable.define_parameter(param_name, param_type);
                 
                 if (!param_symbol) {
                     errors.push_back("Parameter '" + param_name + "' already defined in function scope");
@@ -187,9 +169,9 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
 
 void DeclarationCollector::visit(VariableDeclarationNode* node)
 {
-    TypePtr var_type = typeSystem.get_unresolved_type();  // This calls get_unresolved_type() once if node->type is null
+    TypePtr var_type = typeSystem.get_unresolved_type();
     if (node->type && node->type->name->identifiers.size > 0) {
-        var_type = symbolTable.resolve_type_name(node->type->get_full_name(), symbolTable.get_current_scope());
+        var_type = symbolTable.resolve_type_name(node->type->get_full_name());
     }
     if (var_type == nullptr) return;
     
@@ -205,7 +187,14 @@ void DeclarationCollector::visit(VariableDeclarationNode* node)
         if (node->names[i]) {
             std::string var_name(node->names[i]->name);
             
-            auto var_symbol = symbolTable.make_var(var_name, var_type, AccessLevel::Private);
+            Symbol* var_symbol = nullptr;
+            
+            // Decide whether to create a field or variable based on current context
+            if (symbolTable.get_current_type() && !symbolTable.get_current_function()) {
+                var_symbol = symbolTable.define_field(var_name, var_type);
+            } else {
+                var_symbol = symbolTable.define_variable(var_name, var_type);
+            }
             
             if (!var_symbol) {
                 errors.push_back("Variable '" + var_name + "' already defined in current scope");

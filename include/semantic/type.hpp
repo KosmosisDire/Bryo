@@ -9,11 +9,10 @@ namespace Myre {
 
 // Forward declarations
 struct Type;
-struct TypeDefinition;
+class Symbol;
+class ScopeNode;
 struct ExpressionNode;
 struct TypeNameNode;
-struct Scope;
-using ScopePtr = std::shared_ptr<Scope>;
 using TypePtr = std::shared_ptr<Type>;
 
 // ============= Types =============
@@ -24,8 +23,6 @@ struct PrimitiveType {
         Void 
     };
     Kind kind;
-    std::weak_ptr<struct TypeDefinition> definition; // Points to System.Int32, System.Boolean, etc.
-    const bool isRefType = false; // All primitives are value types
 };
 
 struct ArrayType {
@@ -35,20 +32,19 @@ struct ArrayType {
 };
 
 // Reference to a defined type (Player, Enemy, etc.)
-struct DefinedType {
-    std::string name;  // For diagnostics
-    std::weak_ptr<struct TypeDefinition> definition;
+struct TypeReference {
+    Symbol* definition;  // Points to Symbol where kind == Type
 };
 
 // Generic type instantiation (List<Player>, Map<String, Item>)
-struct InstantiatedType {
-    std::weak_ptr<struct TypeDefinition> generic_definition;  // List<T>
-    std::vector<TypePtr> type_arguments;                      // [Player]
+struct GenericInstance {
+    Symbol* generic_definition;  // List<T>
+    std::vector<TypePtr> type_arguments;  // [Player]
 };
 
 struct FunctionType {
-    TypePtr returnType;
-    std::vector<TypePtr> parameterTypes;
+    TypePtr return_type;
+    std::vector<TypePtr> parameter_types;
 };
 
 // Represents unresolved type references
@@ -56,7 +52,7 @@ struct UnresolvedType {
     int id = 0; // Unique ID for this unresolved type
     ExpressionNode* initializer = nullptr;
     TypeNameNode* type_name = nullptr;
-    ScopePtr defining_scope = nullptr;
+    ScopeNode* defining_scope = nullptr;  // Can be Symbol or BlockScope
 
     inline bool can_infer() const { return (initializer != nullptr || type_name != nullptr) && defining_scope != nullptr; }
 };
@@ -67,7 +63,7 @@ class Type {
     friend class TypeSystem;
     
     // Private constructor - only TypeSystem can create Types
-    Type(std::variant<PrimitiveType, ArrayType, DefinedType, InstantiatedType, FunctionType, UnresolvedType> v)
+    Type(std::variant<PrimitiveType, ArrayType, TypeReference, GenericInstance, FunctionType, UnresolvedType> v)
         : value(std::move(v)) {}
     
     // Static factory for TypeSystem to use with std::make_shared
@@ -83,8 +79,8 @@ public:
     std::variant<
         PrimitiveType,
         ArrayType,
-        DefinedType,
-        InstantiatedType,
+        TypeReference,
+        GenericInstance,
         FunctionType,
         UnresolvedType
     > value;
@@ -93,13 +89,13 @@ public:
     bool is_value_type() const;
     bool is_reference_type() const { return !is_value_type(); }
     bool is_void() const;
-    std::string get_name() const;
+    std::string get_name() const; // Implementation in type.cpp
     
     // Since we have canonicalization, pointer comparison is sufficient
     bool equals(const TypePtr& other) const { return this == other.get(); }
     
-    // Helper to get the underlying type definition (if any)
-    std::shared_ptr<TypeDefinition> get_type_definition() const;
+    // Helper to get the underlying type symbol (if any)
+    Symbol* get_type_symbol() const;
 };
 
 // ============= Type Implementation =============
@@ -111,42 +107,7 @@ inline bool Type::is_void() const {
     return prim && prim->kind == PrimitiveType::Void;
 }
 
-inline std::string Type::get_name() const {
-    return std::visit([](const auto& v) -> std::string {
-        using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, PrimitiveType>) {
-            switch (v.kind) {
-                case PrimitiveType::I32: return "i32";
-                case PrimitiveType::I64: return "i64";
-                case PrimitiveType::F32: return "f32";
-                case PrimitiveType::F64: return "f64";
-                case PrimitiveType::Bool: return "bool";
-                case PrimitiveType::String: return "string";
-                case PrimitiveType::Char: return "char";
-                case PrimitiveType::U32: return "u32";
-                case PrimitiveType::U64: return "u64";
-                case PrimitiveType::I8: return "i8";
-                case PrimitiveType::U8: return "u8";
-                case PrimitiveType::I16: return "i16";
-                case PrimitiveType::U16: return "u16";
-                case PrimitiveType::Void: return "void";
-            }
-            return "unknown";
-        } else if constexpr (std::is_same_v<T, DefinedType>) {
-            return v.name;
-        } else if constexpr (std::is_same_v<T, InstantiatedType>) {
-            // TODO: Build full generic name like "List<Player>"
-            return "generic"; // Placeholder
-        } else if constexpr (std::is_same_v<T, ArrayType>) {
-            return "array";
-        } else if constexpr (std::is_same_v<T, FunctionType>) {
-            return "function";
-        } else if constexpr (std::is_same_v<T, UnresolvedType>) {
-            return "var:" + std::to_string(v.id);
-        }
-        return "unknown";
-    }, value);
-}
+// Implementation moved to type.cpp to avoid circular dependency
 
 // Implementation in type.cpp
 

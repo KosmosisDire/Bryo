@@ -60,8 +60,8 @@ void Compiler::compile(const std::string& source_file)
     resolver.resolve_types();
     std::cout << resolver.to_string() << "\n";
 
-    // print the symbol table again after type resolution
     std::cout << "\nSymbol Table after Type Resolution:\n";
+    std::cout << symbol_table.get_type_system().to_string() << "\n";
     std::cout << symbol_table.to_string() << "\n";
 
     // CodeGenerator codegen(symbol_table);
