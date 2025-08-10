@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <sstream>
 #include <functional>
+#include <stdexcept>
 
 namespace Myre {
 
@@ -13,14 +14,13 @@ SymbolTable::SymbolTable() {
     current = global_symbol.get();
 }
 
-void SymbolTable::add_child(const std::string& key, std::unique_ptr<Symbol> child) {
-    child->parent = current;
-    current->children[key] = std::move(child);
-}
-
-void SymbolTable::add_block_child(const std::string& key, std::unique_ptr<BlockScope> child) {
-    child->parent = current;
-    current->children[key] = std::move(child);
+void SymbolTable::add_child(const std::string& key, std::unique_ptr<ScopeNode> child) {
+    // Current scope must be able to contain symbols (must be a Scope)
+    auto* current_scope = current->as_scope();
+    if (!current_scope) {
+        throw std::runtime_error("Cannot add child to non-scope node");
+    }
+    current_scope->add_symbol(key, std::move(child));
 }
 
 NamespaceSymbol* SymbolTable::enter_namespace(const std::string& name) {
@@ -80,7 +80,7 @@ BlockScope* SymbolTable::enter_block(const std::string& debug_name) {
     auto block = std::make_unique<BlockScope>(debug_name);
     BlockScope* ptr = block.get();
     std::string key = "$block_" + std::to_string(next_block_id++);
-    add_block_child(key, std::move(block));
+    add_child(key, std::move(block));
     current = ptr;
     return ptr;
 }
@@ -155,10 +155,10 @@ PropertySymbol* SymbolTable::define_property(const std::string& name, TypePtr ty
     return ptr;
 }
 
-EnumCaseSymbol* SymbolTable::define_enum_case(const std::string& name, std::vector<TypePtr> associated_types) {
+EnumCaseSymbol* SymbolTable::define_enum_case(const std::string& name, std::vector<TypePtr> params) {
     auto sym = std::make_unique<EnumCaseSymbol>();
     sym->set_name(name);
-    sym->set_associated_types(std::move(associated_types));
+    sym->set_params(std::move(params));
     sym->set_access(AccessLevel::Public);
     EnumCaseSymbol* ptr = sym.get();
     add_child(name, std::move(sym));
@@ -182,7 +182,12 @@ FunctionSymbol* SymbolTable::get_current_function() const {
 }
 
 Symbol* SymbolTable::lookup(const std::string& name) {
-    return current->lookup(name);
+    // Current scope must be able to lookup (must be a Scope)
+    auto* current_scope = current->as_scope();
+    if (!current_scope) {
+        return nullptr;  // Can't lookup from non-scope nodes
+    }
+    return current_scope->lookup(name);
 }
 
 TypePtr SymbolTable::resolve_type_name(const std::string& type_name) {
@@ -197,7 +202,12 @@ TypePtr SymbolTable::resolve_type_name(const std::string& type_name, ScopeNode* 
     }
     
     // Look up the symbol starting from the given scope
-    auto* symbol = scope->lookup(type_name);
+    auto* scope_container = scope->as_scope();
+    if (!scope_container) {
+        return type_system.get_unresolved_type();
+    }
+    
+    auto* symbol = scope_container->lookup(type_name);
     if (!symbol) {
         return type_system.get_unresolved_type();
     }
@@ -269,7 +279,7 @@ std::string SymbolTable::to_string() const {
                 if (case_sym->is_tagged()) {
                     ss << "(";
                     bool first = true;
-                    for (const auto& type : case_sym->associated_types()) {
+                    for (const auto& type : case_sym->params()) {
                         if (!first) ss << ", ";
                         ss << type->get_name();
                         first = false;
@@ -278,24 +288,26 @@ std::string SymbolTable::to_string() const {
                 }
             }
             
-            // Add brackets if this node has children
-            if (!node->children.empty()) {
-                ss << " {\n";
-                // Print children
-                for (const auto& [key, child] : node->children) {
-                    print_tree(child.get(), indent + 1);
+            // Add brackets if this node has symbols (is a scope)
+            if (auto* scope = node->as_scope()) {
+                if (!scope->symbols.empty()) {
+                    ss << " {\n";
+                    // Print symbols
+                    for (const auto& [key, child] : scope->symbols) {
+                        print_tree(child.get(), indent + 1);
+                    }
+                    ss << indent_str << "}";
                 }
-                ss << indent_str << "}";
             }
             ss << "\n";
         } else if (auto* block = node->as_block()) {
             ss << indent_str << "block (" << block->debug_name << ")";
             
-            // Add brackets if this block has children
-            if (!node->children.empty()) {
+            // Add brackets if this block has symbols
+            if (!block->symbols.empty()) {
                 ss << " {\n";
-                // Print children
-                for (const auto& [key, child] : node->children) {
+                // Print symbols
+                for (const auto& [key, child] : block->symbols) {
                     print_tree(child.get(), indent + 1);
                 }
                 ss << indent_str << "}";

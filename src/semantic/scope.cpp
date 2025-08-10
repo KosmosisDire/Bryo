@@ -6,26 +6,59 @@
 
 namespace Myre {
 
-Symbol* ScopeNode::lookup(const std::string& name) {
-    // Look for the name in our children
-    auto it = children.find(name);
-    if (it != children.end()) {
-        return it->second->as_symbol();
-    }
-    
-    // Not found locally, continue up the tree
-    return parent ? parent->lookup(name) : nullptr;
+// ============= ScopeNode Safe Casting Helpers =============
+
+Scope* ScopeNode::as_scope() {
+    return dynamic_cast<Scope*>(this);
 }
 
-Symbol* ScopeNode::lookup_local(const std::string& name) {
-    // Only look in direct children
-    auto it = children.find(name);
-    if (it != children.end()) {
-        return it->second->as_symbol();
-    }
+const Scope* ScopeNode::as_scope() const {
+    return dynamic_cast<const Scope*>(this);
+}
+
+bool ScopeNode::is_scope() const {
+    return dynamic_cast<const Scope*>(this) != nullptr;
+}
+
+// ============= Scope Lookup Methods =============
+
+Symbol* Scope::lookup(const std::string& name) {
+    // Search locally first
+    auto* result = lookup_local(name);
+    if (result) return result;
     
+    // Get the ScopeNode that this Scope belongs to and walk up parent chain
+    ScopeNode* node = as_scope_node();
+    node = node->parent;  // Start with parent
+    
+    while (node) {
+        // Check if this parent is also a Scope and do full recursive lookup
+        if (auto* parent_scope = node->as_scope()) {
+            result = parent_scope->lookup(name); 
+            if (result) return result;
+        }
+        node = node->parent;
+    }
     return nullptr;
 }
+
+Symbol* Scope::lookup_local(const std::string& name) {
+    // Only look in direct symbols
+    auto it = symbols.find(name);
+    if (it != symbols.end()) {
+        return it->second->as_symbol();
+    }
+    return nullptr;
+}
+
+void Scope::add_symbol(const std::string& name, std::unique_ptr<ScopeNode> symbol) {
+    // Set parent relationship
+    ScopeNode* node = as_scope_node();
+    symbol->parent = node;
+    symbols[name] = std::move(symbol);
+}
+
+// ============= ScopeNode Navigation Methods =============
 
 NamespaceSymbol* ScopeNode::get_enclosing_namespace() const {
     const ScopeNode* node = this;

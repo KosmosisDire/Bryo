@@ -185,7 +185,7 @@ void DeclarationCollector::visit(VariableDeclarationNode* node)
         if (node->names[i]) {
             std::string var_name(node->names[i]->name);
             
-            Symbol* var_symbol = nullptr;
+            UnscopedSymbol* var_symbol = nullptr;
             
             // Decide whether to create a field or variable based on current context
             if (symbolTable.get_current_type() && !symbolTable.get_current_function()) {
@@ -285,17 +285,17 @@ void DeclarationCollector::visit(EnumDeclarationNode* node) {
             std::string case_name(node->cases[i]->name->name);
             
             // Build associated types for tagged enum cases
-            std::vector<TypePtr> associated_types;
+            std::vector<TypePtr> params;
             for (int j = 0; j < node->cases[i]->associatedData.size; ++j) {
                 if (auto* param = node->cases[i]->associatedData[j]) {
                     if (param->type) {
                         auto type = symbolTable.resolve_type_name(param->type->get_full_name());
-                        associated_types.push_back(type);
+                        params.push_back(type);
                     }
                 }
             }
             
-            auto* case_symbol = symbolTable.define_enum_case(case_name, associated_types);
+            auto* case_symbol = symbolTable.define_enum_case(case_name, params);
             
             if (!case_symbol) {
                 errors.push_back("Enum case '" + case_name + "' already defined in enum '" + enum_name + "'");

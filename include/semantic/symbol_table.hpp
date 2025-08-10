@@ -11,9 +11,9 @@ namespace Myre {
 
 class SymbolTable {
     std::unique_ptr<NamespaceSymbol> global_symbol;  // Root namespace
-    ScopeNode* current;                              // Current scope
+    ScopeNode* current;                             // Current scope
     TypeSystem type_system;
-    std::vector<Symbol*> unresolved_symbols;
+    std::vector<Symbol*> unresolved_symbols;        // Changed from UnscopedSymbol*
     int next_block_id = 0;
     
 public:
@@ -37,7 +37,7 @@ public:
     ParameterSymbol* define_parameter(const std::string& name, TypePtr type);
     FieldSymbol* define_field(const std::string& name, TypePtr type);
     PropertySymbol* define_property(const std::string& name, TypePtr type);
-    EnumCaseSymbol* define_enum_case(const std::string& name, std::vector<TypePtr> associated_types = {});
+    EnumCaseSymbol* define_enum_case(const std::string& name, std::vector<TypePtr> params = {});
     
     // Context queries
     NamespaceSymbol* get_current_namespace() const;
@@ -66,8 +66,7 @@ public:
     
 private:
     // Helper to add a child to current scope
-    void add_child(const std::string& key, std::unique_ptr<Symbol> child);
-    void add_block_child(const std::string& key, std::unique_ptr<BlockScope> child);
+    void add_child(const std::string& key, std::unique_ptr<ScopeNode> child);
 };
 
 } // namespace Myre

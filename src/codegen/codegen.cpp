@@ -76,8 +76,8 @@ void CodeGenerator::visit(IdentifierExpressionNode* node) {
     std::string name(node->name->name);
     
     // Look up variable in symbol table
-    Symbol* symbol = symbolTable.lookup_symbol(name);
-    if (!symbol || symbol->kind != Symbol::Variable) {
+    UnscopedSymbol* symbol = symbolTable.lookup_symbol(name);
+    if (!symbol || symbol->kind != UnscopedSymbol::Variable) {
         errors.add_error(SemanticError::SymbolNotFound, "Variable not found: " + name);
         current_value_ = ValueRef::invalid();
         return;
@@ -240,8 +240,8 @@ void CodeGenerator::visit(CallExpressionNode* node) {
     std::string func_name(id_expr->name->name);
     
     // Look up function in symbol table
-    Symbol* func_symbol = symbolTable.lookup_symbol(func_name);
-    if (!func_symbol || func_symbol->kind != Symbol::Function) {
+    UnscopedSymbol* func_symbol = symbolTable.lookup_symbol(func_name);
+    if (!func_symbol || func_symbol->kind != UnscopedSymbol::Function) {
         errors.add_error(SemanticError::FunctionNotFound, "Function not found: " + func_name);
         current_value_ = ValueRef::invalid();
         return;
@@ -478,7 +478,7 @@ void CodeGenerator::visit(VariableDeclarationNode* node) {
     std::string name(node->name->name);
     
     // Look up symbol for type information
-    Symbol* symbol = symbolTable.lookup_symbol(name);
+    UnscopedSymbol* symbol = symbolTable.lookup_symbol(name);
     if (!symbol) {
         errors.add_error(SemanticError::SymbolNotFound, "Variable symbol not found: " + name);
         return;
@@ -505,8 +505,8 @@ void CodeGenerator::visit(FunctionDeclarationNode* node) {
     current_function_ = nullptr;
     
     // Look up function symbol
-    Symbol* func_symbol = symbolTable.lookup_symbol(func_name);
-    if (func_symbol && func_symbol->kind == Symbol::Function) {
+    UnscopedSymbol* func_symbol = symbolTable.lookup_symbol(func_name);
+    if (func_symbol && func_symbol->kind == UnscopedSymbol::Function) {
         current_function_ = func_symbol->type->as<FunctionType>();
     }
     

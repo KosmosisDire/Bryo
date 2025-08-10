@@ -42,16 +42,13 @@ inline SymbolModifiers operator&(SymbolModifiers a, SymbolModifiers b) {
 }
 
 // Base symbol class - all symbols are scope nodes
-class Symbol : public ScopeNode {
+class Symbol: public ScopeNode {
 protected:
     std::string name_;
     AccessLevel access_ = AccessLevel::Private;
     SymbolModifiers modifiers_ = SymbolModifiers::None;
     
 public:
-    virtual ~Symbol() = default;
-    
-    // From ScopeNode
     bool is_symbol() const override { return true; }
     Symbol* as_symbol() override { return this; }
     
@@ -85,14 +82,24 @@ public:
     std::string get_qualified_name() const;
 };
 
+class UnscopedSymbol : public Symbol {
+};
+
+class ScopedSymbol : public Symbol, public Scope {
+public:
+    // Implement Scope interface
+    ScopeNode* as_scope_node() override { return this; }
+    const ScopeNode* as_scope_node() const override { return this; }
+};
+
 // Base for types and enums
-class TypeLikeSymbol : public Symbol {
+class TypeLikeSymbol : public ScopedSymbol {
 public:
     // Can be used as a type in declarations
 };
 
 // Base for symbols that have a type (variables, parameters, fields, properties, functions)
-class TypedSymbol : public Symbol {
+class TypedSymbol {
 protected:
     TypePtr type_;
     
@@ -103,6 +110,14 @@ public:
     // Type access
     virtual TypePtr type() const { return type_; }
     virtual void set_type(TypePtr type) { type_ = type; }
+};
+
+class ScopedTypedSymbol : public ScopedSymbol, public TypedSymbol {
+    // Combines ScopedSymbol and TypedSymbol
+};
+
+class UnscopedTypedSymbol : public UnscopedSymbol, public TypedSymbol {
+    // Combines UnscopedSymbol and TypedSymbol
 };
 
 // Regular type (class/struct)
@@ -121,13 +136,13 @@ public:
 };
 
 // Namespace
-class NamespaceSymbol : public Symbol {
+class NamespaceSymbol : public ScopedSymbol {
 public:
     const char* kind_name() const override { return "namespace"; }
 };
 
 // Function
-class FunctionSymbol : public TypedSymbol {
+class FunctionSymbol : public ScopedTypedSymbol {
     std::vector<TypePtr> parameter_types_;
     
 public:
@@ -142,41 +157,41 @@ public:
 };
 
 // Variable
-class VariableSymbol : public TypedSymbol {
+class VariableSymbol : public UnscopedTypedSymbol {
 public:
     const char* kind_name() const override { return "variable"; }
 };
 
 // Parameter
-class ParameterSymbol : public TypedSymbol {
+class ParameterSymbol : public UnscopedTypedSymbol {
 public:
     const char* kind_name() const override { return "parameter"; }
 };
 
 // Field
-class FieldSymbol : public TypedSymbol {
+class FieldSymbol : public UnscopedTypedSymbol {
 public:
     const char* kind_name() const override { return "field"; }
 };
 
 // Property
-class PropertySymbol : public TypedSymbol {
+class PropertySymbol : public UnscopedTypedSymbol {
 public:
     const char* kind_name() const override { return "property"; }
 };
 
 // Enum case
-class EnumCaseSymbol : public Symbol {
-    std::vector<TypePtr> associated_types_;
+class EnumCaseSymbol : public UnscopedSymbol {
+    std::vector<TypePtr> parameters_;
     
 public:
     const char* kind_name() const override { return "enum_case"; }
     
-    void set_associated_types(std::vector<TypePtr> types) { associated_types_ = std::move(types); }
-    const std::vector<TypePtr>& associated_types() const { return associated_types_; }
+    void set_params(std::vector<TypePtr> types) { parameters_ = std::move(types); }
+    const std::vector<TypePtr>& params() const { return parameters_; }
     
-    bool is_simple() const { return associated_types_.empty(); }
-    bool is_tagged() const { return !associated_types_.empty(); }
+    bool is_simple() const { return parameters_.empty(); }
+    bool is_tagged() const { return !parameters_.empty(); }
 };
 
 } // namespace Myre

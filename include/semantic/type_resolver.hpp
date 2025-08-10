@@ -276,7 +276,10 @@ private:
         std::string var_name(ident->identifier->name);
         
         // Look up the identifier in the current scope
-        Symbol* symbol = scope->lookup(var_name);
+        Symbol* symbol = nullptr;
+        if (auto* scope_container = scope->as_scope()) {
+            symbol = scope_container->lookup(var_name);
+        }
         if (!symbol) {
             errors.push_back("Undefined identifier: " + var_name);
             return nullptr;
@@ -319,14 +322,17 @@ private:
         std::string member_name(member->member->name);
         
         // Get the type symbol from the type
-        Symbol* type_symbol = object_type->get_type_symbol();
+        auto* type_symbol = object_type->get_type_symbol();
         if (!type_symbol) {
             errors.push_back("Could not find type symbol for: " + object_type->get_name());
             return nullptr;
         }
         
-        // Look up the member in the type's children
-        Symbol* member_symbol = type_symbol->lookup_local(member_name);
+        // Look up the member in the type's scope (if it has one)
+        Symbol* member_symbol = nullptr;
+        if (auto* type_scope = type_symbol->as_scope()) {
+            member_symbol = type_scope->lookup_local(member_name);
+        }
         if (!member_symbol) {
             errors.push_back("Member '" + member_name + "' not found in type '" + object_type->get_name() + "'");
             return nullptr;
