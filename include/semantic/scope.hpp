@@ -9,6 +9,11 @@ namespace Myre {
 // Forward declarations
 class Symbol;
 class BlockScope;
+class NamespaceSymbol;
+class TypeSymbol; 
+class EnumSymbol;
+class FunctionSymbol;
+class TypeLikeSymbol;
 
 // ============= Base Scope Node =============
 // Unified tree structure for both named symbols and anonymous scopes
@@ -21,16 +26,18 @@ public:
     Symbol* lookup(const std::string& name);
     Symbol* lookup_local(const std::string& name);
     
-    // Type identification
+    // Type identification - virtual so subclasses can override
     virtual Symbol* as_symbol() { return nullptr; }
     virtual BlockScope* as_block() { return nullptr; }
     virtual bool is_symbol() const { return false; }
     virtual bool is_block() const { return false; }
     
-    // Context queries - walk up tree to find nearest Symbol of type
-    Symbol* get_enclosing_namespace() const;
-    Symbol* get_enclosing_type() const;
-    Symbol* get_enclosing_function() const;
+    // Context queries - walk up tree to find nearest Symbol of specific type
+    NamespaceSymbol* get_enclosing_namespace() const;
+    TypeSymbol* get_enclosing_type() const;
+    EnumSymbol* get_enclosing_enum() const;
+    FunctionSymbol* get_enclosing_function() const;
+    TypeLikeSymbol* get_enclosing_type_like() const;  // Gets enum or type
     
     // Build fully qualified name from this scope
     std::string build_qualified_name(const std::string& name) const;
@@ -52,3 +59,5 @@ public:
 };
 
 } // namespace Myre
+
+// Template implementation moved to scope.cpp to avoid circular dependency

@@ -11,8 +11,8 @@ class TypeSystem {
     // Primitive types
     std::unordered_map<std::string, TypePtr> primitives;
     
-    // All type symbols (by fully qualified name) - these are Symbol* where kind == Type
-    std::unordered_map<std::string, Symbol*> type_symbols;
+    // All type symbols (by fully qualified name)
+    std::unordered_map<std::string, TypeLikeSymbol*> type_symbols;
     
     // Canonical types for arrays, functions, etc.
     std::unordered_map<std::string, TypePtr> canonical_types;
@@ -29,20 +29,20 @@ public:
     }
     
     // Type symbol management
-    void register_type_symbol(const std::string& full_name, Symbol* type_symbol) {
+    void register_type_symbol(const std::string& full_name, TypeLikeSymbol* type_symbol) {
         type_symbols[full_name] = type_symbol;
     }
     
-    Symbol* lookup_type_symbol(const std::string& full_name) {
+    TypeLikeSymbol* lookup_type_symbol(const std::string& full_name) {
         auto it = type_symbols.find(full_name);
         return (it != type_symbols.end()) ? it->second : nullptr;
     }
     
     // Type creation/lookup methods
     TypePtr get_array_type(TypePtr element, int rank = 1);
-    TypePtr get_generic_instance(Symbol* generic_def, std::vector<TypePtr> args);
+    TypePtr get_generic_instance(TypeLikeSymbol* generic_def, std::vector<TypePtr> args);
     TypePtr get_function_type(TypePtr ret, std::vector<TypePtr> params);
-    TypePtr get_type_reference(Symbol* type_symbol);
+    TypePtr get_type_reference(TypeLikeSymbol* type_symbol);
     TypePtr get_unresolved_type();
     
     
@@ -95,11 +95,11 @@ inline TypePtr TypeSystem::get_array_type(TypePtr element, int rank) {
     return type;
 }
 
-inline TypePtr TypeSystem::get_generic_instance(Symbol* generic_def, std::vector<TypePtr> args) {
+inline TypePtr TypeSystem::get_generic_instance(TypeLikeSymbol* generic_def, std::vector<TypePtr> args) {
     if (!generic_def) return nullptr;
     
     // Create cache key: "generic:List<i32>"
-    std::string key = "generic:" + generic_def->name + "<";
+    std::string key = "generic:" + generic_def->name() + "<";
     for (size_t i = 0; i < args.size(); ++i) {
         if (i > 0) key += ",";
         key += args[i]->get_name();
@@ -139,8 +139,8 @@ inline TypePtr TypeSystem::get_function_type(TypePtr ret, std::vector<TypePtr> p
     return type;
 }
 
-inline TypePtr TypeSystem::get_type_reference(Symbol* type_symbol) {
-    if (!type_symbol || !type_symbol->is_type()) return nullptr;
+inline TypePtr TypeSystem::get_type_reference(TypeLikeSymbol* type_symbol) {
+    if (!type_symbol) return nullptr;
     
     // Check cache first
     std::string cache_key = "ref:" + type_symbol->get_qualified_name();

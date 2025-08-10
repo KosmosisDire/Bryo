@@ -95,7 +95,14 @@ private:
             // Skip if we already have a constraint for this symbol
             bool already_has_constraint = false;
             for (const auto& constraint : constraints) {
-                if (constraint.left_type == symbol->type) {
+                if (auto* typed_symbol = symbol->as<TypedSymbol>()) {
+                    if (constraint.left_type == typed_symbol->type()) {
+                        already_has_constraint = true;
+                        break;
+                    }
+                } 
+                
+                if (already_has_constraint) {
                     already_has_constraint = true;
                     break;
                 }
@@ -112,10 +119,25 @@ private:
     }
     
     bool generate_constraints_for_symbol(Symbol* symbol) {
-        auto& unresolved = std::get<UnresolvedType>(symbol->type->value);
+        TypePtr symbol_type = nullptr;
+        
+        // Get the type from the typed symbol
+        if (auto* typed_symbol = symbol->as<TypedSymbol>()) {
+            symbol_type = typed_symbol->type();
+        } else {
+            errors.push_back("Unsupported symbol type for type resolution: " + symbol->name());
+            return false;
+        }
+        
+        if (!symbol_type) {
+            errors.push_back("Symbol " + symbol->name() + " has no type");
+            return false;
+        }
+        
+        auto& unresolved = std::get<UnresolvedType>(symbol_type->value);
         
         if (!unresolved.can_infer()) {
-            errors.push_back("Symbol " + symbol->name + " marked as unresolved but has no initializer, type name, or defining scope");
+            errors.push_back("Symbol " + symbol->name() + " marked as unresolved but has no initializer, type name, or defining scope");
             return false;
         }
 
@@ -126,7 +148,7 @@ private:
             if (!expr_type) return false;
         }
         
-        add_constraint(symbol->type, expr_type);
+        add_constraint(symbol_type, expr_type);
         return true;
     }
 
@@ -260,13 +282,9 @@ private:
             return nullptr;
         }
         
-        // For variables, parameters, and fields, return their type
-        if (symbol->is_variable() || symbol->is_parameter() || symbol->is_field()) {
-            return symbol->type;
-        } 
-        // For functions, return their return type
-        else if (symbol->is_function()) {
-            return symbol->type; // type field holds return type for functions
+        // For typed symbols, return their type
+        if (auto* typed_symbol = symbol->as<TypedSymbol>()) {
+            return typed_symbol->type();
         }
 
         errors.push_back("Identifier '" + var_name + "' is not a variable or function");
@@ -314,8 +332,13 @@ private:
             return nullptr;
         }
         
-        // Return the member's type
-        return member_symbol->type;
+        // Return the member's type based on symbol type
+        if (auto* typed_symbol = member_symbol->as<TypedSymbol>()) {
+            return typed_symbol->type();
+        }
+        
+        errors.push_back("Member '" + member_name + "' has unsupported type");
+        return nullptr;
     }
     
     void add_constraint(TypePtr left, TypePtr right) {
@@ -335,10 +358,17 @@ private:
         for (const auto& constraint : constraints) {
             // Find the symbol whose type matches this constraint's left_type
             for (auto* symbol : symbolTable.get_unresolved_symbols()) {
-                if (symbol->type == constraint.left_type) {
-                    // Update the symbol's type to the resolved type
-                    symbol->type = constraint.right_type;
-                    
+                bool type_matches = false;
+                
+                // Check if this symbol's type matches the constraint
+                if (auto* typed_symbol = symbol->as<TypedSymbol>()) {
+                    if (typed_symbol->type() == constraint.left_type) {
+                        typed_symbol->set_type(constraint.right_type);
+                        type_matches = true;
+                    }
+                }
+                
+                if (type_matches) {
                     // Only remove from unresolved list if the resolved type is concrete
                     // Check if the right_type is actually resolved (not an UnresolvedType)
                     if (!std::holds_alternative<UnresolvedType>(constraint.right_type->value)) {

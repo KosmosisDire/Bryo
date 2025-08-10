@@ -34,6 +34,8 @@ public:
     void visit(VariableDeclarationNode* node) override;
     void visit(ForInStatementNode* node) override;
     void visit(IfStatementNode* node) override;
+    void visit(EnumDeclarationNode* node) override;
+    void visit(PropertyDeclarationNode* node) override;
 
     // Pass through for nested visits
     void visit(CompilationUnitNode* node) override;

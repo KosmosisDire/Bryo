@@ -25,7 +25,7 @@ std::string Type::get_name() const {
             }
             return "unknown";
         } else if constexpr (std::is_same_v<T, TypeReference>) {
-            return v.definition ? v.definition->name : "unknown";
+            return v.definition ? v.definition->name() : "unknown";
         } else if constexpr (std::is_same_v<T, GenericInstance>) {
             // TODO: Build full generic name like "List<Player>"
             return "generic"; // Placeholder
@@ -62,8 +62,8 @@ bool Type::is_value_type() const {
     }, value);
 }
 
-Symbol* Type::get_type_symbol() const {
-    return std::visit([](const auto& v) -> Symbol* {
+TypeLikeSymbol* Type::get_type_symbol() const {
+    return std::visit([](const auto& v) -> TypeLikeSymbol* {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, TypeReference>) {
             return v.definition;

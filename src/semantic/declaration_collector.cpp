@@ -27,7 +27,7 @@ void DeclarationCollector::visit(NamespaceDeclarationNode* node)
 
     // If there is already a current namespace, do not allow file-scoped namespace
     if (!node->body && symbolTable.get_current_namespace() && 
-        symbolTable.get_current_namespace()->name != "global") {
+        symbolTable.get_current_namespace()->name() != "global") {
         errors.push_back("File-scoped namespace cannot be declared inside another namespace");
         return;
     }
@@ -45,7 +45,6 @@ void DeclarationCollector::visit(NamespaceDeclarationNode* node)
 
 void DeclarationCollector::visit(UsingDirectiveNode* node) {
     // TODO: Handle using directives for namespace imports
-    // For now, just skip
 }
 
 void DeclarationCollector::visit(TypeDeclarationNode* node) {
@@ -73,7 +72,7 @@ void DeclarationCollector::visit(TypeDeclarationNode* node) {
         }
     }
     
-    type_symbol->access = AccessLevel::Public;
+    type_symbol->set_access(AccessLevel::Public);
     
     // Visit members
     for (int i = 0; i < node->members.size; ++i) {
@@ -113,7 +112,6 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
         return_type = symbolTable.resolve_type_name(node->returnType->get_full_name());
     }
     
-    // Enter function scope - this creates the symbol
     auto func_symbol = symbolTable.enter_function(func_name, return_type, param_types);
     
     // Apply modifiers
@@ -135,7 +133,7 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
                 break;
         }
     }
-    func_symbol->access = AccessLevel::Public;
+    func_symbol->set_access(AccessLevel::Public);
     
     // Add parameters to function scope
     for (int i = 0; i < node->parameters.size; ++i)
@@ -256,6 +254,105 @@ void DeclarationCollector::visit(BlockStatementNode* node) {
             node->statements[i]->accept(this);
         }
     }
+}
+
+void DeclarationCollector::visit(EnumDeclarationNode* node) {
+    if (!node->name) return;
+    
+    std::string enum_name(node->name->name);
+    
+    auto* enum_symbol = symbolTable.enter_enum(enum_name);
+    
+    // Apply modifiers if any
+    for (int i = 0; i < node->modifiers.size; ++i) {
+        switch (node->modifiers[i]) {
+            case ModifierKind::Static:
+                enum_symbol->add_modifier(SymbolModifiers::Static);
+                break;
+            case ModifierKind::Abstract:
+                enum_symbol->add_modifier(SymbolModifiers::Abstract);
+                break;
+            default:
+                break;
+        }
+    }
+    
+    enum_symbol->set_access(AccessLevel::Public);
+    
+    // Visit enum cases
+    for (int i = 0; i < node->cases.size; ++i) {
+        if (node->cases[i] && node->cases[i]->name) {
+            std::string case_name(node->cases[i]->name->name);
+            
+            // Build associated types for tagged enum cases
+            std::vector<TypePtr> associated_types;
+            for (int j = 0; j < node->cases[i]->associatedData.size; ++j) {
+                if (auto* param = node->cases[i]->associatedData[j]) {
+                    if (param->type) {
+                        auto type = symbolTable.resolve_type_name(param->type->get_full_name());
+                        associated_types.push_back(type);
+                    }
+                }
+            }
+            
+            auto* case_symbol = symbolTable.define_enum_case(case_name, associated_types);
+            
+            if (!case_symbol) {
+                errors.push_back("Enum case '" + case_name + "' already defined in enum '" + enum_name + "'");
+            }
+        }
+    }
+    
+    // Visit methods
+    for (int i = 0; i < node->methods.size; ++i) {
+        if (node->methods[i]) {
+            node->methods[i]->accept(this);
+        }
+    }
+    
+    // Exit enum scope
+    symbolTable.exit_scope();
+}
+
+void DeclarationCollector::visit(PropertyDeclarationNode* node) {
+    if (!node->name) return;
+    
+    std::string prop_name(node->name->name);
+    
+    // Determine property type
+    TypePtr prop_type = typeSystem.get_unresolved_type();
+    if (node->type && node->type->name->identifiers.size > 0) {
+        prop_type = symbolTable.resolve_type_name(node->type->get_full_name());
+    }
+    
+    // Properties are fields with special behavior
+    auto* prop_symbol = symbolTable.define_property(prop_name, prop_type);
+    
+    if (!prop_symbol) {
+        errors.push_back("Property '" + prop_name + "' already defined in current scope");
+    } else {
+        
+        // Apply modifiers
+        for (int i = 0; i < node->modifiers.size; ++i) {
+            switch (node->modifiers[i]) {
+                case ModifierKind::Static:
+                    prop_symbol->add_modifier(SymbolModifiers::Static);
+                    break;
+                case ModifierKind::Virtual:
+                    prop_symbol->add_modifier(SymbolModifiers::Virtual);
+                    break;
+                case ModifierKind::Override:
+                    prop_symbol->add_modifier(SymbolModifiers::Override);
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        prop_symbol->set_access(AccessLevel::Public);
+    }
+    
+    // TODO: Handle getter/setter expressions and blocks
 }
 
 

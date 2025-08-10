@@ -81,6 +81,7 @@ set(SOURCE_FILES
     # Semantic Analysis
     src/semantic/type.cpp
     src/semantic/scope.cpp
+    src/semantic/symbol.cpp
     src/semantic/symbol_table.cpp
     src/semantic/declaration_collector.cpp
     

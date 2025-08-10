@@ -9,38 +9,41 @@
 
 namespace Myre {
 
-// ============= Symbol Table =============
 class SymbolTable {
-    std::unique_ptr<Symbol> global_symbol;  // Root (always a Symbol with kind=Namespace)
-    ScopeNode* current;                      // Current position (Symbol or BlockScope)
+    std::unique_ptr<NamespaceSymbol> global_symbol;  // Root namespace
+    ScopeNode* current;                              // Current scope
     TypeSystem type_system;
     std::vector<Symbol*> unresolved_symbols;
-    int next_block_id = 0;                  // For generating unique block keys
+    int next_block_id = 0;
     
 public:
     SymbolTable();
     
-    // Enter named scopes (creates Symbols)
-    Symbol* enter_namespace(const std::string& name);
-    Symbol* enter_type(const std::string& name);
-    Symbol* enter_function(const std::string& name, TypePtr return_type, 
-                          std::vector<TypePtr> params);
+    // Enter named scopes
+    NamespaceSymbol* enter_namespace(const std::string& name);
+    TypeSymbol* enter_type(const std::string& name);
+    EnumSymbol* enter_enum(const std::string& name);
+    FunctionSymbol* enter_function(const std::string& name, TypePtr return_type, 
+                                  std::vector<TypePtr> params);
     
-    // Enter anonymous scope (creates BlockScope)
+    // Enter anonymous scope
     BlockScope* enter_block(const std::string& debug_name = "block");
     
-    // Exit current scope (works for both Symbol and BlockScope)
+    // Exit current scope
     void exit_scope();
     
     // Define symbols in current scope
-    Symbol* define_variable(const std::string& name, TypePtr type);
-    Symbol* define_parameter(const std::string& name, TypePtr type);
-    Symbol* define_field(const std::string& name, TypePtr type);
+    VariableSymbol* define_variable(const std::string& name, TypePtr type);
+    ParameterSymbol* define_parameter(const std::string& name, TypePtr type);
+    FieldSymbol* define_field(const std::string& name, TypePtr type);
+    PropertySymbol* define_property(const std::string& name, TypePtr type);
+    EnumCaseSymbol* define_enum_case(const std::string& name, std::vector<TypePtr> associated_types = {});
     
-    // Context queries (walk up tree to find nearest Symbol of type)
-    Symbol* get_current_namespace() const;
-    Symbol* get_current_type() const;
-    Symbol* get_current_function() const;
+    // Context queries
+    NamespaceSymbol* get_current_namespace() const;
+    TypeSymbol* get_current_type() const;
+    EnumSymbol* get_current_enum() const;
+    FunctionSymbol* get_current_function() const;
     ScopeNode* get_current_scope() const { return current; }
     
     // Lookup
@@ -63,7 +66,8 @@ public:
     
 private:
     // Helper to add a child to current scope
-    void add_child(const std::string& key, std::unique_ptr<ScopeNode> child);
+    void add_child(const std::string& key, std::unique_ptr<Symbol> child);
+    void add_block_child(const std::string& key, std::unique_ptr<BlockScope> child);
 };
 
 } // namespace Myre

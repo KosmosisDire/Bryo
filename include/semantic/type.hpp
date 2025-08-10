@@ -9,13 +9,12 @@ namespace Myre {
 
 // Forward declarations
 struct Type;
-class Symbol;
+class TypeLikeSymbol;
 class ScopeNode;
 struct ExpressionNode;
 struct TypeNameNode;
 using TypePtr = std::shared_ptr<Type>;
 
-// ============= Types =============
 struct PrimitiveType {
     enum Kind { 
         I32, I64, F32, F64, Bool, String, Char,
@@ -33,12 +32,12 @@ struct ArrayType {
 
 // Reference to a defined type (Player, Enemy, etc.)
 struct TypeReference {
-    Symbol* definition;  // Points to Symbol where kind == Type
+    TypeLikeSymbol* definition;  // Points to TypeSymbol or EnumSymbol
 };
 
 // Generic type instantiation (List<Player>, Map<String, Item>)
 struct GenericInstance {
-    Symbol* generic_definition;  // List<T>
+    TypeLikeSymbol* generic_definition;  // List<T>
     std::vector<TypePtr> type_arguments;  // [Player]
 };
 
@@ -57,12 +56,11 @@ struct UnresolvedType {
     inline bool can_infer() const { return (initializer != nullptr || type_name != nullptr) && defining_scope != nullptr; }
 };
 
-// The Type variant
 class Type {
     // Make TypeSystem a friend so it can create Types
     friend class TypeSystem;
     
-    // Private constructor - only TypeSystem can create Types
+    // Private constructor, only TypeSystem can create Types
     Type(std::variant<PrimitiveType, ArrayType, TypeReference, GenericInstance, FunctionType, UnresolvedType> v)
         : value(std::move(v)) {}
     
@@ -95,20 +93,14 @@ public:
     bool equals(const TypePtr& other) const { return this == other.get(); }
     
     // Helper to get the underlying type symbol (if any)
-    Symbol* get_type_symbol() const;
+    TypeLikeSymbol* get_type_symbol() const;
 };
 
 // ============= Type Implementation =============
-
-// Implementation in type.cpp - needs complete TypeDefinition type
 
 inline bool Type::is_void() const {
     auto* prim = std::get_if<PrimitiveType>(&value);
     return prim && prim->kind == PrimitiveType::Void;
 }
-
-// Implementation moved to type.cpp to avoid circular dependency
-
-// Implementation in type.cpp
 
 } // namespace Myre

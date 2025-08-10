@@ -7,35 +7,37 @@ namespace Myre {
 
 SymbolTable::SymbolTable() {
     // Create global namespace symbol
-    global_symbol = std::make_unique<Symbol>();
-    global_symbol->kind = SymbolKind::Namespace;
-    global_symbol->name = "global";
-    global_symbol->access = AccessLevel::Public;
+    global_symbol = std::make_unique<NamespaceSymbol>();
+    global_symbol->set_name("global");
+    global_symbol->set_access(AccessLevel::Public);
     current = global_symbol.get();
 }
 
-void SymbolTable::add_child(const std::string& key, std::unique_ptr<ScopeNode> child) {
+void SymbolTable::add_child(const std::string& key, std::unique_ptr<Symbol> child) {
     child->parent = current;
     current->children[key] = std::move(child);
 }
 
-Symbol* SymbolTable::enter_namespace(const std::string& name) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Namespace;
-    sym->name = name;
-    sym->access = AccessLevel::Public;
-    Symbol* ptr = sym.get();
+void SymbolTable::add_block_child(const std::string& key, std::unique_ptr<BlockScope> child) {
+    child->parent = current;
+    current->children[key] = std::move(child);
+}
+
+NamespaceSymbol* SymbolTable::enter_namespace(const std::string& name) {
+    auto sym = std::make_unique<NamespaceSymbol>();
+    sym->set_name(name);
+    sym->set_access(AccessLevel::Public);
+    NamespaceSymbol* ptr = sym.get();
     add_child(name, std::move(sym));
     current = ptr;
     return ptr;
 }
 
-Symbol* SymbolTable::enter_type(const std::string& name) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Type;
-    sym->name = name;
-    sym->access = AccessLevel::Public;
-    Symbol* ptr = sym.get();
+TypeSymbol* SymbolTable::enter_type(const std::string& name) {
+    auto sym = std::make_unique<TypeSymbol>();
+    sym->set_name(name);
+    sym->set_access(AccessLevel::Public);
+    TypeSymbol* ptr = sym.get();
     
     // Register type in type system
     std::string full_name = ptr->get_qualified_name();
@@ -46,15 +48,29 @@ Symbol* SymbolTable::enter_type(const std::string& name) {
     return ptr;
 }
 
-Symbol* SymbolTable::enter_function(const std::string& name, TypePtr return_type, 
+EnumSymbol* SymbolTable::enter_enum(const std::string& name) {
+    auto sym = std::make_unique<EnumSymbol>();
+    sym->set_name(name);
+    sym->set_access(AccessLevel::Public);
+    EnumSymbol* ptr = sym.get();
+    
+    // Register enum in type system
+    std::string full_name = ptr->get_qualified_name();
+    type_system.register_type_symbol(full_name, ptr);
+    
+    add_child(name, std::move(sym));
+    current = ptr;
+    return ptr;
+}
+
+FunctionSymbol* SymbolTable::enter_function(const std::string& name, TypePtr return_type, 
                                     std::vector<TypePtr> params) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Function;
-    sym->name = name;
-    sym->type = return_type;
-    sym->parameter_types = params;
-    sym->access = AccessLevel::Private;
-    Symbol* ptr = sym.get();
+    auto sym = std::make_unique<FunctionSymbol>();
+    sym->set_name(name);
+    sym->set_return_type(return_type);
+    sym->set_parameter_types(std::move(params));
+    sym->set_access(AccessLevel::Private);
+    FunctionSymbol* ptr = sym.get();
     add_child(name, std::move(sym));
     current = ptr;
     return ptr;
@@ -64,7 +80,7 @@ BlockScope* SymbolTable::enter_block(const std::string& debug_name) {
     auto block = std::make_unique<BlockScope>(debug_name);
     BlockScope* ptr = block.get();
     std::string key = "$block_" + std::to_string(next_block_id++);
-    add_child(key, std::move(block));
+    add_block_child(key, std::move(block));
     current = ptr;
     return ptr;
 }
@@ -75,13 +91,12 @@ void SymbolTable::exit_scope() {
     }
 }
 
-Symbol* SymbolTable::define_variable(const std::string& name, TypePtr type) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Variable;
-    sym->name = name;
-    sym->type = type;
-    sym->access = AccessLevel::Private;
-    Symbol* ptr = sym.get();
+VariableSymbol* SymbolTable::define_variable(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<VariableSymbol>();
+    sym->set_name(name);
+    sym->set_type(type);
+    sym->set_access(AccessLevel::Private);
+    VariableSymbol* ptr = sym.get();
     
     // Check if this symbol has an unresolved type and needs inference
     if (type && std::holds_alternative<UnresolvedType>(type->value)) {
@@ -92,13 +107,12 @@ Symbol* SymbolTable::define_variable(const std::string& name, TypePtr type) {
     return ptr;
 }
 
-Symbol* SymbolTable::define_parameter(const std::string& name, TypePtr type) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Parameter;
-    sym->name = name;
-    sym->type = type;
-    sym->access = AccessLevel::Private;
-    Symbol* ptr = sym.get();
+ParameterSymbol* SymbolTable::define_parameter(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<ParameterSymbol>();
+    sym->set_name(name);
+    sym->set_type(type);
+    sym->set_access(AccessLevel::Private);
+    ParameterSymbol* ptr = sym.get();
     
     // Check if this symbol has an unresolved type and needs inference
     if (type && std::holds_alternative<UnresolvedType>(type->value)) {
@@ -109,13 +123,12 @@ Symbol* SymbolTable::define_parameter(const std::string& name, TypePtr type) {
     return ptr;
 }
 
-Symbol* SymbolTable::define_field(const std::string& name, TypePtr type) {
-    auto sym = std::make_unique<Symbol>();
-    sym->kind = SymbolKind::Field;
-    sym->name = name;
-    sym->type = type;
-    sym->access = AccessLevel::Private;
-    Symbol* ptr = sym.get();
+FieldSymbol* SymbolTable::define_field(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<FieldSymbol>();
+    sym->set_name(name);
+    sym->set_type(type);
+    sym->set_access(AccessLevel::Private);
+    FieldSymbol* ptr = sym.get();
     
     // Check if this symbol has an unresolved type and needs inference
     if (type && std::holds_alternative<UnresolvedType>(type->value)) {
@@ -126,15 +139,45 @@ Symbol* SymbolTable::define_field(const std::string& name, TypePtr type) {
     return ptr;
 }
 
-Symbol* SymbolTable::get_current_namespace() const {
+PropertySymbol* SymbolTable::define_property(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<PropertySymbol>();
+    sym->set_name(name);
+    sym->set_type(type);
+    sym->set_access(AccessLevel::Private);
+    PropertySymbol* ptr = sym.get();
+    
+    // Check if this symbol has an unresolved type and needs inference
+    if (type && std::holds_alternative<UnresolvedType>(type->value)) {
+        unresolved_symbols.push_back(ptr);
+    }
+    
+    add_child(name, std::move(sym));
+    return ptr;
+}
+
+EnumCaseSymbol* SymbolTable::define_enum_case(const std::string& name, std::vector<TypePtr> associated_types) {
+    auto sym = std::make_unique<EnumCaseSymbol>();
+    sym->set_name(name);
+    sym->set_associated_types(std::move(associated_types));
+    sym->set_access(AccessLevel::Public);
+    EnumCaseSymbol* ptr = sym.get();
+    add_child(name, std::move(sym));
+    return ptr;
+}
+
+NamespaceSymbol* SymbolTable::get_current_namespace() const {
     return current->get_enclosing_namespace();
 }
 
-Symbol* SymbolTable::get_current_type() const {
+TypeSymbol* SymbolTable::get_current_type() const {
     return current->get_enclosing_type();
 }
 
-Symbol* SymbolTable::get_current_function() const {
+EnumSymbol* SymbolTable::get_current_enum() const {
+    return current->get_enclosing_enum();
+}
+
+FunctionSymbol* SymbolTable::get_current_function() const {
     return current->get_enclosing_function();
 }
 
@@ -154,13 +197,17 @@ TypePtr SymbolTable::resolve_type_name(const std::string& type_name, ScopeNode* 
     }
     
     // Look up the symbol starting from the given scope
-    auto symbol = scope->lookup(type_name);
-    if (!symbol || !symbol->is_type()) {
+    auto* symbol = scope->lookup(type_name);
+    if (!symbol) {
         return type_system.get_unresolved_type();
     }
     
-    // Create a type reference to this symbol
-    return type_system.get_type_reference(symbol);
+    // Check if it's a type-like symbol (Type or Enum)
+    if (auto* type_like = symbol->as<TypeLikeSymbol>()) {
+        return type_system.get_type_reference(type_like);
+    }
+    
+    return type_system.get_unresolved_type();
 }
 
 void SymbolTable::mark_symbol_resolved(Symbol* symbol) {
@@ -180,17 +227,17 @@ std::string SymbolTable::to_string() const {
     
     // Print current context
     if (auto* ns = get_current_namespace()) {
-        if (ns->name != "global") {
-            ss << "Current Namespace: " << ns->name << "\n";
+        if (ns->name() != "global") {
+            ss << "Current Namespace: " << ns->name() << "\n";
         }
     }
     
     if (auto* type = get_current_type()) {
-        ss << "Current Type: " << type->name << "\n";
+        ss << "Current Type: " << type->name() << "\n";
     } 
     
     if (auto* func = get_current_function()) {
-        ss << "Current Function: " << func->name << "\n";
+        ss << "Current Function: " << func->name() << "\n";
     }
     
     ss << "\nScope Hierarchy:\n";
@@ -202,33 +249,33 @@ std::string SymbolTable::to_string() const {
         if (auto* sym = node->as_symbol()) {
             // Print symbol info
             ss << indent_str;
-            switch (sym->kind) {
-                case SymbolKind::Namespace:
-                    ss << "namespace " << sym->name;
-                    break;
-                case SymbolKind::Type:
-                    ss << "type " << sym->name;
-                    if (sym->has_modifier(SymbolModifiers::Ref)) ss << " (ref)";
-                    if (sym->has_modifier(SymbolModifiers::Abstract)) ss << " (abstract)";
-                    break;
-                case SymbolKind::Function:
-                    ss << "fn " << sym->name;
-                    if (sym->type) ss << " -> " << sym->type->get_name();
-                    break;
-                case SymbolKind::Variable:
-                    ss << "var " << sym->name;
-                    if (sym->type) ss << ": " << sym->type->get_name();
-                    break;
-                case SymbolKind::Parameter:
-                    ss << "param " << sym->name;
-                    if (sym->type) ss << ": " << sym->type->get_name();
-                    break;
-                case SymbolKind::Field:
-                    ss << "field " << sym->name;
-                    if (sym->type) ss << ": " << sym->type->get_name();
-                    break;
-                default:
-                    ss << "unknown " << sym->name;
+            ss << sym->kind_name() << " " << sym->name();
+            
+            // Add type-specific info
+            if (auto* typed_symbol = sym->as<TypedSymbol>()) {
+                if (typed_symbol->type()) {
+                    if (auto* func = sym->as<FunctionSymbol>()) {
+                        ss << " -> " << typed_symbol->type()->get_name();
+                    } else {
+                        ss << ": " << typed_symbol->type()->get_name();
+                    }
+                }
+            } else if (auto* type = sym->as<TypeSymbol>()) {
+                if (type->is_ref_type()) ss << " (ref)";
+                if (type->is_abstract()) ss << " (abstract)";
+            } else if (auto* enum_sym = sym->as<EnumSymbol>()) {
+                ss << " (enum)";
+            } else if (auto* case_sym = sym->as<EnumCaseSymbol>()) {
+                if (case_sym->is_tagged()) {
+                    ss << "(";
+                    bool first = true;
+                    for (const auto& type : case_sym->associated_types()) {
+                        if (!first) ss << ", ";
+                        ss << type->get_name();
+                        first = false;
+                    }
+                    ss << ")";
+                }
             }
             
             // Add brackets if this node has children
@@ -263,7 +310,7 @@ std::string SymbolTable::to_string() const {
     if (!unresolved_symbols.empty()) {
         ss << "\nUnresolved Symbols:\n";
         for (const auto* sym : unresolved_symbols) {
-            ss << " - " << sym->name << "\n";
+            ss << " - " << sym->name() << "\n";
         }
     }
     

@@ -575,6 +575,8 @@ namespace Myre
     {
         switch (kind)
         {
+        case ModifierKind::Invalid:
+            return "invalid";
         case ModifierKind::Public:
             return "public";
         case ModifierKind::Private:

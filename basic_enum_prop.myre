@@ -103,7 +103,7 @@ public type Rectangle
     }
     
     // Property with both accessors
-    public f32 Height
+    public var Height
     {
         get
         {
