@@ -42,6 +42,9 @@ public:
     // Pass through for nested visits
     void visit(CompilationUnitNode* node) override;
     void visit(BlockStatementNode* node) override;
+    
+    // Helper method to visit block contents without creating a scope
+    void visit_block_contents(BlockStatementNode* node);
 };
 
 } // namespace Myre

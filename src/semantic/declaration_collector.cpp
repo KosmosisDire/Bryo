@@ -35,12 +35,9 @@ void DeclarationCollector::visit(NamespaceDeclarationNode* node)
 
     symbolTable.enter_namespace(ns_name);
 
-    // If there is a body, visit it; otherwise, treat as file-scoped namespace
     if (node->body) {
-        node->body->accept(this);
+        visit_block_contents(node->body);
         symbolTable.exit_scope();
-    } else {
-        // File-scoped namespace: keep scope open for rest of file
     }
 }
 
@@ -165,10 +162,8 @@ void DeclarationCollector::visit(FunctionDeclarationNode* node) {
         }
     }
     
-    // Visit function body
-    if (node->body) {
-        node->body->accept(this);
-    }
+    // Visit function body (without creating another scope)
+    visit_block_contents(node->body);
     
     // Exit function scope
     symbolTable.exit_scope();
@@ -235,9 +230,15 @@ void DeclarationCollector::visit(ForStatementNode* node) {
         }
     }
 
-    // Visit loop body
+    // Visit loop body (without creating another scope)
     if (node->body) {
-        node->body->accept(this);
+        // Check if body is a BlockStatementNode
+        if (node->body->is_a<BlockStatementNode>()) {
+            visit_block_contents(node->body->as<BlockStatementNode>());
+        } else {
+            // For non-block statements (like single statement without braces)
+            node->body->accept(this);
+        }
     }
 
     // Exit for loop scope
@@ -253,9 +254,15 @@ void DeclarationCollector::visit(WhileStatementNode* node) {
         node->condition->accept(this);
     }
 
-    // Visit loop body
+    // Visit loop body (without creating another scope)
     if (node->body) {
-        node->body->accept(this);
+        // Check if body is a BlockStatementNode
+        if (node->body->is_a<BlockStatementNode>()) {
+            visit_block_contents(node->body->as<BlockStatementNode>());
+        } else {
+            // For non-block statements (like single statement without braces)
+            node->body->accept(this);
+        }
     }
 
     // Exit while loop scope
@@ -310,9 +317,12 @@ void DeclarationCollector::visit(ForInStatementNode* node) {
         node->iterable->accept(this);
     }
 
-    // Visit statements in block
     if (node->body) {
-        node->body->accept(this);
+        if (node->body->is_a<BlockStatementNode>()) {
+            visit_block_contents(node->body->as<BlockStatementNode>());
+        } else {
+            node->body->accept(this);
+        }
     }
 
     // Exit for-in loop scope
@@ -330,12 +340,20 @@ void DeclarationCollector::visit(IfStatementNode* node) {
 
     // Visit then block
     if (node->thenStatement) {
-        node->thenStatement->accept(this);
+        if (node->thenStatement->is_a<BlockStatementNode>()) {
+            visit_block_contents(node->thenStatement->as<BlockStatementNode>());
+        } else {
+            node->thenStatement->accept(this);
+        }
     }
 
     // Visit else block
     if (node->elseStatement) {
-        node->elseStatement->accept(this);
+        if (node->elseStatement->is_a<BlockStatementNode>()) {
+            visit_block_contents(node->elseStatement->as<BlockStatementNode>());
+        } else {
+            node->elseStatement->accept(this);
+        }
     }
 
     // Exit if statement scope
@@ -343,7 +361,22 @@ void DeclarationCollector::visit(IfStatementNode* node) {
 }
 
 void DeclarationCollector::visit(BlockStatementNode* node) {
+    // Create scope for anonymous blocks
+    // This is called for standalone block statements like { ... }
+    symbolTable.enter_block("block");
+    
     // Visit statements in block
+    visit_block_contents(node);
+    
+    // Exit block scope
+    symbolTable.exit_scope();
+}
+
+void DeclarationCollector::visit_block_contents(BlockStatementNode* node) {
+    // Helper method to visit block contents without creating a scope
+    // Used by other constructs that manage their own scopes
+    if (!node) return;
+    
     for (int i = 0; i < node->statements.size; ++i) {
         if (node->statements[i]) {
             node->statements[i]->accept(this);
@@ -530,9 +563,8 @@ void DeclarationCollector::visit(PropertyDeclarationNode* node) {
                 }
             }
             
-            // Visit accessor body to collect any declarations inside
             if (node->accessors[i]->body) {
-                node->accessors[i]->body->accept(this);
+                visit_block_contents(node->accessors[i]->body);
             }
             
             // Exit accessor scope
