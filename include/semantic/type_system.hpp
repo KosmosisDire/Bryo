@@ -73,6 +73,7 @@ inline TypeSystem::TypeSystem() {
     create_primitive("i16", PrimitiveType::I16);
     create_primitive("u16", PrimitiveType::U16);
     create_primitive("void", PrimitiveType::Void);
+    create_primitive("Range", PrimitiveType::Range);
 }
 
 

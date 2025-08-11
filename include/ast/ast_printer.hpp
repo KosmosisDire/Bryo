@@ -745,6 +745,9 @@ public:
         if (node->type) {
             node->type->accept(this);
         }
+        if (node->equals) {
+            node->initializer->accept(this);
+        }
         if (node->getterExpression) {
             node->getterExpression->accept(this);
         }

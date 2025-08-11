@@ -83,11 +83,11 @@ public type Rectangle
 {
     // Regular fields
     f32 width;
-    f32 height;
+
     
     // Arrow property (getter only)
-    public f32 area => width * height;
-    f32 stuff => width * height;
+    public f32 area => width * Height;
+    f32 stuff => width * Height;
     
     // Property with accessor block
     public f32 Width
@@ -102,22 +102,24 @@ public type Rectangle
         }
     }
     
-    // Property with both accessors
-    public var Height
+    // Property with both accessors and backing field with initializer
+    public var Height = 1.0
     {
         get
         {
-            return height;
+            var stuff = 10.0; // Local variable
+            var things = new Point2D(1.0, 2.0); // Local object
+            return field * stuff + things.x;
         }
         set
         {
-            height = value;
+            field = value;
         }
     }
-    
+
     // Var property with arrow
-    public var perimeter => (width + height) * 2;
-    
+    public var perimeter => (width + Height) * 2;
+
     // Constructor
     new(f32 w, f32 h)
     {
@@ -174,6 +176,12 @@ public type Circle
     {
         centerX += dx;
         centerY += dy;
+    }
+    
+    // GetCenter method to match abstract Shape interface
+    public fn GetCenter(): Point2D
+    {
+        return new Point2D(centerX, centerY);
     }
 }
 
@@ -256,9 +264,9 @@ fn Main(): i32
     }
     
     // For loop (traditional)
-    for (i32 i = 0; i < 5; i++)
+    for (i32 t = 0; t < 5; t++)
     {
-        x = x + i;
+        x = x + t;
     }
     
     // For-in loop with range

@@ -746,6 +746,8 @@ namespace Myre
         TypeNameNode* type;
         TokenNode* arrow; // optional for expression-bodied getter
         ExpressionNode* getterExpression; // for => syntax
+        TokenNode* equals; // optional for initializer
+        ExpressionNode* initializer; // optional initializer expression
         TokenNode* semicolon; // for => syntax
         TokenNode* openBrace; // optional for accessor block
         SizedArray<PropertyAccessorNode*> accessors;

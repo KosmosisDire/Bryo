@@ -1,0 +1,264 @@
+// Comprehensive Type Resolution Test
+// Tests all features: properties, ranges, for-in loops, unary expressions, binary expressions, method calls, type coercion
+using System;
+
+namespace TypeResolutionTests;
+
+// Complex type with nested properties and method calls
+public type AdvancedRectangle
+{
+    // Basic fields
+    f32 width;
+    f32 height; 
+    i32 id;
+    
+    // Arrow properties with complex expressions
+    public f32 area => width * height;
+    public f32 perimeter => (width + height) * 2.0;
+    public f32 diagonal => (width * width + height * height) * 0.5; // Type coercion: i32 literal to f32
+    
+    // Property with getter block and complex return expression
+    public var AspectRatio
+    {
+        get
+        {
+            var stuff = 10; // NOT COLLECTED YET
+            if (height > 0.0)
+            {
+                return width / height;
+            }
+            return 1.0;
+        }
+    }
+    
+    // Property combining unary and binary expressions
+    public var IsSquareish => !(width - height > 1.0 || height - width > 1.0);
+    
+    // Property with nested parentheses and mixed numeric types
+    public var ComplexCalc => ((width + height) * 3) / (id + 1.0);
+    
+    // Method returning property value
+    public fn GetScaledArea(f32 scale): f32
+    {
+        return area * scale;
+    }
+    
+    // Method with complex return expression
+    public fn IsLargerThan(AdvancedRectangle other): bool
+    {
+        return (area > other.area) && (perimeter > other.perimeter);
+    }
+}
+
+// Type with range-based properties and methods
+public type RangeProcessor
+{
+    i32 start;
+    i32 end;
+    i32 step;
+    
+    // Property returning a range
+    public var Range => start..end by step;
+    public var SimpleRange => 0..10;
+    public var FloatRange => 1.0..5.0;  // Should work with f32
+    
+    // Method that processes ranges
+    public fn ProcessRange(): i32
+    {
+        var total = 0;
+        var myRange = start..end;  // Regular range variable
+        
+        // Nested for-in loops with different range types
+        for (var i in 0..5)
+        {
+            for (var j in myRange)  
+            {
+                for (var k in 1..3 by 1)
+                {
+                    total = total + i + j + k;
+                    
+                    // Range variable inside nested loop
+                    var innerRange = i..(i + 3);
+                    
+                    for (var m in innerRange)
+                    {
+                        total = total + m;
+                    }
+                }
+            }
+        }
+        
+        return total;
+    }
+}
+
+// Type with complex property interactions
+public type PropertyChain
+{
+    f32 baseValue;
+    
+    public var Doubled => baseValue * 2;
+    public var Tripled => baseValue * 3;
+    
+    // Property that references other properties (if this works)
+    // public var Combined => Doubled + Tripled;
+    
+    // Property with complex unary expressions
+    public var Negations => -(-baseValue + -Doubled);
+    public var BooleanMix => !!(baseValue > 0) && !(baseValue < -10);
+}
+
+// Main function with comprehensive testing
+fn ComprehensiveTypeTest(): i32
+{
+    // 1. BASIC VARIABLE DECLARATIONS WITH TYPE INFERENCE
+    var rect = new AdvancedRectangle();
+    rect.width = 10.0;
+    rect.height = 5.0;
+    rect.id = 42;
+    
+    var processor = new RangeProcessor();
+    processor.start = 1;
+    processor.end = 10; 
+    processor.step = 2;
+    
+    var chain = new PropertyChain();
+    chain.baseValue = 3.14;
+    
+    // 2. PROPERTY ACCESS WITH COMPLEX EXPRESSIONS
+    var rectArea = rect.area;                    // f32
+    var rectPerimeter = rect.perimeter;          // f32 
+    var rectDiagonal = rect.diagonal;            // f32
+    var aspectRatio = rect.AspectRatio;          // f32 (from getter block)
+    var isSquareish = rect.IsSquareish;          // bool
+    var complexCalc = rect.ComplexCalc;          // f32 (type coercion)
+    
+    // 3. METHOD CALLS WITH TYPE INFERENCE
+    var scaledArea = rect.GetScaledArea(2.5);    // f32
+    var rect2 = new AdvancedRectangle();
+    rect2.width = 8.0;
+    rect2.height = 6.0; 
+    rect2.id = 24;
+    var isLarger = rect.IsLargerThan(rect2);     // bool
+    
+    // 4. RANGE VARIABLES (should be Range type)
+    var range1 = 0..100;                         // Range
+    var range2 = 5..15 by 3;                     // Range  
+    var range3 = processor.Range;                // Range (from property)
+    var simpleRange = processor.SimpleRange;     // Range
+    var floatRange = processor.FloatRange;       // Range
+    
+    // 5. COMPLEX FOR-IN LOOP NESTING WITH MIXED TYPES
+    var grandTotal = 0;
+    
+    for (var outerLoop in floatRange)                 // outerLoop: i32
+    {
+        var loopRange = outerLoop..(outerLoop + 5);  // Range variable inside loop
+        
+        for (var innerLoop in loopRange)        // innerLoop: i32 (from range)  
+        {
+            for (var stepLoop in 0..10 by 2)    // stepLoop: i32
+            {
+                // Complex arithmetic with type coercion
+                var result = outerLoop + innerLoop * 2 + stepLoop / 3.0;  // f32 result
+                if (result > 5.0) {
+                    grandTotal = grandTotal + 1;
+                } else {
+                    grandTotal = grandTotal + 0;
+                }
+                
+                // Range created from loop variables
+                var dynamicRange = outerLoop..innerLoop;  // Range
+                
+                for (var deepLoop in dynamicRange)      // deepLoop: i32
+                {
+                    // Unary expressions with mixed types
+                    var neg = -deepLoop;                 // i32
+                    var notZero = !(deepLoop == 0);      // bool
+                    
+                    // Binary expressions with type coercion
+                    var mixed1 = neg + result;           // f32 (i32 + f32)
+                    var mixed2 = deepLoop * 2.5;         // f32 (i32 * f32)
+                    
+                    if (mixed1 > mixed2) {
+                        grandTotal = grandTotal + 1;
+                    }
+                }
+            }
+        }
+    }
+    
+    // 6. PROPERTY CHAIN TESTING
+    var doubled = chain.Doubled;                 // f32
+    var tripled = chain.Tripled;                 // f32  
+    var negations = chain.Negations;             // f32
+    var boolMix = chain.BooleanMix;              // bool
+    
+    // 7. COMPLEX EXPRESSIONS WITH PARENTHESES AND COERCION
+    var complexExpr1 = (rectArea + rectPerimeter) * grandTotal; // f32
+    var complexExpr2 = ((outerLoop + 3) * 2.0) / (rect.id + 1); // f32
+    var complexBool = (complexExpr1 > 100.0) && !(complexExpr2 < 5.0); // bool
+    
+    // 8. NESTED CONDITIONAL WITH RANGE AND PROPERTY ACCESS
+    if (complexBool)
+    {
+        var condRange = 0..(rect.id + 10);       // Range
+        
+        for (var condLoop in condRange)         // condLoop: i32
+        {
+            var condProperty = rect.area;        // f32
+            var condMixed = condLoop + condProperty; // f32 (coercion)
+            
+            if (condMixed > 50.0)
+            {
+                var innerRange = condLoop..(condLoop + 2); // Range  
+                for (var innerCond in innerRange)      // innerCond: i32
+                {
+                    grandTotal = grandTotal + innerCond;
+                }
+            }
+        }
+    }
+    
+    // 9. METHOD CALL IN COMPLEX EXPRESSION
+    var methodResult = processor.ProcessRange(); // i32
+    var finalCalc = methodResult + grandTotal * rect.GetScaledArea(1.5); // f32 (coercion)
+    
+    // 10. ULTIMATE COMPLEXITY TEST
+    var ultimate = 0;
+    for (var x in 1..5)                         // x: i32
+    {
+        var xRange = x..(x * 2);                 // Range
+        for (var y in xRange)                    // y: i32
+        {
+            var tempRect = new AdvancedRectangle();
+            tempRect.width = x + 0.5;            // f32 (coercion)
+            tempRect.height = y * 1.2;           // f32 (coercion)
+            tempRect.id = x + y;
+            
+            var tempArea = tempRect.area;        // f32 (from property)
+            var tempCheck = tempArea > 10.0;     // bool
+            
+            if (tempCheck && !(tempArea < 5.0))
+            {
+                for (var z in 0..3)             // z: i32
+                {
+                    var zRange = 0..z by 1;     // Range (z could be 0!)
+                    for (var w in zRange)       // w: i32 
+                    {
+                        ultimate = ultimate + w;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (finalCalc > 1000.0) {
+        return ultimate + 1;
+    } else {
+        return ultimate;
+    }
+}
+
+// Call the test
+ComprehensiveTypeTest();

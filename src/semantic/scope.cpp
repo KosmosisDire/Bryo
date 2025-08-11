@@ -112,6 +112,19 @@ FunctionSymbol* ScopeNode::get_enclosing_function() const {
     return nullptr;
 }
 
+PropertySymbol* ScopeNode::get_enclosing_property() const {
+    const ScopeNode* node = this;
+    while (node) {
+        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+            if (auto* prop = sym->as<PropertySymbol>()) {
+                return prop;
+            }
+        }
+        node = node->parent;
+    }
+    return nullptr;
+}
+
 TypeLikeSymbol* ScopeNode::get_enclosing_type_like() const {
     const ScopeNode* node = this;
     while (node) {

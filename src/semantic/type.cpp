@@ -22,6 +22,7 @@ std::string Type::get_name() const {
                 case PrimitiveType::I16: return "i16";
                 case PrimitiveType::U16: return "u16";
                 case PrimitiveType::Void: return "void";
+                case PrimitiveType::Range: return "Range";
             }
             return "unknown";
         } else if constexpr (std::is_same_v<T, TypeReference>) {

@@ -175,7 +175,7 @@ public:
 };
 
 // Property
-class PropertySymbol : public UnscopedTypedSymbol {
+class PropertySymbol : public ScopedTypedSymbol {
 public:
     const char* kind_name() const override { return "property"; }
 };

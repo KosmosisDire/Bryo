@@ -64,20 +64,22 @@ void Compiler::compile(const std::string& source_file)
     std::cout << symbol_table.get_type_system().to_string() << "\n";
     std::cout << symbol_table.to_string() << "\n";
 
-    // CodeGenerator codegen(symbol_table);
-    // auto commands = codegen.generate_code(compilation_unit);
-    
-    // if (commands.empty()) {
-    //     std::cerr << "Error: No commands generated from AST" << std::endl;
-    //     return 1;
-    // }
-
     if (!parsing_errs.empty())
     {
         LOG_HEADER("Parser errors encountered:", LogCategory::COMPILER);
         for (const auto& error : parsing_errs)
         {
             LOG_ERROR(error.location.start.to_string() + ": " + error.message, LogCategory::COMPILER);
+        }
+    }
+
+    // output resolver errors
+    auto resolver_errors = resolver.get_errors();
+    if (!resolver_errors.empty())
+    {
+        LOG_HEADER("Type resolution errors encountered:", LogCategory::COMPILER);
+        for (const auto& error : resolver_errors) {
+            LOG_ERROR(error, LogCategory::COMPILER);
         }
     }
 }

@@ -71,6 +71,29 @@ FunctionSymbol* SymbolTable::enter_function(const std::string& name, TypePtr ret
     sym->set_parameter_types(std::move(params));
     sym->set_access(AccessLevel::Private);
     FunctionSymbol* ptr = sym.get();
+    
+    // Check if this function has an unresolved return type and needs inference
+    if (return_type && std::holds_alternative<UnresolvedType>(return_type->value)) {
+        unresolved_symbols.push_back(ptr);
+    }
+    
+    add_child(name, std::move(sym));
+    current = ptr;
+    return ptr;
+}
+
+PropertySymbol* SymbolTable::enter_property(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<PropertySymbol>();
+    sym->set_name(name);
+    sym->set_type(type);
+    sym->set_access(AccessLevel::Private);
+    PropertySymbol* ptr = sym.get();
+    
+    // Check if this property has an unresolved type and needs inference
+    if (type && std::holds_alternative<UnresolvedType>(type->value)) {
+        unresolved_symbols.push_back(ptr);
+    }
+    
     add_child(name, std::move(sym));
     current = ptr;
     return ptr;
@@ -139,21 +162,6 @@ FieldSymbol* SymbolTable::define_field(const std::string& name, TypePtr type) {
     return ptr;
 }
 
-PropertySymbol* SymbolTable::define_property(const std::string& name, TypePtr type) {
-    auto sym = std::make_unique<PropertySymbol>();
-    sym->set_name(name);
-    sym->set_type(type);
-    sym->set_access(AccessLevel::Private);
-    PropertySymbol* ptr = sym.get();
-    
-    // Check if this symbol has an unresolved type and needs inference
-    if (type && std::holds_alternative<UnresolvedType>(type->value)) {
-        unresolved_symbols.push_back(ptr);
-    }
-    
-    add_child(name, std::move(sym));
-    return ptr;
-}
 
 EnumCaseSymbol* SymbolTable::define_enum_case(const std::string& name, std::vector<TypePtr> params) {
     auto sym = std::make_unique<EnumCaseSymbol>();
@@ -179,6 +187,10 @@ EnumSymbol* SymbolTable::get_current_enum() const {
 
 FunctionSymbol* SymbolTable::get_current_function() const {
     return current->get_enclosing_function();
+}
+
+PropertySymbol* SymbolTable::get_current_property() const {
+    return current->get_enclosing_property();
 }
 
 Symbol* SymbolTable::lookup(const std::string& name) {

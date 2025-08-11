@@ -25,6 +25,7 @@ public:
     EnumSymbol* enter_enum(const std::string& name);
     FunctionSymbol* enter_function(const std::string& name, TypePtr return_type, 
                                   std::vector<TypePtr> params);
+    PropertySymbol* enter_property(const std::string& name, TypePtr type);
     
     // Enter anonymous scope
     BlockScope* enter_block(const std::string& debug_name = "block");
@@ -36,7 +37,6 @@ public:
     VariableSymbol* define_variable(const std::string& name, TypePtr type);
     ParameterSymbol* define_parameter(const std::string& name, TypePtr type);
     FieldSymbol* define_field(const std::string& name, TypePtr type);
-    PropertySymbol* define_property(const std::string& name, TypePtr type);
     EnumCaseSymbol* define_enum_case(const std::string& name, std::vector<TypePtr> params = {});
     
     // Context queries
@@ -44,6 +44,7 @@ public:
     TypeSymbol* get_current_type() const;
     EnumSymbol* get_current_enum() const;
     FunctionSymbol* get_current_function() const;
+    PropertySymbol* get_current_property() const;
     ScopeNode* get_current_scope() const { return current; }
     
     // Lookup

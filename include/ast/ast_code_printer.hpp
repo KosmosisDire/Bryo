@@ -672,7 +672,12 @@ public:
             emit(": ");
             node->type->accept(this);
         }
-        
+
+        if (node->equals) {
+            emit(" = ");
+            node->initializer->accept(this);
+        }
+
         if (node->getterExpression) {
             emit(" => ");
             node->getterExpression->accept(this);

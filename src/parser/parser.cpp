@@ -1542,7 +1542,8 @@ namespace Myre
         {
             tokens.advance();
             auto init = parse_expression();
-            // Store initializer somewhere - may need to extend PropertyDeclarationNode
+            prop_decl->equals = create_token_node(tokens.previous());
+            prop_decl->initializer = init.get_or_error("Expected initializer", this);
         }
 
         // Check for arrow getter

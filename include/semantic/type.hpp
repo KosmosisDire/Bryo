@@ -13,13 +13,14 @@ class TypeLikeSymbol;
 class ScopeNode;
 struct ExpressionNode;
 struct TypeNameNode;
+struct BlockStatementNode;
 using TypePtr = std::shared_ptr<Type>;
 
 struct PrimitiveType {
     enum Kind { 
         I32, I64, F32, F64, Bool, String, Char,
         U32, U64, I8, U8, I16, U16,
-        Void 
+        Void, Range
     };
     Kind kind;
 };
@@ -49,11 +50,14 @@ struct FunctionType {
 // Represents unresolved type references
 struct UnresolvedType {
     int id = 0; // Unique ID for this unresolved type
-    ExpressionNode* initializer = nullptr;
+    ExpressionNode* initializer = nullptr;   // For variable initializers, property backing field init, and arrow properties
     TypeNameNode* type_name = nullptr;
-    ScopeNode* defining_scope = nullptr;  // Can be Symbol or BlockScope
+    ScopeNode* defining_scope = nullptr;     // Can be Symbol or BlockScope
+    BlockStatementNode* body = nullptr;      // For function return type inference and property getter blocks
 
-    inline bool can_infer() const { return (initializer != nullptr || type_name != nullptr) && defining_scope != nullptr; }
+    inline bool can_infer() const { 
+        return (initializer != nullptr || type_name != nullptr || body != nullptr) && defining_scope != nullptr; 
+    }
 };
 
 class Type {

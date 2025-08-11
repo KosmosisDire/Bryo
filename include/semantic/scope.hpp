@@ -13,6 +13,7 @@ class NamespaceSymbol;
 class TypeSymbol; 
 class EnumSymbol;
 class FunctionSymbol;
+class PropertySymbol;
 class TypeLikeSymbol;
 class Scope;
 
@@ -38,6 +39,7 @@ public:
     TypeSymbol* get_enclosing_type() const;
     EnumSymbol* get_enclosing_enum() const;
     FunctionSymbol* get_enclosing_function() const;
+    PropertySymbol* get_enclosing_property() const;
     TypeLikeSymbol* get_enclosing_type_like() const;  // Gets enum or type
     
     // Build fully qualified name from this scope
