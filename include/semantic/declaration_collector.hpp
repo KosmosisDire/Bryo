@@ -32,7 +32,9 @@ public:
     void visit(TypeDeclarationNode* node) override;
     void visit(FunctionDeclarationNode* node) override;
     void visit(VariableDeclarationNode* node) override;
+    void visit(ForStatementNode* node) override;
     void visit(ForInStatementNode* node) override;
+    void visit(WhileStatementNode* node) override;
     void visit(IfStatementNode* node) override;
     void visit(EnumDeclarationNode* node) override;
     void visit(PropertyDeclarationNode* node) override;

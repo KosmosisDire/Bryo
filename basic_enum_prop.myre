@@ -268,7 +268,12 @@ fn Main(): i32
     {
         x = x + t;
     }
-    
+
+    for (var t2 = 0; t2 < 5; t2++)
+    {
+        x = x + t2;
+    }
+
     // For-in loop with range
     for (var j in 0..10)
     {

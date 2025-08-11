@@ -214,6 +214,54 @@ void DeclarationCollector::visit(VariableDeclarationNode* node)
     }
 }
 
+void DeclarationCollector::visit(ForStatementNode* node) {
+    // Enter for loop scope - encompasses initializer, condition, incrementors, and body
+    symbolTable.enter_block("for");
+
+    // Visit initializer (can be a variable declaration or expression statement)
+    if (node->initializer) {
+        node->initializer->accept(this);
+    }
+
+    // Visit condition expression (for any declarations it might contain)
+    if (node->condition) {
+        node->condition->accept(this);
+    }
+
+    // Visit incrementor expressions
+    for (int i = 0; i < node->incrementors.size; ++i) {
+        if (node->incrementors[i]) {
+            node->incrementors[i]->accept(this);
+        }
+    }
+
+    // Visit loop body
+    if (node->body) {
+        node->body->accept(this);
+    }
+
+    // Exit for loop scope
+    symbolTable.exit_scope();
+}
+
+void DeclarationCollector::visit(WhileStatementNode* node) {
+    // Enter while loop scope - encompasses condition and body
+    symbolTable.enter_block("while");
+
+    // Visit condition expression (for any declarations it might contain)
+    if (node->condition) {
+        node->condition->accept(this);
+    }
+
+    // Visit loop body
+    if (node->body) {
+        node->body->accept(this);
+    }
+
+    // Exit while loop scope
+    symbolTable.exit_scope();
+}
+
 void DeclarationCollector::visit(ForInStatementNode* node) {
     // Enter for-in loop scope
     symbolTable.enter_block("for-in");
