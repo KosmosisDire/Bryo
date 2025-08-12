@@ -187,7 +187,7 @@ inline std::string TypeSystem::to_string(bool include_builtins) const {
         result += "    is_abstract: " + std::string(type_symbol->has_modifier(SymbolModifiers::Abstract) ? "true" : "false") + "\n";
         // Count members by checking if the type symbol is a scope
         size_t member_count = 0;
-        if (auto* scope = type_symbol->as_scope()) {
+        if (auto* scope = type_symbol->as<Scope>()) {
             member_count = scope->symbols.size();
         }
         result += "    members: " + std::to_string(member_count) + "\n";

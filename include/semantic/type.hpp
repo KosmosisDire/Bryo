@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <variant>
+#include "common/symbol_handle.hpp"
 
 namespace Myre {
 
@@ -38,25 +39,25 @@ struct TypeReference {
 
 // Generic type instantiation (List<Player>, Map<String, Item>)
 struct GenericInstance {
-    TypeLikeSymbol* generic_definition;  // List<T>
-    std::vector<TypePtr> type_arguments;  // [Player]
+    TypeLikeSymbol* genericDefinition;  // List<T>
+    std::vector<TypePtr> typeArguments;  // [Player]
 };
 
 struct FunctionType {
-    TypePtr return_type;
-    std::vector<TypePtr> parameter_types;
+    TypePtr returnType;
+    std::vector<TypePtr> parameterTypes;
 };
 
 // Represents unresolved type references
 struct UnresolvedType {
     int id = 0; // Unique ID for this unresolved type
     ExpressionNode* initializer = nullptr;   // For variable initializers, property backing field init, and arrow properties
-    TypeNameNode* type_name = nullptr;
-    ScopeNode* defining_scope = nullptr;     // Can be Symbol or BlockScope
+    TypeNameNode* typeName = nullptr;
+    SymbolHandle definingScope = {0};     // Can be Symbol or BlockScope
     BlockStatementNode* body = nullptr;      // For function return type inference and property getter blocks
 
     inline bool can_infer() const { 
-        return (initializer != nullptr || type_name != nullptr || body != nullptr) && defining_scope != nullptr; 
+        return (initializer != nullptr || typeName != nullptr || body != nullptr) && definingScope.id != 0; 
     }
 };
 

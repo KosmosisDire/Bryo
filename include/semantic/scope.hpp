@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <unordered_map>
+#include "common/symbol_handle.hpp"
 
 namespace Myre {
 
@@ -17,22 +18,23 @@ class PropertySymbol;
 class TypeLikeSymbol;
 class Scope;
 
+
 // ============= Base Scope Node =============
 // Base for anything that participates in the scope tree
 class ScopeNode {
 public:
-    ScopeNode* parent = nullptr;  // Non-owning pointer to parent
+    ScopeNode* parent = nullptr;  // Non-owning pointer to parent, not using a handle because the tree should always stay in tact
+    SymbolHandle handle;
+
+    // Type checking
+    template<typename T>
+    T* as() { return dynamic_cast<T*>(this); }
     
-    // Type identification - virtual so subclasses can override
-    virtual Symbol* as_symbol() { return nullptr; }
-    virtual bool is_symbol() const { return false; }
-    virtual BlockScope* as_block() { return nullptr; }
-    virtual bool is_block() const { return false; }
+    template<typename T>
+    const T* as() const { return dynamic_cast<const T*>(this); }
     
-    // Safe casting helpers to avoid naked dynamic_cast usage
-    Scope* as_scope();
-    const Scope* as_scope() const;
-    bool is_scope() const;
+    template<typename T>
+    bool is() const { return dynamic_cast<const T*>(this) != nullptr; }
     
     // Context queries - walk up tree to find nearest Symbol of specific type
     NamespaceSymbol* get_enclosing_namespace() const;
@@ -52,12 +54,18 @@ public:
 // Mixin for nodes that can contain symbols
 class Scope {
 public:
-    std::unordered_map<std::string, std::unique_ptr<ScopeNode>> symbols;
+    std::unordered_map<std::string, ScopeNode*> symbols;
     
     // Lookup methods (search children and up tree)
     Symbol* lookup(const std::string& name);
+    inline Symbol* lookup(const std::string_view& name) {
+        return lookup(std::string(name));
+    }
     Symbol* lookup_local(const std::string& name);
-    void add_symbol(const std::string& name, std::unique_ptr<ScopeNode> symbol);
+    inline Symbol* lookup_local(const std::string_view& name) {
+        return lookup_local(std::string(name));
+    }
+    void add_symbol(const std::string& name, ScopeNode* symbol);
     
     // Must be implemented by classes that inherit both ScopeNode and Scope
     virtual ScopeNode* as_scope_node() = 0;
@@ -67,13 +75,9 @@ public:
 };
 
 // ============= Anonymous Block Scopes =============
-class BlockScope : public ScopeNode, public Scope {
+class BlockScope : public ScopeNode, public Scope { 
 public:
     std::string debug_name;  // "if-block", "for-block", "block", etc. (for debugging)
-    
-    // Override base class methods
-    BlockScope* as_block() override { return this; }
-    bool is_block() const override { return true; }
     
     // Implement Scope interface
     ScopeNode* as_scope_node() override { return this; }

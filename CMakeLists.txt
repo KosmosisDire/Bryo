@@ -21,6 +21,39 @@ endif()
 include_directories(include)
 
 if(LLVM_AVAILABLE)
+    set(LLVM_LINK_COMPONENTS
+        # Core components
+        Core
+        Support
+        IRReader
+        
+        # Target and code generation
+        Target
+        TargetParser     # Add this for Host.h
+        CodeGen
+        MC               # Contains TargetRegistry.h
+        
+        # ORC JIT components (modern JIT)
+        OrcJIT
+        ExecutionEngine
+        RuntimeDyld
+        JITLink
+        OrcTargetProcess
+        
+        # Native target support
+        native
+        
+        # Optimization passes
+        Passes
+        TransformUtils
+        Analysis
+        ScalarOpts
+        InstCombine
+        
+        # Additional components for LegacyPassManager
+        IPO
+        Vectorize
+    )
     # Check if we should use monolithic LLVM library
     if(UNIX AND NOT APPLE)
         # On Linux, check if component libraries exist
@@ -31,33 +64,11 @@ if(LLVM_AVAILABLE)
             set(LLVM_LIBS LLVM)
         else()
             # Use component libraries
-            set(LLVM_LINK_COMPONENTS
-                Core
-                Support
-                IRReader
-                Target
-                MC
-                CodeGen
-                ExecutionEngine
-                MCJIT
-                native
-            )
+            
             llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
             message(STATUS "Using LLVM component libraries: ${LLVM_LIBS}")
         endif()
     else()
-        # On Windows and macOS, try component libraries first
-        set(LLVM_LINK_COMPONENTS
-            Core
-            Support
-            IRReader
-            Target
-            MC
-            CodeGen
-            ExecutionEngine
-            MCJIT
-            native
-        )
         llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_LINK_COMPONENTS})
         if(NOT LLVM_LIBS)
             message(STATUS "Using monolithic LLVM library")
@@ -86,13 +97,15 @@ set(SOURCE_FILES
     src/semantic/declaration_collector.cpp
     
     # Code Generator
-    src/codegen/jit_engine.cpp
+    src/codegen/codegen.cpp
     
     # Common Utilities
     src/common/logger.cpp
     src/common/token.cpp
 
     src/compiler.cpp
+    src/jit.cpp
+    src/compiled_module.cpp
 )
 
 set(RUNTIME_FILES

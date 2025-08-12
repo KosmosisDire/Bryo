@@ -59,7 +59,7 @@ public:
     }
 
     void visit(IdentifierNode* node) override {
-        print_line("Identifier");
+        print_line("Identifier (" + std::string(node->name) + ")");
     }
 
     void visit(ErrorNode* node) override {
@@ -75,11 +75,11 @@ public:
     // --- Expression Implementations ---
 
     void visit(LiteralExpressionNode* node) override {
-        print_line("LiteralExpression");
+        print_line("LiteralExpression (" + std::string(node->token->text) + ")");
     }
 
     void visit(IdentifierExpressionNode* node) override {
-        print_line("IdentifierExpression");
+        print_line("IdentifierExpression (" + std::string(node->identifier->name) + ")");
     }
 
     void visit(ParenthesizedExpressionNode* node) override {
@@ -109,7 +109,7 @@ public:
     }
 
     void visit(BinaryExpressionNode* node) override {
-        print_node_open("BinaryExpression");
+        print_node_open("BinaryExpression (" + std::string(node->operatorToken->text) + ")");
         std::string header = get_node_content();
         print_line(header);
         
@@ -174,7 +174,7 @@ public:
             node->target->accept(this);
         }
         if (node->member) {
-            print_line("member");
+            node->member->accept(this);
         }
         indentLevel--;
         print_node_close();
@@ -490,10 +490,19 @@ public:
         if (node->type) {
             node->type->accept(this);
         }
-        if (node->names.size > 0) {
-            print_line("names");
+        if (node->names.size > 1)
+        {
+            print_node_open("names:");
+            indentLevel++;
+            for (const auto& name : node->names) {
+                if (name) {
+                    name->accept(this);
+                }
+            }
+            indentLevel--;
+            print_node_close();
         } else if (node->first_name()) {
-            print_line("name");
+            node->first_name()->accept(this);
         }
         if (node->initializer) {
             node->initializer->accept(this);

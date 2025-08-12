@@ -1,0 +1,29 @@
+
+
+
+fn Multiply(i32 a, i32 b)
+{
+    return a * b;
+}
+
+
+// Main function
+fn main()
+{
+    var i = Add(5, 3) + Subtract(5, 3) + Multiply(5, 3);
+    for (var j = 0; j < 10; j = j + 1) {
+        i = i + j;
+    }
+
+    var y = 10;
+    while (y > 0) {
+        i = i + y;
+        y = y - 1;
+    }
+
+    if (i > 100) {
+        i = 100;
+    }
+
+    return i;
+}

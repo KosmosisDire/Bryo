@@ -127,8 +127,6 @@ namespace Myre
 
         // Literal scanning
         Token scan_number();
-        Token scan_integer(char first_digit);
-        Token scan_float(std::string_view integer_part);
         Token scan_string_literal();
         Token scan_char_literal();
 
@@ -137,9 +135,6 @@ namespace Myre
 
         // Operator and punctuation scanning
         Token scan_operator_or_punctuation();
-        Token scan_single_char_token(TokenKind kind);
-        Token scan_two_char_token(TokenKind kind);
-        Token scan_three_char_token(TokenKind kind);
 
         // Character classification helpers
         bool is_whitespace(char ch) const;
@@ -156,19 +151,6 @@ namespace Myre
         // Error reporting
         void report_error(const std::string &message);
         void report_warning(const std::string &message);
-
-        // String literal helpers
-        bool scan_escape_sequence();
-        bool scan_unicode_escape();
-        char unescape_char(char escaped);
-
-        // Skip methods for error recovery
-        void skip_to_end_of_line();
-        void skip_to_end_of_block_comment();
-        void skip_invalid_chars();
     };
-
-    // Create a simple lexer for quick tokenization (no trivia, basic options)
-    std::unique_ptr<Lexer> create_simple_lexer(std::string_view source);
 
 } // namespace Myre

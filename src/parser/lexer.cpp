@@ -810,13 +810,5 @@ namespace Myre
 
         return TokenStream(std::move(tokens));
     }
-
-    std::unique_ptr<Lexer> create_simple_lexer(std::string_view source)
-    {
-        LexerOptions options;
-        options.preserve_trivia = false;
-        options.preserve_doc_comments = false;
-        return std::make_unique<Lexer>(source, options);
-    }
-
+    
 } // namespace Myre

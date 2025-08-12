@@ -7,6 +7,7 @@
 #include "ast_rtti.hpp"
 #include "ast_allocator.hpp"
 #include "common/token.hpp"
+#include "common/symbol_handle.hpp"
 
 namespace Myre
 {
@@ -96,7 +97,6 @@ namespace Myre
 
     
     // The base class for all AST traversal and analysis passes.
-    // Now includes type-safe error handling capabilities.
     class StructuralVisitor
     {
 
@@ -210,6 +210,7 @@ namespace Myre
 
         uint8_t typeId;
         SourceRange location;
+        SymbolHandle containingScope = {0};
 
         // Must be implemented in ast.cpp
         void init_with_type_id(uint8_t id);

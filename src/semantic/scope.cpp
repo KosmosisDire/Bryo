@@ -6,56 +6,86 @@
 
 namespace Myre {
 
-// ============= ScopeNode Safe Casting Helpers =============
-
-Scope* ScopeNode::as_scope() {
-    return dynamic_cast<Scope*>(this);
-}
-
-const Scope* ScopeNode::as_scope() const {
-    return dynamic_cast<const Scope*>(this);
-}
-
-bool ScopeNode::is_scope() const {
-    return dynamic_cast<const Scope*>(this) != nullptr;
-}
-
 // ============= Scope Lookup Methods =============
 
 Symbol* Scope::lookup(const std::string& name) {
-    // Search locally first
-    auto* result = lookup_local(name);
-    if (result) return result;
+    // Check if name contains dots (qualified name)
+    size_t dot_pos = name.find('.');
     
-    // Get the ScopeNode that this Scope belongs to and walk up parent chain
-    ScopeNode* node = as_scope_node();
-    node = node->parent;  // Start with parent
-    
-    while (node) {
-        // Check if this parent is also a Scope and do full recursive lookup
-        if (auto* parent_scope = node->as_scope()) {
-            result = parent_scope->lookup(name); 
-            if (result) return result;
+    if (dot_pos == std::string::npos) {
+        // Simple name - use existing logic
+        // Search locally first
+        auto* result = lookup_local(name);
+        if (result) return result;
+        
+        // Get the ScopeNode that this Scope belongs to and walk up parent chain
+        ScopeNode* node = as_scope_node();
+        node = node->parent;  // Start with parent
+        
+        while (node) {
+            // Check if this parent is also a Scope and do full recursive lookup
+            if (auto* parent_scope = node->as<Scope>()) {
+                result = parent_scope->lookup(name); 
+                if (result) return result;
+            }
+            node = node->parent;
         }
-        node = node->parent;
+        return nullptr;
     }
-    return nullptr;
+    
+    // Qualified name - split and resolve step by step
+    std::string first_part = name.substr(0, dot_pos);
+    std::string remaining = name.substr(dot_pos + 1);
+    
+    // Use the normal lookup logic to find the first part
+    Symbol* current = lookup(first_part);
+    if (!current) return nullptr;
+    
+    // Now walk through the remaining parts
+    while (!remaining.empty()) {
+        // Check if current symbol has a scope
+        Scope* current_scope = current->as<Scope>();
+        if (!current_scope) {
+            // Current symbol doesn't have a scope, can't continue
+            return nullptr;
+        }
+        
+        // Find the next dot or use the whole remaining string
+        dot_pos = remaining.find('.');
+        std::string next_part;
+        
+        if (dot_pos == std::string::npos) {
+            // Last part
+            next_part = remaining;
+            remaining.clear();
+        } else {
+            // More parts to come
+            next_part = remaining.substr(0, dot_pos);
+            remaining = remaining.substr(dot_pos + 1);
+        }
+        
+        // Look up the next part in the current scope (local only)
+        current = current_scope->lookup_local(next_part);
+        if (!current) return nullptr;
+    }
+    
+    return current;
 }
 
 Symbol* Scope::lookup_local(const std::string& name) {
     // Only look in direct symbols
     auto it = symbols.find(name);
     if (it != symbols.end()) {
-        return it->second->as_symbol();
+        return it->second->as<Symbol>();
     }
     return nullptr;
 }
 
-void Scope::add_symbol(const std::string& name, std::unique_ptr<ScopeNode> symbol) {
+void Scope::add_symbol(const std::string& name, ScopeNode* symbol) {
     // Set parent relationship
     ScopeNode* node = as_scope_node();
     symbol->parent = node;
-    symbols[name] = std::move(symbol);
+    symbols[name] = symbol;
 }
 
 // ============= ScopeNode Navigation Methods =============
@@ -63,9 +93,9 @@ void Scope::add_symbol(const std::string& name, std::unique_ptr<ScopeNode> symbo
 NamespaceSymbol* ScopeNode::get_enclosing_namespace() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* ns = sym->as<NamespaceSymbol>()) {
-                return ns;
+                return const_cast<NamespaceSymbol*>(ns);
             }
         }
         node = node->parent;
@@ -76,9 +106,9 @@ NamespaceSymbol* ScopeNode::get_enclosing_namespace() const {
 TypeSymbol* ScopeNode::get_enclosing_type() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* type = sym->as<TypeSymbol>()) {
-                return type;
+                return const_cast<TypeSymbol*>(type);
             }
         }
         node = node->parent;
@@ -89,9 +119,9 @@ TypeSymbol* ScopeNode::get_enclosing_type() const {
 EnumSymbol* ScopeNode::get_enclosing_enum() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* enum_sym = sym->as<EnumSymbol>()) {
-                return enum_sym;
+                return const_cast<EnumSymbol*>(enum_sym);
             }
         }
         node = node->parent;
@@ -102,9 +132,9 @@ EnumSymbol* ScopeNode::get_enclosing_enum() const {
 FunctionSymbol* ScopeNode::get_enclosing_function() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* func = sym->as<FunctionSymbol>()) {
-                return func;
+                return const_cast<FunctionSymbol*>(func);
             }
         }
         node = node->parent;
@@ -115,9 +145,9 @@ FunctionSymbol* ScopeNode::get_enclosing_function() const {
 PropertySymbol* ScopeNode::get_enclosing_property() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* prop = sym->as<PropertySymbol>()) {
-                return prop;
+                return const_cast<PropertySymbol*>(prop);
             }
         }
         node = node->parent;
@@ -128,9 +158,9 @@ PropertySymbol* ScopeNode::get_enclosing_property() const {
 TypeLikeSymbol* ScopeNode::get_enclosing_type_like() const {
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             if (auto* type_like = sym->as<TypeLikeSymbol>()) {
-                return type_like;
+                return const_cast<TypeLikeSymbol*>(type_like);
             }
         }
         node = node->parent;
@@ -144,7 +174,7 @@ std::string ScopeNode::build_qualified_name(const std::string& name) const {
     // Walk up to collect namespace/type names
     const ScopeNode* node = this;
     while (node) {
-        if (auto* sym = const_cast<ScopeNode*>(node)->as_symbol()) {
+        if (auto* sym = node->as<Symbol>()) {
             // Include namespaces and type-like symbols in qualified name
             if (sym->is<NamespaceSymbol>() || sym->is<TypeLikeSymbol>()) {
                 if (sym->name() != "global") {  // Skip the global namespace

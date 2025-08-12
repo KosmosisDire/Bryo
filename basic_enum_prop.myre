@@ -266,24 +266,22 @@ fn Main(): i32
     // For loop (traditional)
     for (i32 t = 0; t < 5; t++)
     {
+        if (t < 2)
+        {
+            continue;
+        }
+
         x = x + t;
+
+        if (x > 20)
+        {
+            break; // Exit loop if x exceeds 20
+        }
     }
 
     for (var t2 = 0; t2 < 5; t2++)
     {
         x = x + t2;
-    }
-
-    // For-in loop with range
-    for (var j in 0..10)
-    {
-        y = y + j;
-    }
-    
-    // For-in with step
-    for (var k in 0..20 by 2)
-    {
-        counter = counter + k;
     }
     
     // Nested blocks
@@ -291,9 +289,9 @@ fn Main(): i32
         var localVar = 100;
         if (localVar > 50)
         {
-            for (var m in 0..5)
+            for (var i = 0; i < 3; i++)
             {
-                localVar = localVar - m;
+                x += i;
             }
         }
     }
@@ -348,20 +346,6 @@ fn Main(): i32
     // Range expressions
     var range1 = 0..10;
     var range2 = 5..15 by 2;
-    
-    // Break and continue in loops
-    for (var n in 0..100)
-    {
-        if (n > 50)
-        {
-            break;
-        }
-        if (n % 2 == 0)
-        {
-            continue;
-        }
-        counter = counter + n;
-    }
 
     while (counter < 200)
     {

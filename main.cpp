@@ -5,6 +5,7 @@
 #include "semantic/declaration_collector.hpp"
 #include "parser/lexer.hpp"
 #include "parser/parser.hpp"
+#include "common/logger.hpp"
 #include "ast/ast.hpp"
 #include <fstream>
 #include <sstream>
@@ -29,9 +30,33 @@ int main(int argc, char* argv[])
     logger.set_console_level(LogLevel::TRACE);
 
     Compiler compiler;
-    auto source = read_file("basic_enum_prop.myre");
-    compiler.compile(source);
-    
+    compiler.set_print_ast(true);
+    compiler.set_print_symbols(true);
+
+    std::vector<std::string> filenames = {"simple.myre", "simple2.myre"};
+    std::vector<SourceFile> source_files;
+    for (const auto& filename : filenames)
+    {
+        auto source = read_file(filename);
+        source_files.push_back({filename, source});
+    }
+
+    auto result = compiler.compile(source_files);
+
+    if (result->is_valid())
+    {
+        result->dump_ir();
+        auto ret = result->execute_jit();
+        std::cout << "JIT execution returned: " << ret << std::endl;
+    }
+    else
+    {
+        LOG_HEADER("Compilation failed");
+        for (const auto& error : result->get_errors())
+        {
+            std::cerr << "Error: " << error << std::endl;
+        }
+    }
 
     return 0;
 }

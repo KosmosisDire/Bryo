@@ -1,118 +1,142 @@
+// codegen.hpp - LLVM Code Generator with Pre-declaration Support
 #pragma once
 
 #include "ast/ast.hpp"
 #include "semantic/symbol_table.hpp"
-#include "semantic/error_collector.hpp"
-#include "codegen/ir_builder.hpp"
-#include "codegen/ir_command.hpp"
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Value.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Support/raw_ostream.h>
+#include <stack>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
+#include <string>
+#include <memory>
 
 namespace Myre {
 
-// Simple code generator that visits AST and emits IR commands
 class CodeGenerator : public StructuralVisitor {
 private:
-    SymbolTable& symbolTable;
-    ErrorCollector& errors;
-    SimpleIRBuilder builder_;
+    // LLVM core objects
+    llvm::LLVMContext* context;
+    std::unique_ptr<llvm::Module> module;
+    std::unique_ptr<llvm::IRBuilder<>> builder;
     
-    // Current state
-    ValueRef current_value_;
-    FunctionType* current_function_;
-    bool in_loop_;
+    // Symbol table reference
+    SymbolTable& symbol_table;
+    
+    // Current function being generated
+    llvm::Function* current_function = nullptr;
+    
+    // Local variable storage (Symbol* -> alloca instruction)
+    std::unordered_map<Symbol*, llvm::Value*> locals;
+    
+    // Local variable types (Symbol* -> LLVM type)
+    // Required for LLVM 19+ opaque pointers
+    std::unordered_map<Symbol*, llvm::Type*> local_types;
+    
+    // Type cache to avoid recreating LLVM types
+    std::unordered_map<TypePtr, llvm::Type*> type_cache;
+    
+    // Stack for expression evaluation
+    std::stack<llvm::Value*> value_stack;
+    
+    // Track which functions have been declared
+    std::unordered_set<std::string> declared_functions;
+    
+    // Error tracking
+    std::vector<std::string> errors;
+    
+    // === Helper Methods ===
+    
+    // Type conversion
+    llvm::Type* get_llvm_type(TypePtr type);
+    
+    // Stack management
+    void push_value(llvm::Value* val);
+    llvm::Value* pop_value();
+    
+    // Constants
+    llvm::Value* create_constant(LiteralExpressionNode* literal);
+    
+    // Function utilities
+    void ensure_terminator();
+    llvm::Function* declare_function_from_symbol(FunctionSymbol* func_symbol);
+    
+    // Symbol table traversal
+    void declare_all_functions_in_scope(Scope* scope);
     
 public:
-    CodeGenerator(SymbolTable& symbols, ErrorCollector& errors)
-        : symbolTable(symbols)
-        , errors(errors)
-        , current_value_(ValueRef::invalid())
-        , current_function_(nullptr)
-        , in_loop_(false) {}
-    
-    // Main entry point
-    std::vector<Command> generate_code(CompilationUnitNode* unit) {
-        builder_.clear();
-        
-        // Visit the compilation unit
-        if (unit) {
-            unit->accept(this);
-        }
-        
-        return builder_.commands();
+    CodeGenerator(SymbolTable& st, const std::string& module_name, llvm::LLVMContext* ctx)
+        : symbol_table(st), context(ctx) {
+        module = std::make_unique<llvm::Module>(module_name, *context);
+        builder = std::make_unique<llvm::IRBuilder<>>(*context);
     }
     
-    // Visitor methods for expressions
-    void visit(LiteralExpressionNode* node) override;
-    void visit(IdentifierExpressionNode* node) override;
+    // === Main API ===
+    
+    // Generate code for a compilation unit (single file)
+    std::unique_ptr<llvm::Module> generate(CompilationUnitNode* unit);
+    
+    // Multi-file support: declare all functions then generate bodies
+    void declare_all_functions();
+    void generate_definitions(CompilationUnitNode* unit);
+    
+    // Release ownership of the module
+    std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
+    
+    // Get errors
+    const std::vector<std::string>& get_errors() const { return errors; }
+    
+    // === Visitor Methods ===
+    
+    // Declarations
+    void visit(CompilationUnitNode* node) override;
+    void visit(NamespaceDeclarationNode* node) override;
+    void visit(FunctionDeclarationNode* node) override;
+    void visit(VariableDeclarationNode* node) override;
+    void visit(ParameterNode* node) override;
+    
+    // Statements
+    void visit(BlockStatementNode* node) override;
+    void visit(ExpressionStatementNode* node) override;
+    void visit(IfStatementNode* node) override;
+    void visit(ReturnStatementNode* node) override;
+    void visit(WhileStatementNode* node) override;
+    void visit(ForStatementNode* node) override;
+    void visit(ForInStatementNode* node) override;
+    void visit(BreakStatementNode* node) override;
+    void visit(ContinueStatementNode* node) override;
+    void visit(EmptyStatementNode* node) override;
+    
+    // Expressions
     void visit(BinaryExpressionNode* node) override;
     void visit(UnaryExpressionNode* node) override;
     void visit(AssignmentExpressionNode* node) override;
     void visit(CallExpressionNode* node) override;
-    void visit(MemberAccessExpressionNode* node) override;
+    void visit(IdentifierExpressionNode* node) override;
+    void visit(LiteralExpressionNode* node) override;
     void visit(ParenthesizedExpressionNode* node) override;
     
-    // Visitor methods for statements
-    void visit(BlockStatementNode* node) override;
-    void visit(ExpressionStatementNode* node) override;
-    void visit(IfStatementNode* node) override;
-    void visit(WhileStatementNode* node) override;
-    void visit(ForStatementNode* node) override;
-    void visit(ReturnStatementNode* node) override;
-    void visit(BreakStatementNode* node) override;
-    void visit(ContinueStatementNode* node) override;
-    void visit(VariableDeclarationNode* node) override;
+    // Default handlers for unsupported nodes
+    void visit(ExpressionNode* node) override {
+        errors.push_back("Unsupported expression type: " + std::string(node->node_type_name()));
+    }
     
-    // Visitor methods for declarations
-    void visit(FunctionDeclarationNode* node) override;
-    void visit(CompilationUnitNode* node) override;
+    void visit(StatementNode* node) override {
+        errors.push_back("Unsupported statement type: " + std::string(node->node_type_name()));
+    }
     
-    // Placeholder visitors for unimplemented nodes
-    void visit(ErrorNode* node) override { /* Skip error nodes */ }
-    void visit(TokenNode* node) override {}
-    void visit(IdentifierNode* node) override {}
-    void visit(ThisExpressionNode* node) override {}
-    void visit(NewExpressionNode* node) override {}
-    void visit(CastExpressionNode* node) override {}
-    void visit(IndexerExpressionNode* node) override {}
-    void visit(TypeOfExpressionNode* node) override {}
-    void visit(SizeOfExpressionNode* node) override {}
-    void visit(EmptyStatementNode* node) override {}
-    void visit(ForInStatementNode* node) override {}
-    void visit(NamespaceDeclarationNode* node) override {}
-    void visit(UsingDirectiveNode* node) override {}
-    void visit(TypeDeclarationNode* node) override {}
-    void visit(InterfaceDeclarationNode* node) override {}
-    void visit(EnumDeclarationNode* node) override {}
-    void visit(MemberDeclarationNode* node) override {}
-    void visit(ParameterNode* node) override {}
-    void visit(QualifiedNameNode* node) override {}
-    void visit(TypeNameNode* node) override {}
-    void visit(ArrayTypeNameNode* node) override {}
-    void visit(GenericTypeNameNode* node) override {}
-    void visit(GenericParameterNode* node) override {}
-    void visit(MatchExpressionNode* node) override {}
-    void visit(ConditionalExpressionNode* node) override {}
-    void visit(RangeExpressionNode* node) override {}
-    void visit(FieldKeywordExpressionNode* node) override {}
-    void visit(ValueKeywordExpressionNode* node) override {}
-    void visit(PropertyDeclarationNode* node) override {}
-    void visit(PropertyAccessorNode* node) override {}
-    void visit(ConstructorDeclarationNode* node) override {}
-    void visit(EnumCaseNode* node) override {}
-    void visit(MatchArmNode* node) override {}
-    void visit(MatchPatternNode* node) override {}
-    void visit(EnumPatternNode* node) override {}
-    void visit(RangePatternNode* node) override {}
-    void visit(ComparisonPatternNode* node) override {}
-    void visit(WildcardPatternNode* node) override {}
-    void visit(LiteralPatternNode* node) override {}
+    void visit(DeclarationNode* node) override {
+        errors.push_back("Unsupported declaration type: " + std::string(node->node_type_name()));
+    }
     
-private:
-    // Helper methods
-    IRType convert_type(Type* type);
-    ValueRef emit_type_conversion(ValueRef value, IRType target_type);
-    void emit_function_prologue(FunctionDeclarationNode* node);
-    void emit_function_epilogue();
+    void visit(ErrorNode* node) override {
+        errors.push_back("Encountered error node in AST");
+    }
 };
 
 } // namespace Myre

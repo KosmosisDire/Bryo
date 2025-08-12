@@ -6,6 +6,8 @@
 #include "symbol.hpp"
 #include <set>
 
+namespace Myre {
+
 using TypePtr = std::shared_ptr<Type>;
 
 enum class ConstraintKind {
@@ -202,7 +204,7 @@ private:
             if (unresolved.initializer) {
                 // Property expressions are analyzed in the property scope
                 // The property scope can look up to its parent (type scope) to find sibling fields
-                TypePtr expr_type = analyze_expression(unresolved.initializer, unresolved.defining_scope);
+                TypePtr expr_type = analyze_expression(unresolved.initializer, symbolTable.lookup_handle(unresolved.definingScope));
                 if (expr_type) {
                     add_constraint(symbol_type, expr_type);
                     return true;
@@ -213,7 +215,7 @@ private:
             // If property has a body (getter with return statements), analyze it like a function
             else if (unresolved.body) {
                 // Property getter bodies are also analyzed in the property scope
-                TypePtr inferred_type = analyze_function_body(unresolved.body, unresolved.defining_scope);
+                TypePtr inferred_type = analyze_function_body(unresolved.body, symbolTable.lookup_handle(unresolved.definingScope));
                 if (inferred_type) {
                     add_constraint(symbol_type, inferred_type);
                     return true;
@@ -248,10 +250,10 @@ private:
             return false;
         }
 
-        TypePtr expr_type = analyze_type_name(unresolved.type_name, unresolved.defining_scope);
+        TypePtr expr_type = analyze_type_name(unresolved.typeName, symbolTable.lookup_handle(unresolved.definingScope));
         if (!expr_type)
         {
-            expr_type = analyze_expression(unresolved.initializer, unresolved.defining_scope);
+            expr_type = analyze_expression(unresolved.initializer, symbolTable.lookup_handle(unresolved.definingScope));
             if (!expr_type) return false;
             
             // No special range inference - all range expressions result in Range type
@@ -578,7 +580,7 @@ private:
         
         // Look up the identifier in the current scope
         Symbol* symbol = nullptr;
-        if (auto* scope_container = scope->as_scope()) {
+        if (auto* scope_container = scope->as<Scope>()) {
             symbol = scope_container->lookup(var_name);
         }
         
@@ -635,7 +637,7 @@ private:
         
         // Look up the member in the type's scope (if it has one)
         Symbol* member_symbol = nullptr;
-        if (auto* type_scope = type_symbol->as_scope()) {
+        if (auto* type_scope = type_symbol->as<Scope>()) {
             member_symbol = type_scope->lookup_local(member_name);
         }
         if (!member_symbol) {
@@ -835,3 +837,5 @@ private:
 
     
 };
+
+} // namespace Myre

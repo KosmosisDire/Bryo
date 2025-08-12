@@ -87,6 +87,9 @@
         "span": "cpp",
         "cinttypes": "cpp",
         "unordered_set": "cpp",
-        "source_location": "cpp"
+        "source_location": "cpp",
+        "coroutine": "cpp",
+        "resumable": "cpp",
+        "future": "cpp"
     }
 }

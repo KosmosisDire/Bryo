@@ -53,8 +53,8 @@ bool Type::is_value_type() const {
             }
             return true; // Default to value type if definition is missing
         } else if constexpr (std::is_same_v<T, GenericInstance>) {
-            if (v.generic_definition) {
-                return !v.generic_definition->has_modifier(SymbolModifiers::Ref);
+            if (v.genericDefinition) {
+                return !v.genericDefinition->has_modifier(SymbolModifiers::Ref);
             }
             return true; // Default to value type if definition is missing
         } else {
@@ -69,7 +69,7 @@ TypeLikeSymbol* Type::get_type_symbol() const {
         if constexpr (std::is_same_v<T, TypeReference>) {
             return v.definition;
         } else if constexpr (std::is_same_v<T, GenericInstance>) {
-            return v.generic_definition;
+            return v.genericDefinition;
         } else {
             return nullptr; // Primitives, arrays, functions don't have Symbol definitions
         }

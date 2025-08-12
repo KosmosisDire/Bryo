@@ -49,9 +49,6 @@ protected:
     SymbolModifiers modifiers_ = SymbolModifiers::None;
     
 public:
-    bool is_symbol() const override { return true; }
-    Symbol* as_symbol() override { return this; }
-    
     // Basic properties
     const std::string& name() const { return name_; }
     AccessLevel access() const { return access_; }
@@ -64,16 +61,6 @@ public:
     bool has_modifier(SymbolModifiers mod) const {
         return (modifiers_ & mod) != SymbolModifiers::None;
     }
-    
-    // Type checking
-    template<typename T>
-    T* as() { return dynamic_cast<T*>(this); }
-    
-    template<typename T>
-    const T* as() const { return dynamic_cast<const T*>(this); }
-    
-    template<typename T>
-    bool is() const { return dynamic_cast<const T*>(this) != nullptr; }
     
     // For debugging/display
     virtual const char* kind_name() const = 0;
