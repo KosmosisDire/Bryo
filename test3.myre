@@ -112,7 +112,7 @@ public abstract type Health : Updateable
     u32 health = 100
     {
         public get => field;
-        protected set =>
+        protected set
         {
             // value is a keyword that refers to the value being set
             if (value < 0)
@@ -130,7 +130,7 @@ public abstract type Health : Updateable
     // this will inherit access from the property declaration
     // public u32 health = 100
     //     get => field;
-    //     set =>
+    //     set
     //     {
     //         if (value < 0)
     //         {

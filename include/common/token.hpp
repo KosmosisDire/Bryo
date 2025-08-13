@@ -54,11 +54,8 @@ namespace Myre
         Await,
 
         // Property keywords
-        Prop,
         Get,
         Set,
-        Field,
-        Value,
 
         // Modifier keywords
         Public,
@@ -176,11 +173,8 @@ namespace Myre
         In = (int)TokenKind::In,
         At = (int)TokenKind::At,
         Await = (int)TokenKind::Await,
-        Prop = (int)TokenKind::Prop,
         Get = (int)TokenKind::Get,
         Set = (int)TokenKind::Set,
-        Field = (int)TokenKind::Field,
-        Value = (int)TokenKind::Value,
         Public = (int)TokenKind::Public,
         Private = (int)TokenKind::Private,
         Protected = (int)TokenKind::Protected,
@@ -760,22 +754,23 @@ namespace Myre
         // Precedence levels for operators
         enum Precedence : int
         {
-            PREC_NONE = 0,
-            PREC_ASSIGNMENT = 10,      // =, +=, -=, etc.
-            PREC_TERNARY = 20,         // ?:
-            PREC_LOGICAL_OR = 30,      // ||
-            PREC_LOGICAL_AND = 40,     // &&
-            PREC_BITWISE_OR = 50,      // |
-            PREC_BITWISE_XOR = 60,     // ^
-            PREC_BITWISE_AND = 70,     // &
-            PREC_EQUALITY = 80,        // ==, !=
-            PREC_RELATIONAL = 90,      // <, >, <=, >=
-            PREC_SHIFT = 100,          // <<, >>
-            PREC_ADDITIVE = 110,       // +, -
-            PREC_MULTIPLICATIVE = 120, // *, /, %
-            PREC_UNARY = 130,          // !, ~, -, +
-            PREC_POSTFIX = 140,        // ++, --, [], (), .
-            PREC_PRIMARY = 150
+            PREC_NONE,
+            PREC_ASSIGNMENT,      // =, +=, -=, etc.
+            PREC_TERNARY,         // ?:
+            PREC_LOGICAL_OR,      // ||
+            PREC_LOGICAL_AND,     // &&
+            PREC_BITWISE_OR,      // |
+            PREC_BITWISE_XOR,     // ^
+            PREC_BITWISE_AND,     // &
+            PREC_EQUALITY,        // ==, !=
+            PREC_RELATIONAL,      // <, >, <=, >=
+            PREC_RANGE,           // .., ..=
+            PREC_SHIFT,          // <<, >>
+            PREC_ADDITIVE,       // +, -
+            PREC_MULTIPLICATIVE, // *, /, %
+            PREC_UNARY,          // !, ~, -, +
+            PREC_POSTFIX,        // ++, --, [], (), .
+            PREC_PRIMARY
         };
 
         // Member methods for operator properties (operate on this token's kind)
@@ -832,6 +827,11 @@ namespace Myre
             case TokenKind::LessEqual:
             case TokenKind::GreaterEqual:
                 return PREC_RELATIONAL;
+
+            // Range operators
+            case TokenKind::DotDot:
+            case TokenKind::DotDotEquals:
+                return PREC_RANGE;
 
             // Additive operators
             case TokenKind::Plus:
@@ -952,8 +952,6 @@ namespace Myre
             case TokenKind::New:
             case TokenKind::Typeof:
             case TokenKind::Sizeof:
-            case TokenKind::Field:
-            case TokenKind::Value:
             // Unary operators
             case TokenKind::Plus:
             case TokenKind::Minus:
@@ -1058,7 +1056,6 @@ namespace Myre
             {"break", TokenKind::Break},
             {"continue", TokenKind::Continue},
             {"await", TokenKind::Await},
-            {"prop", TokenKind::Prop},
             {"get", TokenKind::Get},
             {"set", TokenKind::Set},
             {"public", TokenKind::Public},

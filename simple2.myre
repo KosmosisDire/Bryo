@@ -1,10 +1,10 @@
 
-fn Add(i32 addend1, i32 addend2): i32
+fn Add(i32 x, i32 y)
 {
-    return addend1 + addend2;
+    return x + y;
 }
 
-fn Subtract(i32 minuend, i32 subtrahend): i32
+fn Subtract(i32 x, i32 y)
 {
-    return minuend - subtrahend;
+    return x - y;
 }

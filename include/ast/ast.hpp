@@ -2,826 +2,1174 @@
 
 #include <cstdint>
 #include <string>
-#include <cstring> // for memcpy
-#include <functional> // for std::function in TypeSafeVisitor
-#include "ast_rtti.hpp"
-#include "ast_allocator.hpp"
-#include "common/token.hpp"
+#include <string_view>
+#include <variant>
+#include <span>
+#include <optional>
+#include <vector>
 #include "common/symbol_handle.hpp"
+#include "common/source_location.hpp"
+#include "common/token.hpp"
 
-namespace Myre
-{
-    // --- Forward Declarations ---
-    // This comprehensive list allows any node to reference any other node.
-    struct AstNode;
-    struct ErrorNode;
-    struct TokenNode;
-    struct IdentifierNode;
-    struct ExpressionNode;
-    struct StatementNode;
-    struct DeclarationNode;
+namespace Myre {
 
+// ============================================================================
+// --- Forward Declarations ---
+// ============================================================================
+struct Token;
+
+// ============================================================================
+// --- Forward Declarations ---
+// ============================================================================
+struct Token;
+
+struct Node;
+struct Expression;
+struct Statement;
+struct Declaration;
+struct TypeRef;
+struct Pattern;
+struct TypeConstraint;
+struct PropertyAccessor;
+struct ParameterDecl;
+class Visitor;
+
+// Add all concrete node forward declarations
+struct Identifier;
+struct TypedIdentifier;
+struct ErrorExpression;
+struct ErrorStatement;
+struct ErrorTypeRef;
+
+// Expressions
+struct LiteralExpr;
+struct ArrayLiteralExpr;
+struct NameExpr;
+struct UnaryExpr;
+struct BinaryExpr;
+struct AssignmentExpr;
+struct CallExpr;
+struct MemberAccessExpr;
+struct IndexerExpr;
+struct CastExpr;
+struct NewExpr;
+struct ThisExpr;
+struct LambdaExpr;
+struct RangeExpr;
+struct ConditionalExpr;
+struct TypeOfExpr;
+struct SizeOfExpr;
+struct Block;
+struct IfExpr;
+struct MatchExpr;
+struct MatchArm;
+
+// Statements
+struct ExpressionStmt;
+struct ReturnStmt;
+struct BreakStmt;
+struct ContinueStmt;
+struct WhileStmt;
+struct ForStmt;
+struct ForInStmt;
+struct UsingDirective;
+
+// Declarations
+struct VariableDecl;
+struct MemberVariableDecl;
+struct GenericParamDecl;
+struct FunctionDecl;
+struct ConstructorDecl;
+struct InheritFunctionDecl;
+struct EnumCaseDecl;
+struct TypeDecl;
+struct NamespaceDecl;
+
+// Type references
+struct NamedTypeRef;
+struct ArrayTypeRef;
+struct FunctionTypeRef;
+struct NullableTypeRef;
+struct RefTypeRef;
+
+// Type constraints
+struct BaseTypeConstraint;
+struct ConstructorConstraint;
+struct TypeKindConstraint;
+
+// Patterns
+struct LiteralPattern;
+struct BindingPattern;
+struct EnumPattern;
+struct RangePattern;
+struct InPattern;
+struct ComparisonPattern;
+
+// Root
+struct CompilationUnit;
+
+// Non-owning collection type (arena allocated)
+template<typename T>
+using List = std::span<T>;
+
+// Macro to create an accept function implementation
+#define ACCEPT_VISITOR void accept(Visitor* visitor) override { visitor->visit(this); }
+
+
+// ============================================================================
+// --- Visitor Pattern ---
+// ============================================================================
+
+class Visitor {
+public:
+    virtual ~Visitor() = default;
+    
+    // Base type visits - can be overridden for uniform handling
+    virtual void visit(Node* node);
+    virtual void visit(Expression* node);
+    virtual void visit(Statement* node);
+    virtual void visit(Declaration* node);
+    virtual void visit(Pattern* node);
+    virtual void visit(TypeRef* node);
+    virtual void visit(TypeConstraint* node);
+    
+    // All concrete node types
+    virtual void visit(Identifier* node) = 0;
+    virtual void visit(TypedIdentifier* node) = 0;
+    virtual void visit(ErrorExpression* node) = 0;
+    virtual void visit(ErrorStatement* node) = 0;
+    virtual void visit(ErrorTypeRef* node) = 0;
+    
     // Expressions
-    struct LiteralExpressionNode;
-    struct IdentifierExpressionNode;
-    struct ParenthesizedExpressionNode;
-    struct UnaryExpressionNode;
-    struct BinaryExpressionNode;
-    struct AssignmentExpressionNode;
-    struct CallExpressionNode;
-    struct MemberAccessExpressionNode;
-    struct NewExpressionNode;
-    struct ThisExpressionNode;
-    struct CastExpressionNode;
-    struct IndexerExpressionNode;
-    struct TypeOfExpressionNode;
-    struct SizeOfExpressionNode;
-
+    virtual void visit(LiteralExpr* node) = 0;
+    virtual void visit(ArrayLiteralExpr* node) = 0;
+    virtual void visit(NameExpr* node) = 0;
+    virtual void visit(UnaryExpr* node) = 0;
+    virtual void visit(BinaryExpr* node) = 0;
+    virtual void visit(AssignmentExpr* node) = 0;
+    virtual void visit(CallExpr* node) = 0;
+    virtual void visit(MemberAccessExpr* node) = 0;
+    virtual void visit(IndexerExpr* node) = 0;
+    virtual void visit(CastExpr* node) = 0;
+    virtual void visit(NewExpr* node) = 0;
+    virtual void visit(ThisExpr* node) = 0;
+    virtual void visit(LambdaExpr* node) = 0;
+    virtual void visit(RangeExpr* node) = 0;
+    virtual void visit(ConditionalExpr* node) = 0;
+    virtual void visit(TypeOfExpr* node) = 0;
+    virtual void visit(SizeOfExpr* node) = 0;
+    virtual void visit(Block* node) = 0;
+    virtual void visit(IfExpr* node) = 0;
+    virtual void visit(MatchExpr* node) = 0;
+    virtual void visit(MatchArm* node) = 0;
+    
     // Statements
-    struct BlockStatementNode;
-    struct ExpressionStatementNode;
-    struct IfStatementNode;
-    struct WhileStatementNode;
-    struct ForStatementNode;
-    struct ForInStatementNode;
-    struct ReturnStatementNode;
-    struct BreakStatementNode;
-    struct ContinueStatementNode;
-    struct EmptyStatementNode;
-
+    virtual void visit(ExpressionStmt* node) = 0;
+    virtual void visit(ReturnStmt* node) = 0;
+    virtual void visit(BreakStmt* node) = 0;
+    virtual void visit(ContinueStmt* node) = 0;
+    virtual void visit(WhileStmt* node) = 0;
+    virtual void visit(ForStmt* node) = 0;
+    virtual void visit(ForInStmt* node) = 0;
+    virtual void visit(UsingDirective* node) = 0;
+    
     // Declarations
-    struct NamespaceDeclarationNode;
-    struct UsingDirectiveNode;
-    struct TypeDeclarationNode;
-    struct InterfaceDeclarationNode;
-    struct EnumDeclarationNode;
-    struct MemberDeclarationNode;
-    struct FunctionDeclarationNode;
-    struct ParameterNode;
-    struct VariableDeclarationNode;
-    struct CompilationUnitNode;
-
-    // Types
-    struct QualifiedNameNode;
-    struct TypeNameNode;
-    struct ArrayTypeNameNode;
-    struct GenericTypeNameNode;
-    struct GenericParameterNode;
-
-    // Match Expressions and Patterns
-    struct MatchExpressionNode;
-    struct MatchArmNode;
-    struct MatchPatternNode;
-    struct EnumPatternNode;
-    struct RangePatternNode;
-    struct ComparisonPatternNode;
-    struct WildcardPatternNode;
-    struct LiteralPatternNode;
-
-    // Properties
-    struct PropertyDeclarationNode;
-    struct PropertyAccessorNode;
-
-    // Constructor
-    struct ConstructorDeclarationNode;
-
-    // Enum Cases
-    struct EnumCaseNode;
-
-    // Additional Expressions
-    struct ConditionalExpressionNode;
-    struct RangeExpressionNode;
-    struct FieldKeywordExpressionNode;
-    struct ValueKeywordExpressionNode;
-    const char* get_type_name_from_id(uint8_t typeId);
-
+    virtual void visit(VariableDecl* node) = 0;
+    virtual void visit(MemberVariableDecl* node) = 0;
+    virtual void visit(ParameterDecl* node) = 0;
+    virtual void visit(GenericParamDecl* node) = 0;
+    virtual void visit(FunctionDecl* node) = 0;
+    virtual void visit(ConstructorDecl* node) = 0;
+    virtual void visit(PropertyAccessor* node) = 0;
+    virtual void visit(InheritFunctionDecl* node) = 0;
+    virtual void visit(EnumCaseDecl* node) = 0;
+    virtual void visit(TypeDecl* node) = 0;
+    virtual void visit(NamespaceDecl* node) = 0;
     
-    // The base class for all AST traversal and analysis passes.
-    class StructuralVisitor
-    {
+    // Type references
+    virtual void visit(NamedTypeRef* node) = 0;
+    virtual void visit(ArrayTypeRef* node) = 0;
+    virtual void visit(FunctionTypeRef* node) = 0;
+    virtual void visit(NullableTypeRef* node) = 0;
+    virtual void visit(RefTypeRef* node) = 0;
+    
+    // Type constraints
+    virtual void visit(BaseTypeConstraint* node) = 0;
+    virtual void visit(ConstructorConstraint* node) = 0;
+    virtual void visit(TypeKindConstraint* node) = 0;
 
-    public:
-        virtual ~StructuralVisitor() = default;
+    // Patterns
+    virtual void visit(LiteralPattern* node) = 0;
+    virtual void visit(BindingPattern* node) = 0;
+    virtual void visit(EnumPattern* node) = 0;
+    virtual void visit(RangePattern* node) = 0;
+    virtual void visit(InPattern* node) = 0;
+    virtual void visit(ComparisonPattern* node) = 0;
+    
+    // Root
+    virtual void visit(CompilationUnit* node) = 0;
+};
 
-        // The default visit function, which all others will call.
-        void visit(AstNode* node) {};
 
-        // One visit method for each concrete AND abstract node type.
-        virtual void visit(ErrorNode* node);
-        virtual void visit(TokenNode* node);
-        virtual void visit(IdentifierNode* node);
+// ============================================================================
+// --- Modifiers ---
+// ============================================================================
 
-        // Expressions
-        virtual void visit(ExpressionNode* node);
-        virtual void visit(LiteralExpressionNode* node);
-        virtual void visit(IdentifierExpressionNode* node);
-        virtual void visit(ParenthesizedExpressionNode* node);
-        virtual void visit(UnaryExpressionNode* node);
-        virtual void visit(BinaryExpressionNode* node);
-        virtual void visit(AssignmentExpressionNode* node);
-        virtual void visit(CallExpressionNode* node);
-        virtual void visit(MemberAccessExpressionNode* node);
-        virtual void visit(NewExpressionNode* node);
-        virtual void visit(ThisExpressionNode* node);
-        virtual void visit(CastExpressionNode* node);
-        virtual void visit(IndexerExpressionNode* node);
-        virtual void visit(TypeOfExpressionNode* node);
-        virtual void visit(SizeOfExpressionNode* node);
-        virtual void visit(MatchExpressionNode* node);
-        virtual void visit(ConditionalExpressionNode* node);
-        virtual void visit(RangeExpressionNode* node);
-        virtual void visit(FieldKeywordExpressionNode* node);
-        virtual void visit(ValueKeywordExpressionNode* node);
-        
-        // Statements
-        virtual void visit(StatementNode* node);
-        virtual void visit(BlockStatementNode* node);
-        virtual void visit(ExpressionStatementNode* node);
-        virtual void visit(IfStatementNode* node);
-        virtual void visit(WhileStatementNode* node);
-        virtual void visit(ForStatementNode* node);
-        virtual void visit(ForInStatementNode* node);
-        virtual void visit(ReturnStatementNode* node);
-        virtual void visit(BreakStatementNode* node);
-        virtual void visit(ContinueStatementNode* node);
-        virtual void visit(EmptyStatementNode* node);
-        // Declarations
-        virtual void visit(DeclarationNode* node);
-        virtual void visit(NamespaceDeclarationNode* node);
-        virtual void visit(UsingDirectiveNode* node);
-        virtual void visit(TypeDeclarationNode* node);
-        virtual void visit(InterfaceDeclarationNode* node);
-        virtual void visit(EnumDeclarationNode* node);
-        virtual void visit(MemberDeclarationNode* node);
-        virtual void visit(FunctionDeclarationNode* node);
-        virtual void visit(ParameterNode* node);
-        virtual void visit(VariableDeclarationNode* node);
-        virtual void visit(GenericParameterNode* node);
-        virtual void visit(PropertyDeclarationNode* node);
-        virtual void visit(PropertyAccessorNode* node);
-        virtual void visit(ConstructorDeclarationNode* node);
-        virtual void visit(EnumCaseNode* node);
-        
-        // Match Patterns
-        virtual void visit(MatchArmNode* node);
-        virtual void visit(MatchPatternNode* node);
-        virtual void visit(EnumPatternNode* node);
-        virtual void visit(RangePatternNode* node);
-        virtual void visit(ComparisonPatternNode* node);
-        virtual void visit(WildcardPatternNode* node);
-        virtual void visit(LiteralPatternNode* node);
-        
-        // Types
-        virtual void visit(QualifiedNameNode* node);
-        virtual void visit(TypeNameNode* node);
-        virtual void visit(ArrayTypeNameNode* node);
-        virtual void visit(GenericTypeNameNode* node);
-        
-        // Root
-        virtual void visit(CompilationUnitNode* node);
+struct ModifierSet {
+    enum class Access { None, Public, Protected, Private, Internal };
+    
+    Access access = Access::None;
+    bool isStatic = false;
+    bool isVirtual = false;
+    bool isAbstract = false;
+    bool isOverride = false;
+    bool isRef = false;
+    bool isEnforced = false;
+    bool isInherit = false;
+    bool isReadonly = false;
+};
+
+// ============================================================================
+// --- Core Node Hierarchy ---
+// ============================================================================
+
+struct Node {
+    SourceRange location;
+    SymbolHandle resolvedSymbol = {0};
+    
+    virtual ~Node() = default;
+    virtual void accept(Visitor* visitor);
+    
+    // Clean API using dynamic_cast
+    template<typename T>
+    bool is() const {
+        return dynamic_cast<const T*>(this) != nullptr;
+    }
+    
+    template<typename T>
+    T* as() {
+        return dynamic_cast<T*>(this);
+    }
+    
+    template<typename T>
+    const T* as() const {
+        return dynamic_cast<const T*>(this);
+    }
+};
+
+struct Expression : Node {
+    // Cached semantic analysis data
+    TypeRef* resolvedType = nullptr;
+    bool isLValue = false;
+    bool isConstant = false;
+    ACCEPT_VISITOR
+};
+
+struct Statement : Node {
+    ACCEPT_VISITOR
+};
+
+// Base for declarations - no name field!
+struct Declaration : Statement {
+    ModifierSet modifiers;
+    ACCEPT_VISITOR
+};
+
+struct Pattern : Node {
+    ACCEPT_VISITOR
+};
+
+struct TypeRef : Node {
+    ACCEPT_VISITOR
+};
+
+struct TypeConstraint : Node {
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Basic Building Blocks ---
+// ============================================================================
+
+struct Identifier : Node {
+    std::string_view text;
+    ACCEPT_VISITOR
+};
+
+// Reusable component for name + optional type
+struct TypedIdentifier : Node {
+    Identifier* name;
+    TypeRef* type;  // null = inferred (var)
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Error Nodes (for robust error recovery) ---
+// ============================================================================
+
+struct ErrorExpression : Expression {
+    std::string_view message;
+    List<Node*> partialNodes;
+    ACCEPT_VISITOR
+};
+
+struct ErrorStatement : Statement {
+    std::string_view message;
+    List<Node*> partialNodes;
+    ACCEPT_VISITOR
+};
+
+struct ErrorTypeRef : TypeRef {
+    std::string_view message;
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Expressions ---
+// ============================================================================
+
+struct LiteralExpr : Expression {
+    enum class Kind {
+        Integer, Float, String, Char, Bool, Null
     };
+    
+    Kind kind;
+    std::string_view value;  // Raw text from source
+    ACCEPT_VISITOR
+};
 
-    // A non-owning array view for collections of AST nodes.
-    // Memory is managed by the AstAllocator.
-    template <typename T>
-    struct SizedArray
-    {
-        T* values;
-        int size;
+struct ArrayLiteralExpr : Expression {
+    List<Expression*> elements;
+    ACCEPT_VISITOR
+};
 
-        SizedArray() : values(nullptr), size(0) {}
+struct NameExpr : Expression {
+    List<Identifier*> parts;  // ["Console", "WriteLine"]
+    ACCEPT_VISITOR
+};
 
-        T& operator[](int index) const {
-            // Add assertion for bounds checking in debug builds
-            return values[index];
+struct UnaryExpr : Expression {
+    UnaryOperatorKind op;
+    Expression* operand;  // Never null (ErrorExpression if parse fails)
+    bool isPostfix;
+    ACCEPT_VISITOR
+};
+
+struct BinaryExpr : Expression {
+    Expression* left;   // Never null
+    BinaryOperatorKind op;
+    Expression* right;  // Never null
+    ACCEPT_VISITOR
+};
+
+struct AssignmentExpr : Expression {
+    Expression* target;  // Never null, must be lvalue
+    AssignmentOperatorKind op;
+    Expression* value;   // Never null
+    ACCEPT_VISITOR
+};
+
+struct CallExpr : Expression {
+    Expression* callee;  // Never null
+    List<Expression*> arguments;
+    ACCEPT_VISITOR
+};
+
+struct MemberAccessExpr : Expression {
+    Expression* object;  // Never null
+    Identifier* member;  // Never null
+    ACCEPT_VISITOR
+};
+
+struct IndexerExpr : Expression {
+    Expression* object;  // Never null
+    Expression* index;   // Never null (can be RangeExpr for slicing)
+    ACCEPT_VISITOR
+};
+
+struct CastExpr : Expression {
+    TypeRef* targetType;  // Never null
+    Expression* expression;  // Never null
+    ACCEPT_VISITOR
+};
+
+struct NewExpr : Expression {
+    TypeRef* type;  // Never null
+    List<Expression*> arguments;
+    ACCEPT_VISITOR
+};
+
+struct ThisExpr : Expression {
+    ACCEPT_VISITOR
+};
+
+struct LambdaExpr : Expression {
+    List<ParameterDecl*> parameters;
+    Statement* body;  // Block or ExpressionStmt
+    ACCEPT_VISITOR
+};
+
+struct RangeExpr : Expression {
+    Expression* start;      // Can be null (open start)
+    Expression* end;        // Can be null (open end)
+    Expression* step;       // Can be null (default step)
+    bool isInclusive;       // .. vs ..=
+    ACCEPT_VISITOR
+};
+
+struct ConditionalExpr : Expression {
+    Expression* condition;  // Never null
+    Expression* thenExpr;   // Never null
+    Expression* elseExpr;   // Never null
+    ACCEPT_VISITOR
+};
+
+struct TypeOfExpr : Expression {
+    TypeRef* type;  // Never null
+    ACCEPT_VISITOR
+};
+
+struct SizeOfExpr : Expression {
+    TypeRef* type;  // Never null
+    ACCEPT_VISITOR
+};
+
+// Single block type for both statements and expressions
+struct Block : Statement {
+    List<Statement*> statements;
+    ACCEPT_VISITOR
+};
+
+struct IfExpr : Expression {
+    Expression* condition;    // Never null
+    Statement* thenBranch;    // Never null (usually Block)
+    Statement* elseBranch;    // Can be null
+    ACCEPT_VISITOR
+};
+
+struct MatchArm : Node {
+    Pattern* pattern;         // Never null
+    Statement* result;       // Never null
+    ACCEPT_VISITOR
+};
+
+struct MatchExpr : Expression {
+    Expression* subject;      // Never null
+    List<MatchArm*> arms;
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Statements ---
+// ============================================================================
+
+struct ExpressionStmt : Statement {
+    Expression* expression;  // Never null
+    ACCEPT_VISITOR
+};
+
+struct ReturnStmt : Statement {
+    Expression* value;  // Can be null (void return)
+    ACCEPT_VISITOR
+};
+
+struct BreakStmt : Statement {
+    ACCEPT_VISITOR
+};
+
+struct ContinueStmt : Statement {
+    ACCEPT_VISITOR
+};
+
+struct WhileStmt : Statement {
+    Expression* condition;  // Never null
+    Statement* body;        // Never null (usually Block)
+    ACCEPT_VISITOR
+};
+
+struct ForStmt : Statement {
+    Statement* initializer;     // Can be null
+    Expression* condition;      // Can be null (infinite loop)
+    List<Expression*> updates;
+    Statement* body;            // Never null
+    ACCEPT_VISITOR
+};
+
+struct ForInStmt : Statement {
+    TypedIdentifier* iterator;  // Never null
+    Expression* iterable;       // Never null
+    TypedIdentifier* indexVar;  // Can be null ("at" clause)
+    Statement* body;            // Never null
+    ACCEPT_VISITOR
+};
+
+struct UsingDirective : Statement {
+    enum class Kind { 
+        Namespace,  // using System.Collections;
+        Alias       // using Dict = Dictionary<string, int>;
+    };
+    
+    Kind kind;
+    List<Identifier*> path;
+    
+    // For alias only
+    Identifier* alias = nullptr;
+    TypeRef* aliasedType = nullptr;
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Declarations ---
+// ============================================================================
+
+// Regular local variable: var x = 5;
+struct VariableDecl : Declaration {
+    TypedIdentifier* variable;  // Never null
+    Expression* initializer;    // Can be null
+    ACCEPT_VISITOR
+};
+
+// Unified field/property for class members
+struct MemberVariableDecl : Declaration {
+    Identifier* name;           // Never null
+    TypeRef* type;              // Never null
+    Expression* initializer;    // Can be null
+    PropertyAccessor* getter;   // null = field, non-null = property
+    PropertyAccessor* setter;   // Can be null even for properties
+    ACCEPT_VISITOR
+};
+
+struct ParameterDecl : Declaration {
+    TypedIdentifier* param;     // Never null
+    Expression* defaultValue;   // Can be null
+    ACCEPT_VISITOR
+};
+
+struct GenericParamDecl : Declaration {
+    Identifier* name;           // Never null
+    List<TypeConstraint*> constraints;
+    ACCEPT_VISITOR
+};
+
+struct FunctionDecl : Declaration {
+    Identifier* name;           // Never null
+    List<GenericParamDecl*> genericParams;
+    List<ParameterDecl*> parameters;
+    TypeRef* returnType;        // null = void
+    Block* body;                // Can be null (abstract)
+    ACCEPT_VISITOR
+};
+
+struct ConstructorDecl : Declaration {
+    // No name field - constructors are always "new"
+    List<ParameterDecl*> parameters;
+    Block* body;                // Never null
+    ACCEPT_VISITOR
+};
+
+struct PropertyAccessor : Node
+{
+    enum class Kind { Get, Set };
+    Kind kind;
+    ModifierSet modifiers;
+    
+    // Body representation
+    std::variant<
+        std::monostate,         // Default/auto-implemented
+        Expression*,            // Expression-bodied: => expr
+        Block*                  // Block-bodied: { ... }
+    > body;
+    ACCEPT_VISITOR
+};
+
+struct InheritFunctionDecl : Declaration {
+    // No name field in base - this is about inheriting a function implementation
+    Identifier* functionName;   // Never null
+    List<TypeRef*> parameterTypes;  // For overload resolution
+    ACCEPT_VISITOR
+};
+
+struct EnumCaseDecl : Declaration {
+    Identifier* name;           // Never null
+    List<ParameterDecl*> associatedData;  // Can be empty
+    ACCEPT_VISITOR
+};
+
+struct TypeDecl : Declaration {
+    enum class Kind { 
+        Type,       // type
+        ValueType,  // value type
+        RefType,    // ref type
+        StaticType, // static type (all members implicitly static)
+        Enum        // enum
+    };
+    
+    Identifier* name;           // Never null
+    Kind kind;
+    List<GenericParamDecl*> genericParams;
+    List<TypeRef*> baseTypes;
+    List<Declaration*> members;
+    ACCEPT_VISITOR
+};
+
+struct NamespaceDecl : Declaration {
+    List<Identifier*> path;     // Never empty
+    bool isFileScoped;          
+    std::optional<List<Statement*>> body;  // nullopt for file-scoped
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Type System ---
+// ============================================================================
+
+struct NamedTypeRef : TypeRef {
+    List<Identifier*> path;     // Never empty
+    List<TypeRef*> genericArgs;
+    ACCEPT_VISITOR
+};
+
+struct ArrayTypeRef : TypeRef {
+    TypeRef* elementType;       // Never null
+    ACCEPT_VISITOR
+};
+
+struct FunctionTypeRef : TypeRef {
+    List<TypeRef*> parameterTypes;
+    TypeRef* returnType;        // null = void
+    ACCEPT_VISITOR
+};
+
+struct NullableTypeRef : TypeRef {
+    TypeRef* innerType;         // Never null
+    ACCEPT_VISITOR
+};
+
+struct RefTypeRef : TypeRef {
+    TypeRef* innerType;         // Never null
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Type Constraints (for generics) ---
+// ============================================================================
+
+struct BaseTypeConstraint : TypeConstraint {
+    TypeRef* baseType;          // Never null
+    ACCEPT_VISITOR
+};
+
+struct ConstructorConstraint : TypeConstraint {
+    List<TypeRef*> parameterTypes;  // Empty for parameterless
+    ACCEPT_VISITOR
+};
+
+struct TypeKindConstraint : TypeConstraint {
+    enum class Kind { RefType, ValueType, ArrayType, FunctionType };
+    Kind kind;
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Pattern Matching ---
+// ============================================================================
+
+struct LiteralPattern : Pattern {
+    LiteralExpr* literal;       // Never null
+    ACCEPT_VISITOR
+};
+
+struct BindingPattern : Pattern {
+    Identifier* name;           // null = wildcard (_)
+    ACCEPT_VISITOR
+};
+
+struct EnumPattern : Pattern {
+    List<Identifier*> path;     // Never empty
+    List<Pattern*> argumentPatterns;
+    ACCEPT_VISITOR
+};
+
+struct RangePattern : Pattern {
+    Expression* start;          // Can be null
+    Expression* end;            // Can be null
+    bool isInclusive;
+    ACCEPT_VISITOR
+};
+
+struct InPattern : Pattern {
+    Pattern* innerPattern;      // Never null
+    ACCEPT_VISITOR
+};
+
+struct ComparisonPattern : Pattern {
+    enum class Op { Less, Greater, LessEqual, GreaterEqual };
+    Op op;
+    Expression* value;          // Never null
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Root Node ---
+// ============================================================================
+
+struct CompilationUnit : Node {
+    List<Statement*> topLevelStatements;
+    ACCEPT_VISITOR
+};
+
+// ============================================================================
+// --- Default Visitor (with automatic traversal) ---
+// ============================================================================
+
+class DefaultVisitor : public Visitor {
+public:
+    // Base type visit implementations - override these for uniform handling
+    void visit(Node* node) override { /* default: do nothing */ }
+    void visit(Expression* node) override { visit(static_cast<Node*>(node)); }
+    void visit(Statement* node) override { visit(static_cast<Node*>(node)); }
+    void visit(Declaration* node) override { visit(static_cast<Statement*>(node)); }
+    void visit(Pattern* node) override { visit(static_cast<Node*>(node)); }
+    void visit(TypeRef* node) override { visit(static_cast<Node*>(node)); }
+    void visit(TypeConstraint* node) override { visit(static_cast<Node*>(node)); }
+    
+    // Default implementations that traverse children
+    void visit(Identifier* node) override { visit(static_cast<Node*>(node)); }
+
+    void visit(TypedIdentifier* node) override {
+        visit(static_cast<Node*>(node));
+        if (node->name) node->name->accept(this);
+        if (node->type) node->type->accept(this);
+    }
+    
+    void visit(ErrorExpression* node) override {
+        visit(static_cast<Expression*>(node));
+        for (auto* partial : node->partialNodes) {
+            if (partial) partial->accept(this);
         }
-
-        T* begin() const { return values; }
-        T* end() const { return values + size; }
-        bool empty() const { return size == 0; }
-        T back() const { return values[size - 1]; }
-    };
-
-
-    // --- Base AST Node ---
-    struct AstNode
-    {
-        AST_ROOT_TYPE(AstNode) // Root node has no base type
-
-        uint8_t typeId;
-        SourceRange location;
-        SymbolHandle containingScope = {0};
-
-        // Must be implemented in ast.cpp
-        void init_with_type_id(uint8_t id);
-        void accept(StructuralVisitor* visitor);
-
-        // RTTI functions defined at the end of this file
-        template <typename T> bool is_a() { return node_is<T>(this); }
-        template <typename T> T* as() { return node_cast<T>(this); }
-        const char* node_type_name() { return get_type_name_from_id(typeId); }
-    };
-
-    struct ErrorNode : AstNode {
-        AST_TYPE(ErrorNode, AstNode)
-
-        static ErrorNode* create(const SourceRange location, AstAllocator& allocator) {
-            auto* node = allocator.alloc<ErrorNode>();
-            node->location = location;
-            return node;
+    }
+    
+    void visit(ErrorStatement* node) override {
+        visit(static_cast<Statement*>(node));
+        for (auto* partial : node->partialNodes) {
+            if (partial) partial->accept(this);
         }
-    }; AST_DECL_IMPL(ErrorNode, AstNode)
+    }
+    
+    void visit(ErrorTypeRef* node) override { 
+        visit(static_cast<TypeRef*>(node));
+    }
+    
+    void visit(LiteralExpr* node) override { 
+        visit(static_cast<Expression*>(node));
+    }
+    
+    void visit(ArrayLiteralExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        for (auto* elem : node->elements) {
+            elem->accept(this);
+        }
+    }
+    
+    void visit(NameExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        for (auto* part : node->parts) {
+            part->accept(this);
+        }
+    }
+    
+    void visit(UnaryExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->operand->accept(this);
+    }
+    
+    void visit(BinaryExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->left->accept(this);
+        node->right->accept(this);
+    }
+    
+    void visit(AssignmentExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->target->accept(this);
+        node->value->accept(this);
+    }
+    
+    void visit(CallExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->callee->accept(this);
+        for (auto* arg : node->arguments) {
+            arg->accept(this);
+        }
+    }
+    
+    void visit(MemberAccessExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->object->accept(this);
+        node->member->accept(this);
+    }
+    
+    void visit(IndexerExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->object->accept(this);
+        node->index->accept(this);
+    }
+    
+    void visit(CastExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->targetType->accept(this);
+        node->expression->accept(this);
+    }
+    
+    void visit(NewExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->type->accept(this);
+        for (auto* arg : node->arguments) {
+            arg->accept(this);
+        }
+    }
+    
+    void visit(ThisExpr* node) override { 
+        visit(static_cast<Expression*>(node));
+    }
+    
+    void visit(LambdaExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        for (auto* param : node->parameters) {
+            param->accept(this);
+        }
+        if (node->body) node->body->accept(this);
+    }
+    
+    void visit(RangeExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        if (node->start) node->start->accept(this);
+        if (node->end) node->end->accept(this);
+        if (node->step) node->step->accept(this);
+    }
+    
+    void visit(ConditionalExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->condition->accept(this);
+        node->thenExpr->accept(this);
+        node->elseExpr->accept(this);
+    }
+    
+    void visit(TypeOfExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->type->accept(this);
+    }
+    
+    void visit(SizeOfExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->type->accept(this);
+    }
 
-
-    // --- Node Hierarchy ---
-
-    struct TokenNode : AstNode
-    {
-        AST_TYPE(TokenNode, AstNode)
-        std::string_view text;
-    }; AST_DECL_IMPL(TokenNode, AstNode)
-
-    struct IdentifierNode : AstNode
-    {
-        AST_TYPE(IdentifierNode, AstNode)
-        std::string_view name;
-    }; AST_DECL_IMPL(IdentifierNode, AstNode)
-
-    // --- Expressions ---
-    struct ExpressionNode : AstNode
-    {
-        AST_TYPE(ExpressionNode, AstNode)
-    }; AST_DECL_IMPL(ExpressionNode, AstNode)
-
-    struct LiteralExpressionNode : ExpressionNode
-    {
-        AST_TYPE(LiteralExpressionNode, ExpressionNode)
-        LiteralKind kind;
-        TokenNode* token; // Contains the raw text
-    }; AST_DECL_IMPL(LiteralExpressionNode, ExpressionNode)
-
-    struct IdentifierExpressionNode : ExpressionNode
-    {
-        AST_TYPE(IdentifierExpressionNode, ExpressionNode)
-        IdentifierNode* identifier;
-    }; AST_DECL_IMPL(IdentifierExpressionNode, ExpressionNode)
-
-    struct ParenthesizedExpressionNode : ExpressionNode
-    {
-        AST_TYPE(ParenthesizedExpressionNode, ExpressionNode)
-        TokenNode* openParen;
-        ExpressionNode* expression;
-        TokenNode* closeParen;
-    }; AST_DECL_IMPL(ParenthesizedExpressionNode, ExpressionNode)
-
-    struct UnaryExpressionNode : ExpressionNode
-    {
-        AST_TYPE(UnaryExpressionNode, ExpressionNode)
-        UnaryOperatorKind opKind;
-        TokenNode* operatorToken;
-        ExpressionNode* operand;
-        bool isPostfix;
-    }; AST_DECL_IMPL(UnaryExpressionNode, ExpressionNode)
-
-    struct BinaryExpressionNode : ExpressionNode
-    {
-        AST_TYPE(BinaryExpressionNode, ExpressionNode)
-        AstNode* left;        // Can be ExpressionNode* or ErrorNode*
-        BinaryOperatorKind opKind;
-        TokenNode* operatorToken;
-        AstNode* right;       // Can be ExpressionNode* or ErrorNode*
-    }; AST_DECL_IMPL(BinaryExpressionNode, ExpressionNode)
-
-    struct AssignmentExpressionNode : ExpressionNode
-    {
-        AST_TYPE(AssignmentExpressionNode, ExpressionNode)
-        ExpressionNode* target;
-        AssignmentOperatorKind opKind;
-        TokenNode* operatorToken;
-        ExpressionNode* source;
-    }; AST_DECL_IMPL(AssignmentExpressionNode, ExpressionNode)
-
-    struct CallExpressionNode : ExpressionNode
-    {
-        AST_TYPE(CallExpressionNode, ExpressionNode)
-        ExpressionNode* target;
-        TokenNode* openParen;
-        SizedArray<AstNode*> arguments;  // Can contain ExpressionNodes or ErrorNodes
-        SizedArray<TokenNode*> commas;
-        TokenNode* closeParen;
-    }; AST_DECL_IMPL(CallExpressionNode, ExpressionNode)
-
-    struct MemberAccessExpressionNode : ExpressionNode
-    {
-        AST_TYPE(MemberAccessExpressionNode, ExpressionNode)
-        ExpressionNode* target;
-        TokenNode* dotToken;
-        IdentifierNode* member;
-    }; AST_DECL_IMPL(MemberAccessExpressionNode, ExpressionNode)
-
-    struct NewExpressionNode : ExpressionNode
-    {
-        AST_TYPE(NewExpressionNode, ExpressionNode)
-        TokenNode* newKeyword;
-        TypeNameNode* type;
-        CallExpressionNode* constructorCall; // Optional, can be null
-    }; AST_DECL_IMPL(NewExpressionNode, ExpressionNode)
-
-    struct ThisExpressionNode : ExpressionNode
-    {
-        AST_TYPE(ThisExpressionNode, ExpressionNode)
-        TokenNode* thisKeyword;
-    }; AST_DECL_IMPL(ThisExpressionNode, ExpressionNode)
-
-    struct CastExpressionNode : ExpressionNode
-    {
-        AST_TYPE(CastExpressionNode, ExpressionNode)
-        TokenNode* openParen;
-        TypeNameNode* targetType;
-        TokenNode* closeParen;
-        ExpressionNode* expression;
-    }; AST_DECL_IMPL(CastExpressionNode, ExpressionNode)
-
-    struct IndexerExpressionNode : ExpressionNode
-    {
-        AST_TYPE(IndexerExpressionNode, ExpressionNode)
-        ExpressionNode* target;
-        TokenNode* openBracket;
-        ExpressionNode* index;
-        TokenNode* closeBracket;
-    }; AST_DECL_IMPL(IndexerExpressionNode, ExpressionNode)
-
-    struct TypeOfExpressionNode : ExpressionNode
-    {
-        AST_TYPE(TypeOfExpressionNode, ExpressionNode)
-        TokenNode* typeOfKeyword;
-        TokenNode* openParen;
-        TypeNameNode* type;
-        TokenNode* closeParen;
-    }; AST_DECL_IMPL(TypeOfExpressionNode, ExpressionNode)
-
-    struct SizeOfExpressionNode : ExpressionNode
-    {
-        AST_TYPE(SizeOfExpressionNode, ExpressionNode)
-        TokenNode* sizeOfKeyword;
-        TokenNode* openParen;
-        TypeNameNode* type;
-        TokenNode* closeParen;
-    }; AST_DECL_IMPL(SizeOfExpressionNode, ExpressionNode)
-
-    struct MatchExpressionNode : ExpressionNode
-    {
-        AST_TYPE(MatchExpressionNode, ExpressionNode)
-        TokenNode* matchKeyword;
-        TokenNode* openParen;
-        ExpressionNode* expression;
-        TokenNode* closeParen;
-        TokenNode* openBrace;
-        SizedArray<MatchArmNode*> arms;
-        TokenNode* closeBrace;
-    }; AST_DECL_IMPL(MatchExpressionNode, ExpressionNode)
-
-    struct ConditionalExpressionNode : ExpressionNode
-    {
-        AST_TYPE(ConditionalExpressionNode, ExpressionNode)
-        ExpressionNode* condition;
-        TokenNode* question;
-        ExpressionNode* whenTrue;
-        TokenNode* colon;
-        ExpressionNode* whenFalse;
-    }; AST_DECL_IMPL(ConditionalExpressionNode, ExpressionNode)
-
-    struct RangeExpressionNode : ExpressionNode
-    {
-        AST_TYPE(RangeExpressionNode, ExpressionNode)
-        ExpressionNode* start;
-        TokenNode* rangeOp; // .. or ..=
-        ExpressionNode* end;
-        TokenNode* byKeyword; // optional
-        ExpressionNode* stepExpression; // var i or Type var or just an identifier, optional
-    }; AST_DECL_IMPL(RangeExpressionNode, ExpressionNode)
-
-    struct FieldKeywordExpressionNode : ExpressionNode
-    {
-        AST_TYPE(FieldKeywordExpressionNode, ExpressionNode)
-        TokenNode* fieldKeyword;
-    }; AST_DECL_IMPL(FieldKeywordExpressionNode, ExpressionNode)
-
-    struct ValueKeywordExpressionNode : ExpressionNode
-    {
-        AST_TYPE(ValueKeywordExpressionNode, ExpressionNode)
-        TokenNode* valueKeyword;
-    }; AST_DECL_IMPL(ValueKeywordExpressionNode, ExpressionNode)
-
-    // --- Statements ---
-    struct StatementNode : AstNode
-    { 
-        AST_TYPE(StatementNode, AstNode)
-    }; AST_DECL_IMPL(StatementNode, AstNode)
-
-    struct EmptyStatementNode : StatementNode
-    {
-        AST_TYPE(EmptyStatementNode, StatementNode)
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(EmptyStatementNode, StatementNode)
-
-    struct BlockStatementNode : StatementNode
-    {
-        AST_TYPE(BlockStatementNode, StatementNode)
-        TokenNode* openBrace;
-        // A block can contain both statements and local declarations (including ErrorNodes)
-        SizedArray<AstNode*> statements;
-        TokenNode* closeBrace;
-    }; AST_DECL_IMPL(BlockStatementNode, StatementNode)
-
-    struct ExpressionStatementNode : StatementNode
-    {
-        AST_TYPE(ExpressionStatementNode, StatementNode)
-        AstNode* expression;  // Can be ExpressionNode* or ErrorNode*
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(ExpressionStatementNode, StatementNode)
-
-    struct IfStatementNode : StatementNode
-    {
-        AST_TYPE(IfStatementNode, StatementNode)
-        TokenNode* ifKeyword;
-        TokenNode* openParen;
-        ExpressionNode* condition;
-        TokenNode* closeParen;
-        StatementNode* thenStatement;
-        TokenNode* elseKeyword; // Optional, can be null
-        StatementNode* elseStatement; // Optional, can be null
-    }; AST_DECL_IMPL(IfStatementNode, StatementNode)
-
-    struct WhileStatementNode : StatementNode
-    {
-        AST_TYPE(WhileStatementNode, StatementNode)
-        TokenNode* whileKeyword;
-        TokenNode* openParen;
-        ExpressionNode* condition;
-        TokenNode* closeParen;
-        StatementNode* body;
-    }; AST_DECL_IMPL(WhileStatementNode, StatementNode)
-
-    struct ForStatementNode : StatementNode
-    {
-        AST_TYPE(ForStatementNode, StatementNode)
-        TokenNode* forKeyword;
-        TokenNode* openParen;
-        StatementNode* initializer; // VariableDeclarationNode or ExpressionStatementNode
-        ExpressionNode* condition;
-        TokenNode* firstSemicolon;
-        SizedArray<ExpressionNode*> incrementors;
-        TokenNode* secondSemicolon;
-        TokenNode* closeParen;
-        StatementNode* body;
-    }; AST_DECL_IMPL(ForStatementNode, StatementNode)
-
-    struct ForInStatementNode : StatementNode
-    {
-        AST_TYPE(ForInStatementNode, StatementNode)
-        TokenNode* forKeyword;
-        TokenNode* openParen;
-        StatementNode* mainVariable;  // var i or Type var or just an identifier
-        TokenNode* inKeyword;
-        ExpressionNode* iterable;  // 0..10 or collection
-        TokenNode* atKeyword; // optional
-        StatementNode* indexVariable;  // var i or Type var or just an identifier, optional
-        TokenNode* closeParen;
-        StatementNode* body;
-    }; AST_DECL_IMPL(ForInStatementNode, StatementNode)
-
-    struct ReturnStatementNode : StatementNode
-    {
-        AST_TYPE(ReturnStatementNode, StatementNode)
-        TokenNode* returnKeyword;
-        ExpressionNode* expression; // Optional, can be null
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(ReturnStatementNode, StatementNode)
-
-    struct BreakStatementNode : StatementNode
-    {
-        AST_TYPE(BreakStatementNode, StatementNode)
-        TokenNode* breakKeyword;
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(BreakStatementNode, StatementNode)
-
-    struct ContinueStatementNode : StatementNode
-    {
-        AST_TYPE(ContinueStatementNode, StatementNode)
-        TokenNode* continueKeyword;
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(ContinueStatementNode, StatementNode)
-
-    // --- Type Names ---
-
-    struct QualifiedNameNode : AstNode
-    {
-        AST_TYPE(QualifiedNameNode, AstNode)
-        SizedArray<IdentifierNode*> identifiers;
-
-        std::string get_full_name() const
-        {
-            std::string full_name;
-            for (const auto& id : identifiers)
-            {
-                if (!full_name.empty())
-                    full_name += ".";
-                full_name += id->name;
+    void visit(Block* node) override {
+        visit(static_cast<Statement*>(node));
+        for (auto* stmt : node->statements) {
+            stmt->accept(this);
+        }
+    }
+    
+    void visit(IfExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->condition->accept(this);
+        node->thenBranch->accept(this);
+        if (node->elseBranch) node->elseBranch->accept(this);
+    }
+    
+    void visit(MatchExpr* node) override {
+        visit(static_cast<Expression*>(node));
+        node->subject->accept(this);
+        for (auto* arm : node->arms) {
+            arm->accept(this);
+        }
+    }
+    
+    void visit(MatchArm* node) override {
+        visit(static_cast<Node*>(node));
+        node->pattern->accept(this);
+        node->result->accept(this);
+    }
+    
+    void visit(ExpressionStmt* node) override {
+        visit(static_cast<Statement*>(node));
+        node->expression->accept(this);
+    }
+    
+    void visit(ReturnStmt* node) override {
+        visit(static_cast<Statement*>(node));
+        if (node->value) node->value->accept(this);
+    }
+    
+    void visit(BreakStmt* node) override { 
+        visit(static_cast<Statement*>(node));
+    }
+    
+    void visit(ContinueStmt* node) override { 
+        visit(static_cast<Statement*>(node));
+    }
+    
+    void visit(WhileStmt* node) override {
+        visit(static_cast<Statement*>(node));
+        node->condition->accept(this);
+        node->body->accept(this);
+    }
+    
+    void visit(ForStmt* node) override {
+        visit(static_cast<Statement*>(node));
+        if (node->initializer) node->initializer->accept(this);
+        if (node->condition) node->condition->accept(this);
+        for (auto* update : node->updates) {
+            update->accept(this);
+        }
+        node->body->accept(this);
+    }
+    
+    void visit(ForInStmt* node) override {
+        visit(static_cast<Statement*>(node));
+        node->iterator->accept(this);
+        node->iterable->accept(this);
+        if (node->indexVar) node->indexVar->accept(this);
+        node->body->accept(this);
+    }
+    
+    void visit(UsingDirective* node) override {
+        visit(static_cast<Statement*>(node));
+        for (auto* part : node->path) {
+            part->accept(this);
+        }
+        if (node->alias) node->alias->accept(this);
+        if (node->aliasedType) node->aliasedType->accept(this);
+    }
+    
+    void visit(VariableDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->variable->accept(this);
+        if (node->initializer) node->initializer->accept(this);
+    }
+    
+    void visit(MemberVariableDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->name->accept(this);
+        if (node->type) node->type->accept(this);
+        if (node->initializer) node->initializer->accept(this);
+        if (node->getter) node->getter->accept(this);
+        if (node->setter) node->setter->accept(this);
+    }
+    
+    void visit(ParameterDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->param->accept(this);
+        if (node->defaultValue) node->defaultValue->accept(this);
+    }
+    
+    void visit(GenericParamDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->name->accept(this);
+        for (auto* constraint : node->constraints) {
+            constraint->accept(this);
+        }
+    }
+    
+    void visit(FunctionDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->name->accept(this);
+        for (auto* param : node->genericParams) {
+            param->accept(this);
+        }
+        for (auto* param : node->parameters) {
+            param->accept(this);
+        }
+        if (node->returnType) node->returnType->accept(this);
+        if (node->body) node->body->accept(this);
+    }
+    
+    void visit(ConstructorDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        for (auto* param : node->parameters) {
+            param->accept(this);
+        }
+        node->body->accept(this);
+    }
+    
+    void visit(PropertyAccessor* node) override {
+        visit(static_cast<Node*>(node));
+        if (auto* expr = std::get_if<Expression*>(&node->body)) {
+            (*expr)->accept(this);
+        } else if (auto* block = std::get_if<Block*>(&node->body)) {
+            (*block)->accept(this);
+        }
+    }
+    
+    void visit(InheritFunctionDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->functionName->accept(this);
+        for (auto* type : node->parameterTypes) {
+            type->accept(this);
+        }
+    }
+    
+    void visit(EnumCaseDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->name->accept(this);
+        for (auto* data : node->associatedData) {
+            data->accept(this);
+        }
+    }
+    
+    void visit(TypeDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        node->name->accept(this);
+        for (auto* param : node->genericParams) {
+            param->accept(this);
+        }
+        for (auto* base : node->baseTypes) {
+            base->accept(this);
+        }
+        for (auto* member : node->members) {
+            member->accept(this);
+        }
+    }
+    
+    void visit(NamespaceDecl* node) override {
+        visit(static_cast<Declaration*>(node));
+        for (auto* part : node->path) {
+            part->accept(this);
+        }
+        if (node->body) {
+            for (auto* stmt : *node->body) {
+                stmt->accept(this);
             }
-            return full_name;
         }
-
-        std::string_view get_name() const
-        {
-            if (identifiers.empty())
-                return "";
-            return identifiers.back()->name;
-        }
-    }; AST_DECL_IMPL(QualifiedNameNode, AstNode)
-
-    struct TypeNameNode : AstNode
-    {
-        AST_TYPE(TypeNameNode, AstNode)
-        QualifiedNameNode* name;
-
-        std::string get_full_name() const
-        {
-            if (name)
-                return name->get_full_name();
-            return "";
-        }
-        std::string_view get_name() const
-        {
-            if (name)
-                return name->get_name();
-            return "";
-        }
-    }; AST_DECL_IMPL(TypeNameNode, AstNode)
-
-    struct ArrayTypeNameNode : TypeNameNode
-    {
-        AST_TYPE(ArrayTypeNameNode, TypeNameNode)
-        TypeNameNode* elementType;
-        TokenNode* openBracket;
-        TokenNode* closeBracket;
-    }; AST_DECL_IMPL(ArrayTypeNameNode, TypeNameNode)
-
-    struct GenericTypeNameNode : TypeNameNode
-    {
-        AST_TYPE(GenericTypeNameNode, TypeNameNode)
-        TypeNameNode* baseType;
-        TokenNode* openAngle;
-        SizedArray<AstNode*> arguments;  // Can contain TypeNameNodes or ErrorNodes
-        SizedArray<TokenNode*> commas;
-        TokenNode* closeAngle;
-    }; AST_DECL_IMPL(GenericTypeNameNode, TypeNameNode)
-
-    // --- Declarations ---
-    struct DeclarationNode : StatementNode
-    {
-        AST_TYPE(DeclarationNode, StatementNode)
-        SizedArray<ModifierKind> modifiers;
-    }; AST_DECL_IMPL(DeclarationNode, StatementNode)
-
-    struct ParameterNode : DeclarationNode
-    {
-        AST_TYPE(ParameterNode, DeclarationNode)
-        IdentifierNode* name;
-        TypeNameNode* type;
-        TokenNode* equalsToken; // Optional, can be null
-        ExpressionNode* defaultValue; // Optional, can be null
-    }; AST_DECL_IMPL(ParameterNode, DeclarationNode)
-
-    struct VariableDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(VariableDeclarationNode, DeclarationNode)
-        TokenNode* varKeyword; // Optional, can be null
-        TypeNameNode* type; // Optional, can be null
-        // either the var keyword or type must be present
-        SizedArray<IdentifierNode*> names; // if only one name then use name otherwise use names
-        TokenNode* equalsToken; // Optional, can be null
-        ExpressionNode* initializer; // Optional, can be null
-        TokenNode* semicolon;
-
-        IdentifierNode* first_name() const {
-            return names.size > 0 ? names[0] : nullptr;
-        }
-    }; AST_DECL_IMPL(VariableDeclarationNode, DeclarationNode)
-
-    struct MemberDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(MemberDeclarationNode, DeclarationNode)
-        IdentifierNode* name;
-    }; AST_DECL_IMPL(MemberDeclarationNode, DeclarationNode)
-
-    struct GenericParameterNode : DeclarationNode
-    {
-        AST_TYPE(GenericParameterNode, DeclarationNode)
-        IdentifierNode* name;
-    }; AST_DECL_IMPL(GenericParameterNode, DeclarationNode)
-
-    struct FunctionDeclarationNode : MemberDeclarationNode
-    {
-        AST_TYPE(FunctionDeclarationNode, MemberDeclarationNode)
-        TokenNode* fnKeyword;
-        IdentifierNode* name;
-        TokenNode* openParen;
-        SizedArray<AstNode*> parameters;  // Can contain ParameterNodes or ErrorNodes
-        TokenNode* closeParen;
-        // modifiers inherited from DeclarationNode
-        TokenNode* arrow; // optional -> for return type
-        TypeNameNode* returnType; // optional, after arrow
-        BlockStatementNode* body; // can be null for abstract
-        TokenNode* semicolon; // for abstract functions
-    }; AST_DECL_IMPL(FunctionDeclarationNode, MemberDeclarationNode)
-
-    struct TypeDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(TypeDeclarationNode, DeclarationNode)
-        TokenNode* typeKeyword; // always "type"
-        IdentifierNode* name;
-        TokenNode* openBrace;
-        SizedArray<AstNode*> members;  // Can contain MemberDeclarationNodes or ErrorNodes
-        TokenNode* closeBrace;
-    }; AST_DECL_IMPL(TypeDeclarationNode, DeclarationNode)
-
-    struct InterfaceDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(InterfaceDeclarationNode, DeclarationNode)
-        TokenNode* interfaceKeyword;
-        IdentifierNode* name;
-        TokenNode* openBrace;
-        SizedArray<MemberDeclarationNode*> members;
-        TokenNode* closeBrace;
-    }; AST_DECL_IMPL(InterfaceDeclarationNode, DeclarationNode)
-
-    struct EnumDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(EnumDeclarationNode, DeclarationNode)
-        TokenNode* enumKeyword;
-        IdentifierNode* name;
-        TokenNode* openBrace;
-        SizedArray<EnumCaseNode*> cases;
-        SizedArray<FunctionDeclarationNode*> methods; // enums can have methods
-        TokenNode* closeBrace;
-    }; AST_DECL_IMPL(EnumDeclarationNode, DeclarationNode)
-
-    struct UsingDirectiveNode : StatementNode
-    {
-        AST_TYPE(UsingDirectiveNode, StatementNode)
-        TokenNode* usingKeyword;
-        QualifiedNameNode* namespaceName;
-        TokenNode* semicolon;
-    }; AST_DECL_IMPL(UsingDirectiveNode, StatementNode)
-
-    struct NamespaceDeclarationNode : DeclarationNode
-    {
-        AST_TYPE(NamespaceDeclarationNode, DeclarationNode)
-        TokenNode* namespaceKeyword;
-        QualifiedNameNode* name;
-        BlockStatementNode* body; // File-scoped namespaces might not have braces
-    }; AST_DECL_IMPL(NamespaceDeclarationNode, DeclarationNode)
-
-    // The root of a parsed file
-    struct CompilationUnitNode : AstNode
-    {
-        AST_TYPE(CompilationUnitNode, AstNode)
-        SizedArray<AstNode*> statements; // Can contain usings, namespace, function, class decls, and ErrorNodes
-    }; AST_DECL_IMPL(CompilationUnitNode, AstNode)
-
-    // --- Match Patterns ---
-    struct MatchArmNode : AstNode
-    {
-        AST_TYPE(MatchArmNode, AstNode)
-        MatchPatternNode* pattern;
-        TokenNode* arrow; // =>
-        ExpressionNode* result; // can be expression or block
-        TokenNode* comma; // optional trailing comma
-    }; AST_DECL_IMPL(MatchArmNode, AstNode)
-
-    struct MatchPatternNode : AstNode
-    { 
-        AST_TYPE(MatchPatternNode, AstNode)
-    }; AST_DECL_IMPL(MatchPatternNode, AstNode)
-
-    struct EnumPatternNode : MatchPatternNode
-    {
-        AST_TYPE(EnumPatternNode, MatchPatternNode)
-        TokenNode* dot;
-        IdentifierNode* enumCase;
-    }; AST_DECL_IMPL(EnumPatternNode, MatchPatternNode)
-
-    struct RangePatternNode : MatchPatternNode
-    {
-        AST_TYPE(RangePatternNode, MatchPatternNode)
-        ExpressionNode* start; // optional for open ranges
-        TokenNode* rangeOp; // .. or ..=
-        ExpressionNode* end; // optional for open ranges
-    }; AST_DECL_IMPL(RangePatternNode, MatchPatternNode)
-
-    struct ComparisonPatternNode : MatchPatternNode
-    {
-        AST_TYPE(ComparisonPatternNode, MatchPatternNode)
-        TokenNode* comparisonOp; // <=, >=, <, >
-        ExpressionNode* value;
-    }; AST_DECL_IMPL(ComparisonPatternNode, MatchPatternNode)
-
-    struct WildcardPatternNode : MatchPatternNode
-    {
-        AST_TYPE(WildcardPatternNode, MatchPatternNode)
-        TokenNode* underscore;
-    }; AST_DECL_IMPL(WildcardPatternNode, MatchPatternNode)
-
-    struct LiteralPatternNode : MatchPatternNode
-    {
-        AST_TYPE(LiteralPatternNode, MatchPatternNode)
-        LiteralExpressionNode* literal;
-    }; AST_DECL_IMPL(LiteralPatternNode, MatchPatternNode)
-
-    // --- Properties ---
-    struct PropertyDeclarationNode : MemberDeclarationNode
-    {
-        AST_TYPE(PropertyDeclarationNode, MemberDeclarationNode)
-        TokenNode* varKeyword;
-        TypeNameNode* type;
-        TokenNode* arrow; // optional for expression-bodied getter
-        ExpressionNode* getterExpression; // for => syntax
-        TokenNode* equals; // optional for initializer
-        ExpressionNode* initializer; // optional initializer expression
-        TokenNode* semicolon; // for => syntax
-        TokenNode* openBrace; // optional for accessor block
-        SizedArray<PropertyAccessorNode*> accessors;
-        TokenNode* closeBrace; // optional
-    }; AST_DECL_IMPL(PropertyDeclarationNode, MemberDeclarationNode)
-
-    struct PropertyAccessorNode : AstNode
-    {
-        AST_TYPE(PropertyAccessorNode, AstNode)
-        SizedArray<ModifierKind> modifiers; // public, protected, etc.
-        TokenNode* accessorKeyword; // "get" or "set"
-        TokenNode* arrow; // optional =>
-        ExpressionNode* expression; // for => field
-        BlockStatementNode* body; // for { } syntax
-    }; AST_DECL_IMPL(PropertyAccessorNode, AstNode)
-
-    // --- Constructor ---
-    struct ConstructorDeclarationNode : MemberDeclarationNode
-    {
-        AST_TYPE(ConstructorDeclarationNode, MemberDeclarationNode)
-        TokenNode* newKeyword;
-        TokenNode* openParen;
-        SizedArray<ParameterNode*> parameters;
-        TokenNode* closeParen;
-        BlockStatementNode* body;
-    }; AST_DECL_IMPL(ConstructorDeclarationNode, MemberDeclarationNode)
-
-    // --- Enum Cases ---
-    struct EnumCaseNode : MemberDeclarationNode
-    {
-        AST_TYPE(EnumCaseNode, MemberDeclarationNode)
-        TokenNode* caseKeyword;
-        // name inherited from DeclarationNode
-        TokenNode* openParen; // optional
-        SizedArray<ParameterNode*> associatedData; // for Square(x, y, w, h)
-        TokenNode* closeParen; // optional
-    }; AST_DECL_IMPL(EnumCaseNode, MemberDeclarationNode)
-
-
-
-    
-    template <typename T>
-    inline bool node_is(AstNode* node)
-    {
-        if (node == nullptr)
-            return false;
-        // This is the core of the fast RTTI check. A node's type ID will be within the
-        // range of a base type's ID and its highest-ID derived type.
-        return (static_cast<uint32_t>(node->typeId) - static_cast<uint32_t>(T::sTypeInfo.typeId) <= static_cast<uint32_t>(T::sTypeInfo.fullDerivedCount));
-    }
-
-    template <typename T>
-    inline T* node_cast(AstNode* node)
-    {
-        return node_is<T>(node) ? static_cast<T*>(node) : nullptr;
-    }
-
-    inline const char* get_type_name_from_id(uint8_t type_id)
-    {
-        assert(!g_type_infos.empty() && "RTTI system not initialized. Call AstTypeInfo::initialize() first.");
-
-        if (type_id < g_type_infos.size()) {
-            return g_type_infos[type_id]->name;
-        }
-        return "UnknownType";
-    }
-
-    inline const char* get_node_type_name(const AstNode* node) {
-        if (!node) {
-            return "NullNode";
-        }
-        return get_type_name_from_id(node->typeId);
     }
     
+    void visit(NamedTypeRef* node) override {
+        visit(static_cast<TypeRef*>(node));
+        for (auto* part : node->path) {
+            part->accept(this);
+        }
+        for (auto* arg : node->genericArgs) {
+            arg->accept(this);
+        }
+    }
+    
+    void visit(ArrayTypeRef* node) override {
+        visit(static_cast<TypeRef*>(node));
+        node->elementType->accept(this);
+    }
+    
+    void visit(FunctionTypeRef* node) override {
+        visit(static_cast<TypeRef*>(node));
+        for (auto* param : node->parameterTypes) {
+            param->accept(this);
+        }
+        if (node->returnType) node->returnType->accept(this);
+    }
+    
+    void visit(NullableTypeRef* node) override {
+        visit(static_cast<TypeRef*>(node));
+        node->innerType->accept(this);
+    }
+    
+    void visit(RefTypeRef* node) override {
+        visit(static_cast<TypeRef*>(node));
+        node->innerType->accept(this);
+    }
+    
+    void visit(BaseTypeConstraint* node) override {
+        visit(static_cast<TypeConstraint*>(node));
+        node->baseType->accept(this);
+    }
+    
+    void visit(ConstructorConstraint* node) override {
+        visit(static_cast<TypeConstraint*>(node));
+        for (auto* type : node->parameterTypes) {
+            type->accept(this);
+        }
+    }
+
+    void visit(TypeKindConstraint* node) override {
+        visit(static_cast<TypeConstraint*>(node));
+    }
+
+    void visit(LiteralPattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        node->literal->accept(this);
+    }
+    
+    void visit(BindingPattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        if (node->name) node->name->accept(this);
+    }
+    
+    void visit(EnumPattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        for (auto* part : node->path) {
+            part->accept(this);
+        }
+        for (auto* pattern : node->argumentPatterns) {
+            pattern->accept(this);
+        }
+    }
+    
+    void visit(RangePattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        if (node->start) node->start->accept(this);
+        if (node->end) node->end->accept(this);
+    }
+    
+    void visit(InPattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        node->innerPattern->accept(this);
+    }
+    
+    void visit(ComparisonPattern* node) override {
+        visit(static_cast<Pattern*>(node));
+        node->value->accept(this);
+    }
+    
+    void visit(CompilationUnit* node) override {
+        visit(static_cast<Node*>(node));
+        for (auto* stmt : node->topLevelStatements) {
+            stmt->accept(this);
+        }
+    }
+};
+
+// Implementation of Node::accept (needed for base case)
+inline void Node::accept(Visitor* visitor) {
+    visitor->visit(this);
+}
+
+// Default implementations for base type visits
+inline void Visitor::visit(Node* node) {
+    // Default: do nothing - override in derived visitors for uniform handling
+}
+
+inline void Visitor::visit(Expression* node) {
+    visit(static_cast<Node*>(node));
+}
+
+inline void Visitor::visit(Statement* node) {
+    visit(static_cast<Node*>(node));
+}
+
+inline void Visitor::visit(Declaration* node) {
+    visit(static_cast<Statement*>(node));
+}
+
+inline void Visitor::visit(Pattern* node) {
+    visit(static_cast<Node*>(node));
+}
+
+inline void Visitor::visit(TypeRef* node) {
+    visit(static_cast<Node*>(node));
+}
+
+inline void Visitor::visit(TypeConstraint* node) {
+    visit(static_cast<Node*>(node));
+}
 
 } // namespace Myre

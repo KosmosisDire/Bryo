@@ -1,8 +1,8 @@
 #include "compiler.hpp"
-#include "semantic/symbol_table.hpp"
-#include "semantic/type_system.hpp"
-#include "semantic/type_resolver.hpp"
-#include "semantic/declaration_collector.hpp"
+// #include "semantic/symbol_table.hpp"
+// #include "semantic/type_system.hpp"
+// #include "semantic/type_resolver.hpp"
+// #include "semantic/declaration_collector.hpp"
 #include "parser/lexer.hpp"
 #include "parser/parser.hpp"
 #include "common/logger.hpp"
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
     compiler.set_print_ast(true);
     compiler.set_print_symbols(true);
 
-    std::vector<std::string> filenames = {"simple.myre", "simple2.myre"};
+    std::vector<std::string> filenames = {"simple.myre", "simple2.myre", "basic_enum_prop.myre", "test0.myre", "test1.myre", "test2.myre", "test3.myre"};
     std::vector<SourceFile> source_files;
     for (const auto& filename : filenames)
     {

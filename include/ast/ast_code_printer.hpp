@@ -1,35 +1,33 @@
 #pragma once
 
 #include "ast/ast.hpp"
-#include "ast/ast_allocator.hpp"
-#include "ast/ast_rtti.hpp"
 #include "common/logger.hpp"
 #include <iostream>
 #include <sstream>
+#include <variant>
 
-using namespace Myre;
+namespace Myre {
 
-// A code-like visitor to print AST nodes as pseudo-code
-class AstToCodePrinter : public StructuralVisitor
-{
+class AstToCodePrinter : public Visitor {
 private:
     int indentLevel = 0;
     std::ostringstream output;
-    bool suppressNextNewline = false;
-    bool suppressSemicolon = false;
+
+    // RAII helper for managing indentation levels safely.
+    class IndentGuard {
+    private:
+        int& level;
+    public:
+        IndentGuard(int& level) : level(level) { this->level++; }
+        ~IndentGuard() { this->level--; }
+    };
 
     std::string get_indent() {
-        std::string indent;
-        for (int i = 0; i < indentLevel; ++i) indent += "  ";
-        return indent;
+        return std::string(indentLevel * 2, ' ');
     }
 
     void emit(const std::string& text) {
         output << text;
-    }
-
-    void emit_line(const std::string& text) {
-        output << get_indent() << text << "\n";
     }
 
     void emit_indent() {
@@ -37,595 +35,413 @@ private:
     }
 
     void emit_newline() {
-        if (!suppressNextNewline) {
-            output << "\n";
-        }
-        suppressNextNewline = false;
+        output << "\n";
     }
 
-    void print_modifiers(const SizedArray<ModifierKind>& modifiers) {
-        for (int i = 0; i < modifiers.size; i++) {
-            emit(std::string(to_string(modifiers[i])));
+    void print_modifiers(const ModifierSet& modifiers) {
+        switch (modifiers.access) {
+            case ModifierSet::Access::Public:    emit("public "); break;
+            case ModifierSet::Access::Protected: emit("protected "); break;
+            case ModifierSet::Access::Private:   emit("private "); break;
+            case ModifierSet::Access::Internal:  emit("internal "); break;
+            default: break;
+        }
+        if (modifiers.isStatic)   emit("static ");
+        if (modifiers.isVirtual)  emit("virtual ");
+        if (modifiers.isAbstract) emit("abstract ");
+        if (modifiers.isOverride) emit("override ");
+        if (modifiers.isRef)      emit("ref ");
+        if (modifiers.isEnforced) emit("enforced ");
+        if (modifiers.isInherit)  emit("inherit ");
+        if (modifiers.isReadonly) emit("readonly ");
+    }
+    
+    void print_body(Statement* body) {
+        if (!body) {
+            emit(";\n");
+            return;
+        }
+        
+        if (body->is<Block>()) {
             emit(" ");
+            body->accept(this);
+            emit_newline();
+        } else {
+            emit_newline();
+            IndentGuard guard(indentLevel);
+            body->accept(this);
         }
     }
 
 public:
     std::string get_result() {
         std::string result = output.str();
-        // Log the final result
-        std::istringstream stream(result);
-        std::string line;
-        while (std::getline(stream, line)) {
-            LOG_INFO(line, LogCategory::AST);
+        if (!result.empty() && result.back() == '\n') {
+            result.pop_back();
         }
         return result;
     }
 
-    // --- Base Node Types ---
+    // --- Base Node Types (unchanged) ---
+    void visit(Node* node) override { emit("[AbstractNode]"); }
+    void visit(Expression* node) override { emit("[AbstractExpression]"); }
+    void visit(Statement* node) override { emit_indent(); emit("[AbstractStatement]"); emit_newline(); }
+    void visit(Declaration* node) override { emit_indent(); print_modifiers(node->modifiers); emit("[AbstractDeclaration]"); emit_newline(); }
+    void visit(Pattern* node) override { emit("[AbstractPattern]"); }
+    void visit(TypeRef* node) override { emit("[AbstractTypeRef]"); }
+    void visit(TypeConstraint* node) override { emit("[AbstractConstraint]"); }
 
-    void visit(TokenNode* node) override {
-        emit("\"" + std::string(node->text) + "\"");
-    }
-
-    void visit(IdentifierNode* node) override {
-        emit(std::string(node->name));
-    }
-
-    void visit(ErrorNode* node) override {
-        emit_line("[ERROR]");
-    }
-
-    // --- Expression Base ---
-    
-    void visit(ExpressionNode* node) override {
-        emit("[AbstractExpression]");
-    }
-
-    // --- Expression Implementations ---
-
-    void visit(LiteralExpressionNode* node) override {
-        emit(std::string(node->token->text));
-    }
-
-    void visit(IdentifierExpressionNode* node) override {
-        emit(std::string(node->identifier->name));
-    }
-
-    void visit(ParenthesizedExpressionNode* node) override {
-        emit("(");
-        if (node->expression) {
-            node->expression->accept(this);
-        }
-        emit(")");
-    }
-
-    void visit(UnaryExpressionNode* node) override {
-        if (node->isPostfix) {
-            if (node->operand) {
-                node->operand->accept(this);
-            }
-            emit(std::string(to_string(node->opKind)));
-        } else {
-            emit(std::string(to_string(node->opKind)));
-            if (node->operand) {
-                node->operand->accept(this);
-            }
-        }
-    }
-
-    void visit(BinaryExpressionNode* node) override {
-        if (node->left) {
-            node->left->accept(this);
-        } else {
-            emit("[missing-left]");
-        }
-        emit(" " + std::string(to_string(node->opKind)) + " ");
-        if (node->right) {
-            node->right->accept(this);
-        } else {
-            emit("[missing-right]");
-        }
-    }
-
-    void visit(AssignmentExpressionNode* node) override {
-        if (node->target) {
-            node->target->accept(this);
-        }
-        emit(" " + std::string(to_string(node->opKind)) + " ");
-        if (node->source) {
-            node->source->accept(this);
-        }
-    }
-
-    void visit(CallExpressionNode* node) override {
-        if (node->target) {
-            node->target->accept(this);
-        }
-        emit("(");
-        for (int i = 0; i < node->arguments.size; i++) {
-            if (i > 0) emit(", ");
-            if (node->arguments[i]) {
-                node->arguments[i]->accept(this);
-            } else {
-                emit("[missing-arg]");
-            }
-        }
-        emit(")");
-    }
-
-    void visit(MemberAccessExpressionNode* node) override {
-        if (node->target) {
-            node->target->accept(this);
-        }
-        emit(".");
-        if (node->member) {
-            emit(std::string(node->member->name));
-        }
-    }
-
-    void visit(NewExpressionNode* node) override {
-        emit("new ");
+    // --- Basic Building Blocks & Errors (unchanged) ---
+    void visit(Identifier* node) override { emit(std::string(node->text)); }
+    void visit(TypedIdentifier* node) override {
         if (node->type) {
             node->type->accept(this);
+            emit(" ");
+        } else {
+            emit("var ");
         }
-        if (node->constructorCall) {
-            // Print just the arguments part since type is already printed
-            emit("(");
-            for (int i = 0; i < node->constructorCall->arguments.size; i++) {
-                if (i > 0) emit(", ");
-                if (node->constructorCall->arguments[i]) {
-                    node->constructorCall->arguments[i]->accept(this);
-                }
-            }
-            emit(")");
-        }
+        if (node->name) node->name->accept(this);
     }
-
-    void visit(ThisExpressionNode* node) override {
-        emit("this");
-    }
-
-    void visit(CastExpressionNode* node) override {
-        emit("(");
-        if (node->targetType) {
-            node->targetType->accept(this);
-        }
-        emit(")");
-        if (node->expression) {
-            node->expression->accept(this);
-        }
-    }
-
-    void visit(IndexerExpressionNode* node) override {
-        if (node->target) {
-            node->target->accept(this);
-        }
+    void visit(ErrorExpression* node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
+    void visit(ErrorStatement* node) override { emit_indent(); emit("[ERROR: " + std::string(node->message) + "]"); emit_newline(); }
+    void visit(ErrorTypeRef* node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
+    
+    // --- Expressions (unchanged) ---
+    void visit(LiteralExpr* node) override { emit(std::string(node->value)); }
+    void visit(ArrayLiteralExpr* node) override {
         emit("[");
-        if (node->index) {
-            node->index->accept(this);
+        for (size_t i = 0; i < node->elements.size(); i++) {
+            if (i > 0) emit(", ");
+            if (node->elements[i]) node->elements[i]->accept(this);
         }
         emit("]");
     }
-
-    void visit(TypeOfExpressionNode* node) override {
-        emit("typeof(");
-        if (node->type) {
-            node->type->accept(this);
+    void visit(NameExpr* node) override {
+        for (size_t i = 0; i < node->parts.size(); i++) {
+            if (i > 0) emit(".");
+            if (node->parts[i]) node->parts[i]->accept(this);
         }
-        emit(")");
     }
-
-    void visit(SizeOfExpressionNode* node) override {
-        emit("sizeof(");
-        if (node->type) {
-            node->type->accept(this);
-        }
-        emit(")");
-    }
-
-    void visit(MatchExpressionNode* node) override {
-        emit("match (");
-        if (node->expression) {
-            node->expression->accept(this);
-        }
-        emit(") {");
-        
-        if (!node->arms.empty()) {
-            emit_newline();
-            indentLevel++;
-            for (auto arm : node->arms) {
-                if (arm) {
-                    arm->accept(this);
-                }
-            }
-            indentLevel--;
-            emit_indent();
-            emit("}");
+    void visit(UnaryExpr* node) override {
+        if (node->isPostfix) {
+            node->operand->accept(this);
+            emit(std::string(to_string(node->op)));
         } else {
-            emit(" }");
+            emit(std::string(to_string(node->op)));
+            node->operand->accept(this);
         }
     }
-
-    void visit(ConditionalExpressionNode* node) override {
-        if (node->condition) {
-            node->condition->accept(this);
-        }
-        emit(" ? ");
-        if (node->whenTrue) {
-            node->whenTrue->accept(this);
-        }
-        emit(" : ");
-        if (node->whenFalse) {
-            node->whenFalse->accept(this);
-        }
+    void visit(BinaryExpr* node) override {
+        node->left->accept(this);
+        emit(" " + std::string(to_string(node->op)) + " ");
+        node->right->accept(this);
     }
-
-    void visit(RangeExpressionNode* node) override {
-        if (node->start) {
-            node->start->accept(this);
-        }
-        if (node->rangeOp) {
-            emit(std::string(node->rangeOp->text));
-        } else {
-            emit("..");
-        }
-        if (node->end) {
-            node->end->accept(this);
-        }
-        // Handle optional "by" clause for step
-        if (node->byKeyword && node->stepExpression) {
-            emit(" by ");
-            node->stepExpression->accept(this);
-        }
+    void visit(AssignmentExpr* node) override {
+        node->target->accept(this);
+        emit(" " + std::string(to_string(node->op)) + " ");
+        node->value->accept(this);
     }
-
-    void visit(FieldKeywordExpressionNode* node) override {
-        emit("field");
-    }
-
-    void visit(ValueKeywordExpressionNode* node) override {
-        emit("value");
-    }
-
-    // --- Statement Base ---
-    
-    void visit(StatementNode* node) override {
-        emit_line("[AbstractStatement]");
-    }
-
-    // --- Statement Implementations ---
-
-    void visit(EmptyStatementNode* node) override {
-        emit_line(";");
-    }
-
-    void visit(BlockStatementNode* node) override {
-        emit_line("{");
-        indentLevel++;
-        for (auto stmt : node->statements) {
-            if (stmt) {
-                stmt->accept(this);
-            }
-        }
-        indentLevel--;
-        emit_line("}");
-    }
-
-    void visit(ExpressionStatementNode* node) override {
-        emit_indent();
-        if (node->expression) {
-            node->expression->accept(this);
-        }
-        emit(";");
-        emit_newline();
-    }
-
-    void visit(IfStatementNode* node) override {
-        emit_indent();
-        emit("if (");
-        if (node->condition) {
-            node->condition->accept(this);
-        }
-        emit(")");
-        emit_newline();
-        
-        if (node->thenStatement) {
-            node->thenStatement->accept(this);
-        }
-        
-        if (node->elseStatement) {
-            emit_line("else");
-            node->elseStatement->accept(this);
-        }
-    }
-
-    void visit(WhileStatementNode* node) override {
-        emit_indent();
-        emit("while (");
-        if (node->condition) {
-            node->condition->accept(this);
-        }
-        emit(")");
-        emit_newline();
-        
-        if (node->body) {
-            node->body->accept(this);
-        }
-    }
-
-    void visit(ForStatementNode* node) override {
-        emit_indent();
-        emit("for (");
-        
-        // Initializer
-        if (node->initializer) {
-            suppressNextNewline = true;
-            // Don't suppress semicolon here since regular for loops need it
-            node->initializer->accept(this);
-            suppressNextNewline = false;
-            emit(" ");
-        }
-        else
-        {
-            emit("; ");
-        }
-        
-        // Condition
-        if (node->condition) {
-            node->condition->accept(this);
-        }
-        emit("; ");
-        
-        // Incrementors
-        for (int i = 0; i < node->incrementors.size; i++) {
+    void visit(CallExpr* node) override {
+        node->callee->accept(this);
+        emit("(");
+        for (size_t i = 0; i < node->arguments.size(); i++) {
             if (i > 0) emit(", ");
-            if (node->incrementors[i]) {
-                node->incrementors[i]->accept(this);
+            if (node->arguments[i]) node->arguments[i]->accept(this);
+        }
+        emit(")");
+    }
+    void visit(MemberAccessExpr* node) override {
+        node->object->accept(this);
+        emit(".");
+        node->member->accept(this);
+    }
+    void visit(IndexerExpr* node) override {
+        node->object->accept(this);
+        emit("[");
+        node->index->accept(this);
+        emit("]");
+    }
+    void visit(CastExpr* node) override {
+        emit("(");
+        node->targetType->accept(this);
+        emit(")");
+        node->expression->accept(this);
+    }
+    void visit(NewExpr* node) override {
+        emit("new ");
+        node->type->accept(this);
+        emit("(");
+        for (size_t i = 0; i < node->arguments.size(); i++) {
+            if (i > 0) emit(", ");
+            if (node->arguments[i]) node->arguments[i]->accept(this);
+        }
+        emit(")");
+    }
+    void visit(ThisExpr* node) override { emit("this"); }
+    void visit(LambdaExpr* node) override {
+        emit("(");
+        for (size_t i = 0; i < node->parameters.size(); i++) {
+            if (i > 0) emit(", ");
+            if (node->parameters[i]) node->parameters[i]->accept(this);
+        }
+        emit(") => ");
+        if (node->body) node->body->accept(this);
+    }
+    void visit(RangeExpr* node) override {
+        if (node->start) node->start->accept(this);
+        emit(node->isInclusive ? "..=" : "..");
+        if (node->end) node->end->accept(this);
+        if (node->step) {
+            emit(" by ");
+            node->step->accept(this);
+        }
+    }
+    void visit(ConditionalExpr* node) override {
+        node->condition->accept(this);
+        emit(" ? ");
+        node->thenExpr->accept(this);
+        emit(" : ");
+        node->elseExpr->accept(this);
+    }
+    void visit(TypeOfExpr* node) override { emit("typeof("); node->type->accept(this); emit(")"); }
+    void visit(SizeOfExpr* node) override { emit("sizeof("); node->type->accept(this); emit(")"); }
+
+    // --- CORRECTED VISITORS ---
+
+    void visit(Block* node) override {
+        emit("{");
+        emit_newline();
+        
+        // The guard's scope is explicitly limited to the loop.
+        {
+            IndentGuard guard(indentLevel);
+            for (auto stmt : node->statements) {
+                if (stmt) stmt->accept(this);
+            }
+        } // Guard is destroyed here, indent level is restored.
+        
+        emit_indent(); // This now uses the correct, outer indent level.
+        emit("}");     // The caller adds the final newline if needed.
+    }
+
+    void visit(IfExpr* node) override {
+        emit("if (");
+        node->condition->accept(this);
+        emit(")");
+
+        print_body(node->thenBranch);
+        
+        if (node->elseBranch) {
+            output.seekp(-1, std::ios_base::end); 
+            emit(" else");
+
+            if (node->elseBranch->is<IfExpr>()) {
+                emit(" ");
+                node->elseBranch->accept(this);
+            } else {
+                print_body(node->elseBranch);
             }
         }
-        emit(")");
-        emit_newline();
-        
-        if (node->body) {
-            node->body->accept(this);
-        }
     }
 
-    void visit(ForInStatementNode* node) override {
+    void visit(MatchExpr* node) override {
+        emit("match (");
+        node->subject->accept(this);
+        emit(") {");
+        emit_newline();
+        
+        {
+            IndentGuard guard(indentLevel);
+            for (auto arm : node->arms) {
+                if (arm) arm->accept(this);
+            }
+        }
+        
         emit_indent();
-        emit("for (");
-        if (node->mainVariable) {
-            suppressNextNewline = true;
-            suppressSemicolon = true;
-            node->mainVariable->accept(this);
-            suppressNextNewline = false;
-            suppressSemicolon = false;
-        }
-        emit(" in ");
-        if (node->iterable) {
-            node->iterable->accept(this);
-        }
-        // Handle optional "at" clause for index variable
-        if (node->atKeyword && node->indexVariable) {
-            emit(" at ");
-            suppressNextNewline = true;
-            suppressSemicolon = true;
-            node->indexVariable->accept(this);
-            suppressNextNewline = false;
-            suppressSemicolon = false;
-        }
-        emit(")");
-        emit_newline();
+        emit("}");
+    }
+    
+    void visit(MatchArm* node) override {
+        emit_indent();
+        node->pattern->accept(this);
+        emit(" => ");
         
-        if (node->body) {
-            node->body->accept(this);
+        if (node->result && node->result->is<Block>()) {
+            node->result->accept(this);
+            emit_newline();
+        } else if(node->result) {
+            node->result->accept(this);
+            emit(",");
+            emit_newline();
+        } else {
+            emit ("{},"); // Empty arm
+            emit_newline();
         }
     }
 
-    void visit(ReturnStatementNode* node) override {
+    // --- Statements (unchanged) ---
+    void visit(ExpressionStmt* node) override {
+        emit_indent();
+        node->expression->accept(this);
+        if (!node->expression->is<IfExpr>() && !node->expression->is<MatchExpr>() &&
+            !node->expression->is<Block>()) {
+            emit(";");
+        }
+        emit_newline();
+    }
+    void visit(ReturnStmt* node) override {
         emit_indent();
         emit("return");
-        if (node->expression) {
+        if (node->value) {
             emit(" ");
-            node->expression->accept(this);
+            node->value->accept(this);
+        }
+        emit(";");
+        emit_newline();
+    }
+    void visit(BreakStmt* node) override { emit_indent(); emit("break;"); emit_newline(); }
+    void visit(ContinueStmt* node) override { emit_indent(); emit("continue;"); emit_newline(); }
+    void visit(WhileStmt* node) override {
+        emit_indent();
+        emit("while (");
+        node->condition->accept(this);
+        emit(")");
+        print_body(node->body);
+    }
+    void visit(ForStmt* node) override {
+        emit_indent();
+        emit("for (");
+        if (node->initializer) {
+            if (auto* varDecl = node->initializer->as<VariableDecl>()) {
+                print_modifiers(varDecl->modifiers);
+                varDecl->variable->accept(this);
+                if (varDecl->initializer) {
+                    emit(" = ");
+                    varDecl->initializer->accept(this);
+                }
+            } else if (auto* exprStmt = node->initializer->as<ExpressionStmt>()) {
+                exprStmt->expression->accept(this);
+            }
+        }
+        emit("; ");
+        if (node->condition) node->condition->accept(this);
+        emit("; ");
+        for (size_t i = 0; i < node->updates.size(); i++) {
+            if (i > 0) emit(", ");
+            if (node->updates[i]) node->updates[i]->accept(this);
+        }
+        emit(")");
+        print_body(node->body);
+    }
+    void visit(ForInStmt* node) override {
+        emit_indent();
+        emit("for (");
+        node->iterator->accept(this);
+        emit(" in ");
+        node->iterable->accept(this);
+        if (node->indexVar) {
+            emit(" at ");
+            node->indexVar->accept(this);
+        }
+        emit(")");
+        print_body(node->body);
+    }
+    void visit(UsingDirective* node) override {
+        emit_indent();
+        emit("using ");
+        if (node->kind == UsingDirective::Kind::Alias && node->alias) {
+            node->alias->accept(this);
+            emit(" = ");
+            if (node->aliasedType) node->aliasedType->accept(this);
+        } else {
+            for (size_t i = 0; i < node->path.size(); i++) {
+                if (i > 0) emit(".");
+                if (node->path[i]) node->path[i]->accept(this);
+            }
         }
         emit(";");
         emit_newline();
     }
 
-    void visit(BreakStatementNode* node) override {
-        emit_line("break;");
-    }
-
-    void visit(ContinueStatementNode* node) override {
-        emit_line("continue;");
-    }
-
-    void visit(VariableDeclarationNode* node) override {
-        if (!suppressNextNewline) {
-            emit_indent();
-        }
-        
+    // --- Declarations (with corrections) ---
+    void visit(VariableDecl* node) override {
+        emit_indent();
         print_modifiers(node->modifiers);
-        
-        if (node->varKeyword) {
-            emit("var ");
-        }
-        else if (node->type) {
-            node->type->accept(this);
-            emit(" ");
-        }
-        else
-        {
-            emit("[Print Error: Missing var/type] ");
-        }
-        
-        // Print names
-        if (node->names.size > 0) {
-            for (int i = 0; i < node->names.size; i++) {
-                if (i > 0) emit(", ");
-                if (node->names[i]) {
-                    emit(std::string(node->names[i]->name));
-                }
-            }
-        }
-        
-        // Initializer
+        node->variable->accept(this);
         if (node->initializer) {
             emit(" = ");
             node->initializer->accept(this);
-        } 
-        
-        if (!suppressSemicolon) {
-            emit(";");
-        }
-        
-        if (!suppressNextNewline) {
-            emit_newline();
-        }
-        
-        // Reset flags
-        suppressSemicolon = false;
-        suppressNextNewline = false;
-    }
-
-    // --- Declaration Base ---
-    
-    void visit(DeclarationNode* node) override {
-        emit_indent();
-        print_modifiers(node->modifiers);
-        emit("[AbstractDeclaration]");
-        emit_newline();
-    }
-
-    // --- Declaration Implementations ---
-
-    void visit(NamespaceDeclarationNode* node) override {
-        emit_newline();
-        emit_indent();
-        print_modifiers(node->modifiers);
-        emit("namespace ");
-        if (node->name) {
-            emit(node->name->get_full_name());
-        }
-        emit_newline();
-        
-        if (node->body) {
-            node->body->accept(this);
-        }
-    }
-
-    void visit(UsingDirectiveNode* node) override {
-        emit_indent();
-        emit("using ");
-        if (node->namespaceName) {
-            node->namespaceName->accept(this);
         }
         emit(";");
         emit_newline();
     }
 
-    void visit(TypeDeclarationNode* node) override {
-        emit_newline();
+    void visit(MemberVariableDecl* node) override {
         emit_indent();
         print_modifiers(node->modifiers);
-        emit("type ");
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
-        emit(" {");
-        emit_newline();
         
-        indentLevel++;
-        for (auto member : node->members) {
-            if (member) {
-                member->accept(this);
-            }
+        if (node->type) {
+            node->type->accept(this);
+            emit(" ");
         }
-        indentLevel--;
-        emit_line("}");
+        node->name->accept(this);
+        
+        if (node->initializer) {
+            emit(" = ");
+            node->initializer->accept(this);
+        }
+        
+        if (node->getter || node->setter) {
+            emit(" {");
+            emit_newline();
+            {
+                IndentGuard guard(indentLevel);
+                if (node->getter) node->getter->accept(this);
+                if (node->setter) node->setter->accept(this);
+            }
+            emit_indent();
+            emit("}");
+            emit_newline();
+        } else {
+            emit(";");
+            emit_newline();
+        }
     }
-
-    void visit(InterfaceDeclarationNode* node) override {
-        emit_newline();
-        emit_indent();
+    
+    void visit(ParameterDecl* node) override {
         print_modifiers(node->modifiers);
-        emit("interface ");
-        if (node->name) {
-            emit(std::string(node->name->name));
+        node->param->accept(this);
+        if (node->defaultValue) {
+            emit(" = ");
+            node->defaultValue->accept(this);
         }
-        emit(" {");
-        emit_newline();
-        
-        indentLevel++;
-        for (auto member : node->members) {
-            if (member) {
-                member->accept(this);
-            }
-        }
-        indentLevel--;
-        emit_line("}");
     }
-
-    void visit(EnumDeclarationNode* node) override {
-        emit_newline();
-        emit_indent();
+    void visit(GenericParamDecl* node) override {
         print_modifiers(node->modifiers);
-        emit("enum ");
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
-        emit(" {");
-        emit_newline();
-        
-        indentLevel++;
-        
-        // Print cases
-        for (auto enumCase : node->cases) {
-            if (enumCase) {
-                enumCase->accept(this);
-            }
-        }
-        
-        // Print methods
-        for (auto method : node->methods) {
-            if (method) {
-                method->accept(this);
-            }
-        }
-        
-        indentLevel--;
-        emit_line("}");
+        node->name->accept(this);
     }
-
-    void visit(MemberDeclarationNode* node) override {
-        emit_indent();
-        print_modifiers(node->modifiers);
-        std::string name = node->name ? std::string(node->name->name) : "[unnamed]";
-        emit("[AbstractMember: " + name + "]");
-        emit_newline();
-    }
-
-    void visit(FunctionDeclarationNode* node) override {
-        emit_newline();
+    void visit(FunctionDecl* node) override {
         emit_indent();
         print_modifiers(node->modifiers);
         emit("fn ");
-        if (node->name) {
-            emit(std::string(node->name->name));
+        node->name->accept(this);
+        
+        if (!node->genericParams.empty()) {
+            emit("<");
+            for (size_t i = 0; i < node->genericParams.size(); i++) {
+                if (i > 0) emit(", ");
+                node->genericParams[i]->accept(this);
+            }
+            emit(">");
         }
         
         emit("(");
-        for (int i = 0; i < node->parameters.size; i++) {
+        for (size_t i = 0; i < node->parameters.size(); i++) {
             if (i > 0) emit(", ");
-            if (node->parameters[i]) {
-                node->parameters[i]->accept(this);
-            }
+            node->parameters[i]->accept(this);
         }
         emit(")");
         
-        // Return type
         if (node->returnType) {
             emit(": ");
             node->returnType->accept(this);
@@ -633,236 +449,261 @@ public:
         
         if (node->body) {
             emit_newline();
+            emit_indent();
             node->body->accept(this);
+            emit_newline();
         } else {
             emit(";");
             emit_newline();
         }
     }
-
-    void visit(ParameterNode* node) override {
-        print_modifiers(node->modifiers);
-        if (node->type) {
-            node->type->accept(this);
-            emit(" ");
-        }
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
-        if (node->defaultValue) {
-            emit(" = ");
-            node->defaultValue->accept(this);
-        }
-    }
-
-    void visit(GenericParameterNode* node) override {
-        print_modifiers(node->modifiers);
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
-    }
-
-    void visit(PropertyDeclarationNode* node) override {
-        emit_indent();
-        print_modifiers(node->modifiers);
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
-        if (node->type) {
-            emit(": ");
-            node->type->accept(this);
-        }
-
-        if (node->equals) {
-            emit(" = ");
-            node->initializer->accept(this);
-        }
-
-        if (node->getterExpression) {
-            emit(" => ");
-            node->getterExpression->accept(this);
-            emit(";");
-            emit_newline();
-        } else if (!node->accessors.empty()) {
-            emit(" {");
-            emit_newline();
-            
-            indentLevel++;
-            for (auto accessor : node->accessors) {
-                if (accessor) {
-                    accessor->accept(this);
-                }
-            }
-            indentLevel--;
-            emit_line("}");
-        } else {
-            emit(";");
-            emit_newline();
-        }
-    }
-
-    void visit(PropertyAccessorNode* node) override {
-        emit_indent();
-        print_modifiers(node->modifiers);
-        if (node->accessorKeyword) {
-            emit(std::string(node->accessorKeyword->text));
-        }
-        
-        if (node->expression) {
-            emit(" => ");
-            node->expression->accept(this);
-            emit(";");
-            emit_newline();
-        } else if (node->body) {
-            emit_newline();
-            node->body->accept(this);
-        } else {
-            emit(";");
-            emit_newline();
-        }
-    }
-
-    void visit(ConstructorDeclarationNode* node) override {
+    void visit(ConstructorDecl* node) override {
         emit_indent();
         print_modifiers(node->modifiers);
         emit("new(");
-        for (int i = 0; i < node->parameters.size; i++) {
+        for (size_t i = 0; i < node->parameters.size(); i++) {
             if (i > 0) emit(", ");
-            if (node->parameters[i]) {
-                node->parameters[i]->accept(this);
-            }
+            node->parameters[i]->accept(this);
         }
         emit(")");
         emit_newline();
-        
-        if (node->body) {
-            node->body->accept(this);
-        }
+        emit_indent();
+        node->body->accept(this);
+        emit_newline();
     }
-
-    void visit(EnumCaseNode* node) override {
+    void visit(PropertyAccessor* node) override {
         emit_indent();
         print_modifiers(node->modifiers);
-        emit("case ");
-        if (node->name) {
-            emit(std::string(node->name->name));
-        }
+        emit(node->kind == PropertyAccessor::Kind::Get ? "get" : "set");
         
-        if (!node->associatedData.empty()) {
+        if (auto* expr = std::get_if<Expression*>(&node->body)) {
+            emit(" => ");
+            (*expr)->accept(this);
+            emit(";");
+        } else if (auto* block = std::get_if<Block*>(&node->body)) {
+            emit(" ");
+            (*block)->accept(this);
+        } else {
+            emit(";");
+        }
+        emit_newline();
+    }
+    void visit(InheritFunctionDecl* node) override {
+        emit_indent();
+        print_modifiers(node->modifiers);
+        emit("inherit fn ");
+        node->functionName->accept(this);
+        if (!node->parameterTypes.empty()) {
             emit("(");
-            for (int i = 0; i < node->associatedData.size; i++) {
+            for (size_t i = 0; i < node->parameterTypes.size(); i++) {
                 if (i > 0) emit(", ");
-                if (node->associatedData[i]) {
-                    node->associatedData[i]->accept(this);
-                }
+                node->parameterTypes[i]->accept(this);
             }
             emit(")");
         }
-        
         emit(";");
         emit_newline();
     }
-
-    // --- Match Pattern Implementations ---
-
-    void visit(MatchArmNode* node) override {
+    void visit(EnumCaseDecl* node) override {
         emit_indent();
-        if (node->pattern) {
-            node->pattern->accept(this);
-        }
-        emit(" => ");
-        if (node->result) {
-            node->result->accept(this);
+        print_modifiers(node->modifiers);
+        emit("case ");
+        node->name->accept(this);
+        if (!node->associatedData.empty()) {
+            emit("(");
+            for (size_t i = 0; i < node->associatedData.size(); i++) {
+                if (i > 0) emit(", ");
+                node->associatedData[i]->accept(this);
+            }
+            emit(")");
         }
         emit(",");
         emit_newline();
     }
 
-    void visit(MatchPatternNode* node) override {
-        emit("[AbstractPattern]");
+    void visit(TypeDecl* node) override {
+        emit_indent();
+        print_modifiers(node->modifiers);
+        switch (node->kind) {
+            case TypeDecl::Kind::Type:       emit("type "); break;
+            case TypeDecl::Kind::ValueType:  emit("value type "); break;
+            case TypeDecl::Kind::RefType:    emit("ref type "); break;
+            case TypeDecl::Kind::StaticType: emit("static type "); break;
+            case TypeDecl::Kind::Enum:       emit("enum "); break;
+        }
+        node->name->accept(this);
+        
+        if (!node->genericParams.empty()) {
+            emit("<");
+            for (size_t i = 0; i < node->genericParams.size(); i++) {
+                if (i > 0) emit(", ");
+                node->genericParams[i]->name->accept(this);
+            }
+            emit(">");
+        }
+        
+        if (!node->baseTypes.empty()) {
+            emit(" : ");
+            for (size_t i = 0; i < node->baseTypes.size(); i++) {
+                if (i > 0) emit(", ");
+                node->baseTypes[i]->accept(this);
+            }
+        }
+
+        bool firstConstraint = true;
+        for (auto* param : node->genericParams) {
+            if (!param->constraints.empty()) {
+                if (firstConstraint) {
+                    emit(" where ");
+                    firstConstraint = false;
+                } else {
+                    emit(", ");
+                }
+                param->name->accept(this);
+                emit(" : ");
+                for (size_t j = 0; j < param->constraints.size(); j++) {
+                    if (j > 0) emit(", ");
+                    param->constraints[j]->accept(this);
+                }
+            }
+        }
+        
+        emit_newline();
+        emit_indent();
+        emit("{");
+        emit_newline();
+        
+        {
+            IndentGuard guard(indentLevel);
+            for (auto* member : node->members) {
+                if (member) member->accept(this);
+            }
+        }
+        
+        emit_indent();
+        emit("}");
+        emit_newline();
     }
 
-    void visit(EnumPatternNode* node) override {
-        emit(".");
-        if (node->enumCase) {
-            emit(std::string(node->enumCase->name));
+    void visit(NamespaceDecl* node) override {
+        emit_indent();
+        print_modifiers(node->modifiers);
+        emit("namespace ");
+        for (size_t i = 0; i < node->path.size(); i++) {
+            if (i > 0) emit(".");
+            node->path[i]->accept(this);
+        }
+        
+        if (node->isFileScoped) {
+            emit(";");
+            emit_newline();
+        } else if (node->body) {
+            emit_newline();
+            emit_indent();
+            emit("{");
+            emit_newline();
+            {
+                IndentGuard guard(indentLevel);
+                for (auto* stmt : *node->body) {
+                    if (stmt) stmt->accept(this);
+                }
+            }
+            emit_indent();
+            emit("}");
+            emit_newline();
         }
     }
 
-    void visit(RangePatternNode* node) override {
-        if (node->start) {
-            node->start->accept(this);
+    // --- Type References & Patterns (unchanged) ---
+    void visit(NamedTypeRef* node) override {
+        for (size_t i = 0; i < node->path.size(); i++) {
+            if (i > 0) emit(".");
+            node->path[i]->accept(this);
         }
-        if (node->rangeOp) {
-            emit(std::string(node->rangeOp->text));
-        } else {
-            emit("..");
-        }
-        if (node->end) {
-            node->end->accept(this);
-        }
-    }
-
-    void visit(ComparisonPatternNode* node) override {
-        if (node->comparisonOp) {
-            emit(std::string(node->comparisonOp->text));
-        }
-        emit(" ");
-        if (node->value) {
-            node->value->accept(this);
+        if (!node->genericArgs.empty()) {
+            emit("<");
+            for (size_t i = 0; i < node->genericArgs.size(); i++) {
+                if (i > 0) emit(", ");
+                node->genericArgs[i]->accept(this);
+            }
+            emit(">");
         }
     }
-
-    void visit(WildcardPatternNode* node) override {
-        emit("_");
-    }
-
-    void visit(LiteralPatternNode* node) override {
-        if (node->literal) {
-            node->literal->accept(this);
-        }
-    }
-
-    // --- Type Name Implementations ---
-
-    void visit(QualifiedNameNode* node) override {
-        emit(node->get_full_name());
-    }
-
-    void visit(TypeNameNode* node) override {
-        if (node->name->identifiers.size > 0) {
-            emit(node->get_full_name());
-        }
-    }
-
-    void visit(ArrayTypeNameNode* node) override {
-        if (node->elementType) {
-            node->elementType->accept(this);
-        }
-        emit("[]");
-    }
-
-    void visit(GenericTypeNameNode* node) override {
-        if (node->baseType) {
-            node->baseType->accept(this);
-        }
-        emit("<");
-        for (int i = 0; i < node->arguments.size; i++) {
-            if (i > 0) emit(", ");
-            if (node->arguments[i]) {
-                node->arguments[i]->accept(this);
+    void visit(ArrayTypeRef* node) override { node->elementType->accept(this); emit("[]"); }
+    void visit(FunctionTypeRef* node) override {
+        emit("Fn<");
+        if (!node->parameterTypes.empty() || node->returnType) {
+            emit("(");
+            for (size_t i = 0; i < node->parameterTypes.size(); i++) {
+                if (i > 0) emit(", ");
+                node->parameterTypes[i]->accept(this);
+            }
+            emit(")");
+            if (node->returnType) {
+                emit(", ");
+                node->returnType->accept(this);
             }
         }
         emit(">");
     }
-
-    // --- Root ---
-    
-    void visit(CompilationUnitNode* node) override {
-        for (auto stmt : node->statements) {
+    void visit(NullableTypeRef* node) override { node->innerType->accept(this); emit("?"); }
+    void visit(RefTypeRef* node) override { emit("ref "); node->innerType->accept(this); }
+    void visit(BaseTypeConstraint* node) override { node->baseType->accept(this); }
+    void visit(ConstructorConstraint* node) override {
+        emit("new(");
+        for (size_t i = 0; i < node->parameterTypes.size(); i++) {
+            if (i > 0) emit(", ");
+            node->parameterTypes[i]->accept(this);
+        }
+        emit(")");
+    }
+    void visit(TypeKindConstraint* node) override {
+        switch (node->kind) {
+            case TypeKindConstraint::Kind::RefType:      emit("ref type"); break;
+            case TypeKindConstraint::Kind::ValueType:    emit("value type"); break;
+            case TypeKindConstraint::Kind::ArrayType:    emit("array type"); break;
+            case TypeKindConstraint::Kind::FunctionType: emit("function type"); break;
+        }
+    }
+    void visit(LiteralPattern* node) override { node->literal->accept(this); }
+    void visit(BindingPattern* node) override { if (node->name) node->name->accept(this); else emit("_"); }
+    void visit(EnumPattern* node) override {
+        emit(".");
+        for (size_t i = 0; i < node->path.size(); i++) {
+            if (i > 0) emit(".");
+            node->path[i]->accept(this);
+        }
+        if (!node->argumentPatterns.empty()) {
+            emit("(");
+            for (size_t i = 0; i < node->argumentPatterns.size(); i++) {
+                if (i > 0) emit(", ");
+                node->argumentPatterns[i]->accept(this);
+            }
+            emit(")");
+        }
+    }
+    void visit(RangePattern* node) override {
+        if (node->start) node->start->accept(this);
+        emit(node->isInclusive ? "..=" : "..");
+        if (node->end) node->end->accept(this);
+    }
+    void visit(InPattern* node) override { emit("in "); node->innerPattern->accept(this); }
+    void visit(ComparisonPattern* node) override {
+        switch (node->op) {
+            case ComparisonPattern::Op::Less:         emit("< "); break;
+            case ComparisonPattern::Op::Greater:      emit("> "); break;
+            case ComparisonPattern::Op::LessEqual:    emit("<= "); break;
+            case ComparisonPattern::Op::GreaterEqual: emit(">= "); break;
+        }
+        node->value->accept(this);
+    }
+    void visit(CompilationUnit* node) override {
+        for (auto* stmt : node->topLevelStatements) {
             if (stmt) {
                 stmt->accept(this);
             }
         }
     }
 };
+
+} // namespace Myre

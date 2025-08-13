@@ -80,24 +80,20 @@ if(LLVM_AVAILABLE)
 endif()
 
 set(SOURCE_FILES
-    # AST Implementation
-    src/ast/ast.cpp
-    src/ast/ast_allocator.cpp
-    
     # Parser Implementation
     src/parser/lexer.cpp
     src/parser/token_stream.cpp
     src/parser/parser.cpp
 
     # Semantic Analysis
-    src/semantic/type.cpp
-    src/semantic/scope.cpp
-    src/semantic/symbol.cpp
-    src/semantic/symbol_table.cpp
-    src/semantic/declaration_collector.cpp
+    # src/semantic/type.cpp
+    # src/semantic/scope.cpp
+    # src/semantic/symbol.cpp
+    # src/semantic/symbol_table.cpp
+    # src/semantic/declaration_collector.cpp
     
     # Code Generator
-    src/codegen/codegen.cpp
+    # src/codegen/codegen.cpp
     
     # Common Utilities
     src/common/logger.cpp
