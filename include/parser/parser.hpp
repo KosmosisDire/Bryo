@@ -58,6 +58,9 @@ private:
     // ================== Context Management ==================
     bool inLoop() const;
     bool inFunction() const;
+    bool inGetter() const;
+    bool inSetter() const;
+    bool inTypeBody() const;
 
     // Template function must be defined in the header.
     template <typename F>

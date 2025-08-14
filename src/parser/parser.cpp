@@ -83,6 +83,27 @@ bool Parser::inFunction() const {
     return false;
 }
 
+bool Parser::inGetter() const {
+    for (auto it = contextStack.rbegin(); it != contextStack.rend(); ++it) {
+        if (*it == Context::PROPERTY_GETTER) return true;
+    }
+    return false;
+}
+
+bool Parser::inSetter() const {
+    for (auto it = contextStack.rbegin(); it != contextStack.rend(); ++it) {
+        if (*it == Context::PROPERTY_SETTER) return true;
+    }
+    return false;
+}
+
+bool Parser::inTypeBody() const {
+    for (auto it = contextStack.rbegin(); it != contextStack.rend(); ++it) {
+        if (*it == Context::TYPE_BODY) return true;
+    }
+    return false;
+}
+
 // ================== Utility Helpers ==================
 
 bool Parser::check(TokenKind kind) {
@@ -698,14 +719,22 @@ ForStmt* Parser::parseTraditionalForStatement() {
     expect(TokenKind::LeftParen, "Expected '(' after 'for'");
 
     if (!check(TokenKind::Semicolon)) {
+    // Check for typed declaration pattern (Type identifier = ...)
+    auto checkpoint = tokens.checkpoint();
+    auto* type = parseTypeRef();
+    if (type && check(TokenKind::Identifier)) {
+        // This is a typed declaration
+        tokens.restore(checkpoint);
+        stmt->initializer = parseDeclaration();
+    } else {
+        tokens.restore(checkpoint);
         if (checkDeclarationStart() || tokens.current().is_modifier()) {
             stmt->initializer = parseDeclaration();
         } else {
             stmt->initializer = parseExpressionStatement();
         }
-    } else {
-        stmt->initializer = nullptr;
     }
+}
 
     if (!stmt->initializer || !stmt->initializer->is<VariableDecl>()) {
         expect(TokenKind::Semicolon, "Expected ';' after initializer");
@@ -778,8 +807,8 @@ ReturnStmt* Parser::parseReturnStatement() {
     }
 
     expect(TokenKind::Semicolon, "Expected ';' after return statement");
-    if (!inFunction()) {
-        warning("Return statement outside function");
+    if (!inFunction() && !inGetter() && !inSetter()) {
+        warning("Return statement outside function or property");
     }
     return stmt;
 }

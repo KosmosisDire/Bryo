@@ -7,7 +7,7 @@
 
 namespace Myre
 {
-    
+
 class CompiledModule {
 private:
     std::unique_ptr<llvm::LLVMContext> context;

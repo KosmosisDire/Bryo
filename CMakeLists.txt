@@ -29,19 +29,20 @@ if(LLVM_AVAILABLE)
         
         # Target and code generation
         Target
-        TargetParser     # Add this for Host.h
+        TargetParser
         CodeGen
-        MC               # Contains TargetRegistry.h
+        MC
         
-        # ORC JIT components (modern JIT)
+        # Common targets only
+        X86          # Intel/AMD processors
+        AArch64      # ARM64 processors
+        
+        # ORC JIT components
         OrcJIT
         ExecutionEngine
         RuntimeDyld
         JITLink
         OrcTargetProcess
-        
-        # Native target support
-        native
         
         # Optimization passes
         Passes
@@ -49,11 +50,10 @@ if(LLVM_AVAILABLE)
         Analysis
         ScalarOpts
         InstCombine
-        
-        # Additional components for LegacyPassManager
         IPO
         Vectorize
     )
+
     # Check if we should use monolithic LLVM library
     if(UNIX AND NOT APPLE)
         # On Linux, check if component libraries exist

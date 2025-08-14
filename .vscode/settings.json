@@ -90,6 +90,7 @@
         "source_location": "cpp",
         "coroutine": "cpp",
         "resumable": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "*.def": "cpp"
     }
 }
