@@ -210,32 +210,13 @@ public:
     virtual void visit(CompilationUnit* node) = 0;
 };
 
-
-// ============================================================================
-// --- Modifiers ---
-// ============================================================================
-
-struct ModifierSet {
-    enum class Access { None, Public, Protected, Private, Internal };
-    
-    Access access = Access::None;
-    bool isStatic = false;
-    bool isVirtual = false;
-    bool isAbstract = false;
-    bool isOverride = false;
-    bool isRef = false;
-    bool isEnforced = false;
-    bool isInherit = false;
-    bool isReadonly = false;
-};
-
 // ============================================================================
 // --- Core Node Hierarchy ---
 // ============================================================================
 
 struct Node {
     SourceRange location;
-    SymbolHandle resolvedSymbol = {0};
+    SymbolHandle containingScope = {0};
     
     virtual ~Node() = default;
     virtual void accept(Visitor* visitor);
@@ -271,7 +252,7 @@ struct Statement : Node {
 
 // Base for declarations - no name field!
 struct Declaration : Statement {
-    ModifierSet modifiers;
+    ModifierKindFlags modifiers;
     ACCEPT_VISITOR
 };
 
@@ -346,6 +327,17 @@ struct ArrayLiteralExpr : Expression {
 struct NameExpr : Expression {
     List<Identifier*> parts;  // ["Console", "WriteLine"]
     ACCEPT_VISITOR
+
+    std::string get_full_name() const {
+        std::string full_name;
+        for (const auto* part : parts) {
+            if (!full_name.empty()) {
+                full_name += ".";
+            }
+            full_name += std::string(part->text);
+        }
+        return full_name;
+    }
 };
 
 struct UnaryExpr : Expression {
@@ -371,6 +363,7 @@ struct AssignmentExpr : Expression {
 
 struct CallExpr : Expression {
     Expression* callee;  // Never null
+    List<TypeRef*> genericArgs;
     List<Expression*> arguments;
     ACCEPT_VISITOR
 };
@@ -557,6 +550,7 @@ struct FunctionDecl : Declaration {
     List<ParameterDecl*> parameters;
     TypeRef* returnType;        // null = void
     Block* body;                // Can be null (abstract)
+    SymbolHandle functionSymbol; // Unique ID for this function scope
     ACCEPT_VISITOR
 };
 
@@ -571,7 +565,7 @@ struct PropertyAccessor : Node
 {
     enum class Kind { Get, Set };
     Kind kind;
-    ModifierSet modifiers;
+    ModifierKindFlags modifiers;
     
     // Body representation
     std::variant<

@@ -45,13 +45,11 @@ namespace Myre
         While,
         For,
         Match,
-        Case,
         Break,
         Continue,
         Return,
         In,
         At,
-        Await,
 
         // Property keywords
         Get,
@@ -68,7 +66,6 @@ namespace Myre
         Extern,
         Enforced,
         Inherit,
-        Async,
         Ref,
 
         // Other keywords
@@ -129,8 +126,6 @@ namespace Myre
         // Operators - Other
         Question,     // ?
         Colon,        // :
-        DoubleColon,  // ::
-        Arrow,        // ->
         FatArrow,     // =>
         Dot,          // .
         DotDotEquals, // ..=
@@ -167,12 +162,10 @@ namespace Myre
         While = (int)TokenKind::While,
         For = (int)TokenKind::For,
         Match = (int)TokenKind::Match,
-        Case = (int)TokenKind::Case,
         Break = (int)TokenKind::Break,
         Continue = (int)TokenKind::Continue,
         In = (int)TokenKind::In,
         At = (int)TokenKind::At,
-        Await = (int)TokenKind::Await,
         Get = (int)TokenKind::Get,
         Set = (int)TokenKind::Set,
         Public = (int)TokenKind::Public,
@@ -185,7 +178,6 @@ namespace Myre
         Extern = (int)TokenKind::Extern,
         Enforced = (int)TokenKind::Enforced,
         Inherit = (int)TokenKind::Inherit,
-        Async = (int)TokenKind::Async,
         This = (int)TokenKind::This,
         Where = (int)TokenKind::Where,
         Using = (int)TokenKind::Using,
@@ -251,22 +243,73 @@ namespace Myre
         Coalesce = (int)TokenKind::NullCoalesceAssign,
     };
 
-    enum class ModifierKind
+    enum class ModifierKindFlags : uint32_t
     {
-        Invalid = (int)TokenKind::Invalid,
-        Public = (int)TokenKind::Public,
-        Private = (int)TokenKind::Private,
-        Protected = (int)TokenKind::Protected,
-        Static = (int)TokenKind::Static,
-        Ref = (int)TokenKind::Ref,
-        Virtual = (int)TokenKind::Virtual,
-        Override = (int)TokenKind::Override,
-        Abstract = (int)TokenKind::Abstract,
-        Extern = (int)TokenKind::Extern,
-        Enforced = (int)TokenKind::Enforced,
-        Inherit = (int)TokenKind::Inherit,
-        Async = (int)TokenKind::Async,
+        None = 0,
+        Public = 1 << 0,
+        Private = 1 << 1,
+        Protected = 1 << 2,
+        Static = 1 << 3,
+        Ref = 1 << 4,
+        Virtual = 1 << 5,
+        Override = 1 << 6,
+        Abstract = 1 << 7,
+        Extern = 1 << 8,
+        Enforced = 1 << 9,
+        Inherit = 1 << 10,
+        Invalid = 1 << 11
     };
+
+    // Bitwise operators for ModifierKindFlags
+    inline ModifierKindFlags operator|(ModifierKindFlags lhs, ModifierKindFlags rhs)
+    {
+        return static_cast<ModifierKindFlags>(
+            static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)
+        );
+    }
+
+    inline ModifierKindFlags operator&(ModifierKindFlags lhs, ModifierKindFlags rhs)
+    {
+        return static_cast<ModifierKindFlags>(
+            static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)
+        );
+    }
+
+    inline ModifierKindFlags operator^(ModifierKindFlags lhs, ModifierKindFlags rhs)
+    {
+        return static_cast<ModifierKindFlags>(
+            static_cast<uint32_t>(lhs) ^ static_cast<uint32_t>(rhs)
+        );
+    }
+
+    inline ModifierKindFlags operator~(ModifierKindFlags flags)
+    {
+        return static_cast<ModifierKindFlags>(~static_cast<uint32_t>(flags));
+    }
+
+    inline ModifierKindFlags& operator|=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    {
+        lhs = lhs | rhs;
+        return lhs;
+    }
+
+    inline ModifierKindFlags& operator&=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    {
+        lhs = lhs & rhs;
+        return lhs;
+    }
+
+    inline ModifierKindFlags& operator^=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    {
+        lhs = lhs ^ rhs;
+        return lhs;
+    }
+
+    // Helper function to check if a specific flag is set
+    inline bool has_flag(ModifierKindFlags flags, ModifierKindFlags flag)
+    {
+        return (flags & flag) == flag;
+    }
 
     enum class LiteralKind
     {
@@ -391,10 +434,6 @@ namespace Myre
             return "?";
         case TokenKind::Colon:
             return ":";
-        case TokenKind::DoubleColon:
-            return "::";
-        case TokenKind::Arrow:
-            return "->";
         case TokenKind::FatArrow:
             return "=>";
         case TokenKind::Dot:
@@ -564,40 +603,39 @@ namespace Myre
         }
         }
     }
-
-    inline std::string_view to_string(ModifierKind kind)
+    inline std::string to_string(ModifierKindFlags flags)
     {
-        switch (kind)
-        {
-        case ModifierKind::Invalid:
+        if (flags == ModifierKindFlags::None)
+            return "";
+        if (flags == ModifierKindFlags::Invalid)
             return "invalid";
-        case ModifierKind::Public:
-            return "public";
-        case ModifierKind::Private:
-            return "private";
-        case ModifierKind::Protected:
-            return "protected";
-        case ModifierKind::Static:
-            return "static";
-        case ModifierKind::Ref:
-            return "ref";
-        case ModifierKind::Virtual:
-            return "virtual";
-        case ModifierKind::Override:
-            return "override";
-        case ModifierKind::Abstract:
-            return "abstract";
-        case ModifierKind::Extern:
-            return "extern";
-        case ModifierKind::Enforced:
-            return "enforced";
-        case ModifierKind::Inherit:
-            return "inherit";
-        case ModifierKind::Async:
-            return "async";
-        }
 
-        return "unknown modifier";
+        std::string result;
+        bool first = true;
+
+        // Helper lambda to check and append flag
+        auto check_and_append = [&](ModifierKindFlags flag, const char* name) {
+            if (has_flag(flags, flag)) {
+                if (!first) result += " ";
+                result += name;
+                first = false;
+            }
+        };
+
+        // Check each flag
+        check_and_append(ModifierKindFlags::Public, "public");
+        check_and_append(ModifierKindFlags::Private, "private");
+        check_and_append(ModifierKindFlags::Protected, "protected");
+        check_and_append(ModifierKindFlags::Static, "static");
+        check_and_append(ModifierKindFlags::Ref, "ref");
+        check_and_append(ModifierKindFlags::Virtual, "virtual");
+        check_and_append(ModifierKindFlags::Override, "override");
+        check_and_append(ModifierKindFlags::Abstract, "abstract");
+        check_and_append(ModifierKindFlags::Extern, "extern");
+        check_and_append(ModifierKindFlags::Enforced, "enforced");
+        check_and_append(ModifierKindFlags::Inherit, "inherit");
+
+        return result.empty() ? "unknown modifier" : result;
     }
 
     inline std::string_view to_string(LiteralKind kind)
@@ -687,7 +725,23 @@ namespace Myre
         // Check if this is a modifier token
         bool is_modifier() const
         {
-            return magic_enum::enum_contains<ModifierKind>(static_cast<int>(kind));
+            switch (kind)
+            {
+            case TokenKind::Public:
+            case TokenKind::Private:
+            case TokenKind::Protected:
+            case TokenKind::Static:
+            case TokenKind::Ref:
+            case TokenKind::Virtual:
+            case TokenKind::Override:
+            case TokenKind::Abstract:
+            case TokenKind::Extern:
+            case TokenKind::Enforced:
+            case TokenKind::Inherit:
+                return true;
+            default:
+                return false;
+            };
         }
 
         // Check if this is an assignment operator token
@@ -724,11 +778,36 @@ namespace Myre
             return casted;
         }
 
-        ModifierKind to_modifier_kind() const
+        ModifierKindFlags to_modifier_kind() const
         {
-            auto casted = magic_enum::enum_cast<ModifierKind>(static_cast<int>(kind)).value_or(ModifierKind::Invalid);
-            assert(casted != ModifierKind::Invalid);
-            return casted;
+            switch (kind)
+            {
+            case TokenKind::Public:
+            return ModifierKindFlags::Public;
+            case TokenKind::Private:
+            return ModifierKindFlags::Private;
+            case TokenKind::Protected:
+            return ModifierKindFlags::Protected;
+            case TokenKind::Static:
+            return ModifierKindFlags::Static;
+            case TokenKind::Ref:
+            return ModifierKindFlags::Ref;
+            case TokenKind::Virtual:
+            return ModifierKindFlags::Virtual;
+            case TokenKind::Override:
+            return ModifierKindFlags::Override;
+            case TokenKind::Abstract:
+            return ModifierKindFlags::Abstract;
+            case TokenKind::Extern:
+            return ModifierKindFlags::Extern;
+            case TokenKind::Enforced:
+            return ModifierKindFlags::Enforced;
+            case TokenKind::Inherit:
+            return ModifierKindFlags::Inherit;
+            default:
+            assert(false && "Invalid modifier token kind");
+            return ModifierKindFlags::Invalid;
+            }
         }
 
         LiteralKind to_literal_kind() const
@@ -1011,7 +1090,6 @@ namespace Myre
             case TokenKind::Enforced:
             case TokenKind::Inherit:
             case TokenKind::Ref:
-            case TokenKind::Async:
                 return true;
             default:
                 return false;
@@ -1052,10 +1130,8 @@ namespace Myre
             {"while", TokenKind::While},
             {"for", TokenKind::For},
             {"match", TokenKind::Match},
-            {"case", TokenKind::Case},
             {"break", TokenKind::Break},
             {"continue", TokenKind::Continue},
-            {"await", TokenKind::Await},
             {"get", TokenKind::Get},
             {"set", TokenKind::Set},
             {"public", TokenKind::Public},
@@ -1067,7 +1143,6 @@ namespace Myre
             {"abstract", TokenKind::Abstract},
             {"extern", TokenKind::Extern},
             {"enforced", TokenKind::Enforced},
-            {"async", TokenKind::Async},
             {"this", TokenKind::This},
             {"using", TokenKind::Using},
             {"namespace", TokenKind::Namespace},

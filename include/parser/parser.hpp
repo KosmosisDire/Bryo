@@ -3,6 +3,7 @@
 #include "ast/ast.hpp"
 #include "ast/arena.hpp"
 #include "token_stream.hpp"
+#include "common/token.hpp"
 #include <vector>
 #include <optional>
 #include <string>
@@ -96,17 +97,17 @@ private:
     // ================== Declarations ==================
     bool checkDeclarationStart();
     Declaration* parseDeclaration();
-    ModifierSet parseModifiers();
-    TypeDecl* parseTypeDecl(ModifierSet modifiers);
+    ModifierKindFlags parseModifiers();
+    TypeDecl* parseTypeDecl(ModifierKindFlags modifiers, const Token& startToken);
     EnumCaseDecl* parseEnumCase();
-    FunctionDecl* parseFunctionDecl(ModifierSet modifiers);
-    ConstructorDecl* parseConstructorDecl(ModifierSet modifiers);
-    InheritFunctionDecl* parseInheritFunctionDecl(ModifierSet modifiers);
-    Declaration* parseVarDeclaration(ModifierSet modifiers);
-    Declaration* parseTypedMemberDeclaration(ModifierSet modifiers, TypeRef* type);
-    MemberVariableDecl* parseMemberVariableDecl(ModifierSet modifiers, TypeRef* type, bool isVar);
+    FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
+    ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
+    InheritFunctionDecl* parseInheritFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
+    Declaration* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
+    Declaration* parseTypedMemberDeclaration(ModifierKindFlags modifiers, TypeRef* type, const Token& startToken);
+    MemberVariableDecl* parseMemberVariableDecl(ModifierKindFlags modifiers, TypeRef* type, bool isVar, const Token& startToken);
     void parsePropertyAccessors(MemberVariableDecl* prop);
-    NamespaceDecl* parseNamespaceDecl();
+    NamespaceDecl* parseNamespaceDecl(const Token& startToken);
 
     // ================== Statements ==================
     Statement* parseStatement();
@@ -133,7 +134,6 @@ private:
     Expression* parseNameExpression();
     Expression* parseParenthesizedOrLambda();
     Expression* parseArrayLiteral();
-    Expression* parseCallExpression(Expression* callee);
     Expression* parseNewExpression();
     Expression* parseLambdaExpression();
     Expression* parseMatchExpression();

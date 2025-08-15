@@ -63,6 +63,14 @@ public:
     
     // Unresolved symbols tracking
     const std::vector<Symbol*>& get_unresolved_symbols() const { return unresolved_symbols; }
+    void get_all_symbols(std::vector<ScopeNode*>& all_symbols) const
+    {
+        for (const auto& symbol : symbols) {
+            all_symbols.push_back(symbol.get());
+        }
+    }
+
+    const bool is_symbol_unresolved(Symbol* symbol) const { return std::find(unresolved_symbols.begin(), unresolved_symbols.end(), symbol) != unresolved_symbols.end(); }
     void mark_symbol_resolved(Symbol* symbol);
     
     // Helper to build fully qualified name in current scope

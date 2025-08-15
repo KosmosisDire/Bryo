@@ -30,14 +30,14 @@ public enum Direction
     {
         return match (this)
         {
-            .North => .South,
-            .East =>
+            Direction.North => Direction.South,
+            Direction.East =>
                 {
                     Console.Log("West");
-                    return .West;
+                    return Direction.West;
                 },
-            .South => .North,
-            .West => .East,
+            Direction.South => Direction.North,
+            Direction.West => Direction.East,
         };
     }
 }
@@ -220,19 +220,19 @@ public ref type Enemy
     
     public enforced fn GetDamage(): u32
     {
-        PrivateFunc(42, MutableConstraint<Shape, Health>(), (Direction direction) =>
+        PrivateFunc(42, new MutableConstraint<Shape, Health>(), (Direction direction) =>
         {
             return match (direction)
             {
-                .North => .Square(0, 0, 10, 10),
-                .East => .Circle(0, 0, 5),
-                .South => .Square(5, 5, 15, 15),
-                .West => .Circle(5, 5, 10),
+                Direction.North => Shape.Square(0, 0, 10, 10),
+                Direction.East => Shape.Circle(0, 0, 5),
+                Direction.South => Shape.Square(5, 5, 15, 15),
+                Direction.West => Shape.Circle(5, 5, 10),
             };
         });
 
         // shorthand lambda
-        PrivateFunc(42, MutableConstraint<Shape, Health>(), d => .Square(0, 0, 10, 10));
+        PrivateFunc(42, new MutableConstraint<Shape, Health>(), d => Shape.Square(0, 0, 10, 10));
 
 	    return Random.Chance(hitChance) ? attack : 0;
     }

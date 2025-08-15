@@ -27,13 +27,6 @@ namespace Myre
         LLVMInitializeX86AsmPrinter();
         LLVMInitializeX86AsmParser();
 
-        // AArch64 (ARM64 - Apple Silicon, ARM Windows/Linux)
-        LLVMInitializeAArch64TargetInfo();
-        LLVMInitializeAArch64Target();
-        LLVMInitializeAArch64TargetMC();
-        LLVMInitializeAArch64AsmPrinter();
-        LLVMInitializeAArch64AsmParser();
-
         initialized = true;
     }
 

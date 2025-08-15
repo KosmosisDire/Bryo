@@ -604,8 +604,6 @@ namespace Myre
                 return make_token(TokenKind::Decrement, 2);
             if (peek_char() == '=')
                 return make_token(TokenKind::MinusAssign, 2);
-            if (peek_char() == '>')
-                return make_token(TokenKind::Arrow, 2);
             return make_token(TokenKind::Minus, 1);
 
         case '*':
@@ -666,8 +664,6 @@ namespace Myre
             return make_token(TokenKind::BitwiseNot, 1);
 
         case ':':
-            if (peek_char() == ':')
-                return make_token(TokenKind::DoubleColon, 2);
             return make_token(TokenKind::Colon, 1);
 
         case '.':

@@ -35,7 +35,6 @@ if(LLVM_AVAILABLE)
         
         # Common targets only
         X86          # Intel/AMD processors
-        AArch64      # ARM64 processors
         
         # ORC JIT components
         OrcJIT
@@ -86,14 +85,14 @@ set(SOURCE_FILES
     src/parser/parser.cpp
 
     # Semantic Analysis
-    # src/semantic/type.cpp
-    # src/semantic/scope.cpp
-    # src/semantic/symbol.cpp
-    # src/semantic/symbol_table.cpp
-    # src/semantic/declaration_collector.cpp
+    src/semantic/type.cpp
+    src/semantic/scope.cpp
+    src/semantic/symbol.cpp
+    src/semantic/symbol_table.cpp
+    src/semantic/symbol_table_builder.cpp
     
     # Code Generator
-    # src/codegen/codegen.cpp
+    src/codegen/codegen.cpp
     
     # Common Utilities
     src/common/logger.cpp

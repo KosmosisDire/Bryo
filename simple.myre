@@ -36,8 +36,8 @@ fn main()
     var primeSum = 0;
     var primeCount = 0;
 
-    // Find all primes below 1000
-    for (var num = 2; num < 100000; num = num + 1) {
+    // Find all primes below 100
+    for (var num = 2; num < 100; num = num + 1) {
         if (IsPrime(num) == 1) {
             primeSum = primeSum + num;
             primeCount = primeCount + 1;

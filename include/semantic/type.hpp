@@ -12,9 +12,9 @@ namespace Myre {
 struct Type;
 class TypeLikeSymbol;
 class ScopeNode;
-struct ExpressionNode;
-struct TypeNameNode;
-struct BlockStatementNode;
+struct Expression;
+struct TypeRef;
+struct Block;
 using TypePtr = std::shared_ptr<Type>;
 
 struct PrimitiveType {
@@ -51,10 +51,10 @@ struct FunctionType {
 // Represents unresolved type references
 struct UnresolvedType {
     int id = 0; // Unique ID for this unresolved type
-    ExpressionNode* initializer = nullptr;   // For variable initializers, property backing field init, and arrow properties
-    TypeNameNode* typeName = nullptr;
+    Expression* initializer = nullptr;   // For variable initializers, property backing field init, and arrow properties
+    TypeRef* typeName = nullptr;
     SymbolHandle definingScope = {0};     // Can be Symbol or BlockScope
-    BlockStatementNode* body = nullptr;      // For function return type inference and property getter blocks
+    Block* body = nullptr;      // For function return type inference and property getter blocks
 
     inline bool can_infer() const { 
         return (initializer != nullptr || typeName != nullptr || body != nullptr) && definingScope.id != 0; 

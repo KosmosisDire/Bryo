@@ -12,6 +12,13 @@ Parser::~Parser() = default;
 
 CompilationUnit* Parser::parse() {
     auto* unit = arena.make<CompilationUnit>();
+    if (tokens.at_end()) {
+        unit->location = {{0, 1, 1}, 0};
+        unit->topLevelStatements = arena.emptyList<Statement*>();
+        return unit;
+    }
+
+    auto startToken = tokens.current();
     std::vector<Statement*> statements;
 
     while (!tokens.at_end()) {
@@ -22,6 +29,8 @@ CompilationUnit* Parser::parse() {
     }
 
     unit->topLevelStatements = arena.makeList(statements);
+    // Use previous token unless the file was empty to begin with.
+    unit->location = SourceRange(startToken.location.start, tokens.previous().location.end());
     return unit;
 }
 
@@ -35,7 +44,16 @@ bool Parser::hasErrors() const {
 
 // ================== Error Handling ==================
 
-void Parser::error(const std::string& msg) {
+void Parser::error(const std::string& msg)
+{
+    static int lastPos = 0;
+    if (lastPos == tokens.position())
+    {
+        synchronize();
+        return;
+    }
+    lastPos = tokens.position();
+
     errors.push_back({msg, tokens.current().location, ParseError::ERROR});
 }
 
@@ -45,25 +63,37 @@ void Parser::warning(const std::string& msg) {
 
 ErrorExpression* Parser::errorExpr(const std::string& msg) {
     error(msg);
-    return arena.makeErrorExpr(msg);
+    auto* err = arena.makeErrorExpr(msg);
+    err->location = tokens.previous().location;
+    return err;
 }
 
 ErrorStatement* Parser::errorStmt(const std::string& msg) {
     error(msg);
-    return arena.makeErrorStmt(msg);
+    auto* err = arena.makeErrorStmt(msg);
+    err->location = tokens.previous().location;
+    return err;
 }
 
 ErrorTypeRef* Parser::errorType(const std::string& msg) {
     error(msg);
-    return arena.makeErrorType(msg);
+    auto* err = arena.makeErrorType(msg);
+    err->location = tokens.previous().location;
+    return err;
 }
 
 void Parser::synchronize() {
-    while (!tokens.at_end()) {
-        if (tokens.current().starts_declaration() || tokens.current().starts_statement()) {
-            break;
-        }
+    while (!tokens.at_end())
+    {
         tokens.advance();
+
+        if (consume(TokenKind::Semicolon)) {
+            return;
+        }
+
+        if (tokens.current().starts_declaration() || tokens.current().starts_statement()) {
+            return;
+        }
     }
 }
 
@@ -97,10 +127,9 @@ bool Parser::inSetter() const {
     return false;
 }
 
-bool Parser::inTypeBody() const {
-    for (auto it = contextStack.rbegin(); it != contextStack.rend(); ++it) {
-        if (*it == Context::TYPE_BODY) return true;
-    }
+bool Parser::inTypeBody() const
+{
+    if (contextStack.back() == Context::TYPE_BODY) return true;
     return false;
 }
 
@@ -145,7 +174,7 @@ Statement* Parser::parseTopLevelStatement() {
         return parseUsingDirective();
     }
     if (check(TokenKind::Namespace)) {
-        return parseNamespaceDecl();
+        return parseNamespaceDecl(tokens.current());
     }
     if (tokens.current().is_modifier() || checkDeclarationStart()) {
         return parseDeclaration();
@@ -160,40 +189,46 @@ Statement* Parser::parseTopLevelStatement() {
 
 // ================== Declarations ==================
 
-bool Parser::checkDeclarationStart() {
+bool Parser::checkDeclarationStart()
+{
+    // 'new' should only be treated as a declaration start inside type bodies
+    if (check(TokenKind::New)) {
+        return inTypeBody();
+    }
+    
     return checkAny({TokenKind::Type, TokenKind::Enum, TokenKind::Fn,
-                     TokenKind::Var, TokenKind::New, TokenKind::Ref,
-                     TokenKind::Namespace});
+                     TokenKind::Var, TokenKind::Ref, TokenKind::Namespace});
 }
 
 Declaration* Parser::parseDeclaration() {
-    ModifierSet modifiers = parseModifiers();
+    auto startToken = tokens.current();
+    ModifierKindFlags modifiers = parseModifiers();
 
     if (check(TokenKind::Namespace)) {
-        auto* ns = parseNamespaceDecl();
+        auto* ns = parseNamespaceDecl(startToken);
         ns->modifiers = modifiers;
         return ns;
     }
     if (checkAny({TokenKind::Type, TokenKind::Ref, TokenKind::Enum, TokenKind::Static})) {
-        return parseTypeDecl(modifiers);
+        return parseTypeDecl(modifiers, startToken);
     }
     if (check(TokenKind::Fn)) {
-        return parseFunctionDecl(modifiers);
+        return parseFunctionDecl(modifiers, startToken);
     }
     if (check(TokenKind::New)) {
-        return parseConstructorDecl(modifiers);
+        return parseConstructorDecl(modifiers, startToken);
     }
     if (check(TokenKind::Inherit)) {
-        return parseInheritFunctionDecl(modifiers);
+        return parseInheritFunctionDecl(modifiers, startToken);
     }
     if (check(TokenKind::Var)) {
-        return parseVarDeclaration(modifiers);
+        return parseVarDeclaration(modifiers, startToken);
     }
 
     auto checkpoint = tokens.checkpoint();
     auto* type = parseTypeRef();
     if (type && check(TokenKind::Identifier)) {
-        return parseTypedMemberDeclaration(modifiers, type);
+        return parseTypedMemberDeclaration(modifiers, type, startToken);
     }
     
     tokens.restore(checkpoint);
@@ -201,28 +236,16 @@ Declaration* Parser::parseDeclaration() {
     return nullptr;
 }
 
-ModifierSet Parser::parseModifiers() {
-    ModifierSet mods;
+ModifierKindFlags Parser::parseModifiers() {
+    ModifierKindFlags mods = ModifierKindFlags::None;
     while (tokens.current().is_modifier()) {
-        switch (tokens.current().kind) {
-            case TokenKind::Public: mods.access = ModifierSet::Access::Public; break;
-            case TokenKind::Private: mods.access = ModifierSet::Access::Private; break;
-            case TokenKind::Protected: mods.access = ModifierSet::Access::Protected; break;
-            case TokenKind::Static: mods.isStatic = true; break;
-            case TokenKind::Virtual: mods.isVirtual = true; break;
-            case TokenKind::Abstract: mods.isAbstract = true; break;
-            case TokenKind::Override: mods.isOverride = true; break;
-            case TokenKind::Ref: mods.isRef = true; break;
-            case TokenKind::Enforced: mods.isEnforced = true; break;
-            case TokenKind::Inherit: mods.isInherit = true; break;
-            default: break;
-        }
+        mods |= tokens.current().to_modifier_kind();
         tokens.advance();
     }
     return mods;
 }
 
-TypeDecl* Parser::parseTypeDecl(ModifierSet modifiers) {
+TypeDecl* Parser::parseTypeDecl(ModifierKindFlags modifiers, const Token& startToken) {
     auto* decl = arena.make<TypeDecl>();
     decl->modifiers = modifiers;
 
@@ -239,6 +262,7 @@ TypeDecl* Parser::parseTypeDecl(ModifierSet modifiers) {
     } else {
         error("Expected type declaration keyword");
         decl->name = arena.makeIdentifier("");
+        decl->location = startToken.location;
         return decl;
     }
 
@@ -284,10 +308,12 @@ TypeDecl* Parser::parseTypeDecl(ModifierSet modifiers) {
     decl->members = arena.makeList(members);
     expect(TokenKind::RightBrace, "Expected '}' to close type declaration");
 
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
 EnumCaseDecl* Parser::parseEnumCase() {
+    auto startToken = tokens.current();
     auto* decl = arena.make<EnumCaseDecl>();
     decl->name = parseIdentifier();
     
@@ -297,10 +323,11 @@ EnumCaseDecl* Parser::parseEnumCase() {
         decl->associatedData = arena.emptyList<ParameterDecl*>();
     }
     
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
-FunctionDecl* Parser::parseFunctionDecl(ModifierSet modifiers) {
+FunctionDecl* Parser::parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken) {
     auto* decl = arena.make<FunctionDecl>();
     decl->modifiers = modifiers;
 
@@ -328,10 +355,12 @@ FunctionDecl* Parser::parseFunctionDecl(ModifierSet modifiers) {
         error("Expected '{' or ';' after function declaration");
         decl->body = nullptr;
     }
+
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
-ConstructorDecl* Parser::parseConstructorDecl(ModifierSet modifiers) {
+ConstructorDecl* Parser::parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken) {
     auto* decl = arena.make<ConstructorDecl>();
     decl->modifiers = modifiers;
 
@@ -343,13 +372,16 @@ ConstructorDecl* Parser::parseConstructorDecl(ModifierSet modifiers) {
 
     if (!decl->body) {
         auto* block = arena.make<Block>();
+        block->location = previous().location;
         block->statements = arena.emptyList<Statement*>();
         decl->body = block;
     }
+
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
-InheritFunctionDecl* Parser::parseInheritFunctionDecl(ModifierSet modifiers) {
+InheritFunctionDecl* Parser::parseInheritFunctionDecl(ModifierKindFlags modifiers, const Token& startToken) {
     auto* decl = arena.make<InheritFunctionDecl>();
     decl->modifiers = modifiers;
 
@@ -373,10 +405,11 @@ InheritFunctionDecl* Parser::parseInheritFunctionDecl(ModifierSet modifiers) {
     }
 
     expect(TokenKind::Semicolon, "Expected ';' after inherit declaration");
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
-Declaration* Parser::parseVarDeclaration(ModifierSet modifiers) {
+Declaration* Parser::parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken) {
     auto checkpoint = tokens.checkpoint();
     consume(TokenKind::Var);
     
@@ -389,7 +422,7 @@ Declaration* Parser::parseVarDeclaration(ModifierSet modifiers) {
 
     if (checkAny({TokenKind::FatArrow, TokenKind::LeftBrace})) {
         tokens.restore(checkpoint);
-        return parseMemberVariableDecl(modifiers, nullptr, true);
+        return parseMemberVariableDecl(modifiers, nullptr, true, startToken);
     }
     if (check(TokenKind::Assign)) {
         auto initCheckpoint = tokens.checkpoint();
@@ -397,14 +430,14 @@ Declaration* Parser::parseVarDeclaration(ModifierSet modifiers) {
         parseExpression();
         if (check(TokenKind::LeftBrace)) {
             tokens.restore(checkpoint);
-            return parseMemberVariableDecl(modifiers, nullptr, true);
+            return parseMemberVariableDecl(modifiers, nullptr, true, startToken);
         }
         tokens.restore(initCheckpoint);
     }
 
     if (contextStack.back() == Context::TYPE_BODY) {
         tokens.restore(checkpoint);
-        return parseMemberVariableDecl(modifiers, nullptr, true);
+        return parseMemberVariableDecl(modifiers, nullptr, true, startToken);
     } else {
         auto* decl = arena.make<VariableDecl>();
         decl->modifiers = modifiers;
@@ -412,6 +445,7 @@ Declaration* Parser::parseVarDeclaration(ModifierSet modifiers) {
         auto* ti = arena.make<TypedIdentifier>();
         ti->type = nullptr;
         ti->name = name;
+        ti->location = SourceRange(startToken.location.start, name->location.end());
         decl->variable = ti;
 
         if (consume(TokenKind::Assign)) {
@@ -424,14 +458,16 @@ Declaration* Parser::parseVarDeclaration(ModifierSet modifiers) {
         }
 
         expect(TokenKind::Semicolon, "Expected ';' after variable declaration");
+        decl->location = SourceRange(startToken.location.start, previous().location.end());
         return decl;
     }
 }
 
-Declaration* Parser::parseTypedMemberDeclaration(ModifierSet modifiers, TypeRef* type) {
+Declaration* Parser::parseTypedMemberDeclaration(ModifierKindFlags modifiers, TypeRef* type, const Token& startToken) {
     std::vector<Declaration*> declarations;
     
     do {
+        auto fieldStartToken = tokens.current();
         auto* name = parseIdentifier();
         Expression* initializer = nullptr;
 
@@ -456,7 +492,8 @@ Declaration* Parser::parseTypedMemberDeclaration(ModifierSet modifiers, TypeRef*
             } else if (check(TokenKind::LeftBrace)) {
                 parsePropertyAccessors(prop);
             }
-            return prop;
+            prop->location = SourceRange(fieldStartToken.location.start, previous().location.end());
+            declarations.push_back(prop);
         } else {
             auto* field = arena.make<MemberVariableDecl>();
             field->modifiers = modifiers;
@@ -465,15 +502,21 @@ Declaration* Parser::parseTypedMemberDeclaration(ModifierSet modifiers, TypeRef*
             field->initializer = initializer;
             field->getter = nullptr;
             field->setter = nullptr;
+            field->location = SourceRange(fieldStartToken.location.start, previous().location.end());
             declarations.push_back(field);
         }
     } while (consume(TokenKind::Comma));
     
     expect(TokenKind::Semicolon, "Expected ';' after field declaration");
+    // The location for the entire statement (if it had multiple fields) is not represented by a single node
+    // as this function only returns the first declaration.
+    if (!declarations.empty()) {
+        declarations[0]->location = SourceRange(startToken.location.start, previous().location.end());
+    }
     return declarations.empty() ? nullptr : declarations[0];
 }
 
-MemberVariableDecl* Parser::parseMemberVariableDecl(ModifierSet modifiers, TypeRef* type, bool isVar) {
+MemberVariableDecl* Parser::parseMemberVariableDecl(ModifierKindFlags modifiers, TypeRef* type, bool isVar, const Token& startToken) {
     auto* decl = arena.make<MemberVariableDecl>();
     decl->modifiers = modifiers;
     
@@ -493,8 +536,10 @@ MemberVariableDecl* Parser::parseMemberVariableDecl(ModifierSet modifiers, TypeR
 
     if (consume(TokenKind::FatArrow)) {
         auto* getter = arena.make<PropertyAccessor>();
+        auto getStart = previous();
         getter->kind = PropertyAccessor::Kind::Get;
         getter->body = parseExpression();
+        getter->location = SourceRange(getStart.location.start, previous().location.end());
         decl->getter = getter;
         decl->setter = nullptr;
         expect(TokenKind::Semicolon, "Expected ';' after arrow property");
@@ -505,13 +550,15 @@ MemberVariableDecl* Parser::parseMemberVariableDecl(ModifierSet modifiers, TypeR
         decl->setter = nullptr;
         expect(TokenKind::Semicolon, "Expected ';' after field declaration");
     }
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
 void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
     consume(TokenKind::LeftBrace);
     while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
-        ModifierSet accessorMods = parseModifiers();
+        auto accessorStartToken = tokens.current();
+        ModifierKindFlags accessorMods = parseModifiers();
         
         if (consume(TokenKind::Get)) {
             auto* getter = arena.make<PropertyAccessor>();
@@ -519,7 +566,6 @@ void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
             getter->modifiers = accessorMods;
             
             if (consume(TokenKind::FatArrow)) {
-                // Check for common mistake: => { instead of just {
                 if (check(TokenKind::LeftBrace)) {
                     error("Unexpected '{' after '=>' in property getter. Use either '=> expression' or '{ statements }'");
                     getter->body = withContext(Context::PROPERTY_GETTER, [this]() { return parseBlock(); });
@@ -531,6 +577,7 @@ void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
             } else {
                 getter->body = std::monostate{};
             }
+            getter->location = SourceRange(accessorStartToken.location.start, previous().location.end());
             prop->getter = getter;
         } else if (consume(TokenKind::Set)) {
             auto* setter = arena.make<PropertyAccessor>();
@@ -538,7 +585,6 @@ void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
             setter->modifiers = accessorMods;
             
             if (consume(TokenKind::FatArrow)) {
-                // Check for common mistake: => { instead of just {
                 if (check(TokenKind::LeftBrace)) {
                     error("Unexpected '{' after '=>' in property setter. Use either '=> expression' or '{ statements }'");
                     setter->body = withContext(Context::PROPERTY_SETTER, [this]() { return parseBlock(); });
@@ -550,10 +596,10 @@ void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
             } else {
                 setter->body = std::monostate{};
             }
+            setter->location = SourceRange(accessorStartToken.location.start, previous().location.end());
             prop->setter = setter;
         } else {
             error("Expected 'get' or 'set' in property accessor");
-            // Synchronize by skipping to next semicolon or closing brace
             while (!tokens.at_end() && 
                    !check(TokenKind::Semicolon) && 
                    !check(TokenKind::RightBrace) &&
@@ -567,7 +613,7 @@ void Parser::parsePropertyAccessors(MemberVariableDecl* prop) {
     expect(TokenKind::RightBrace, "Expected '}' after property accessors");
 }
 
-NamespaceDecl* Parser::parseNamespaceDecl() {
+NamespaceDecl* Parser::parseNamespaceDecl(const Token& startToken) {
     auto* decl = arena.make<NamespaceDecl>();
     consume(TokenKind::Namespace);
     
@@ -595,12 +641,14 @@ NamespaceDecl* Parser::parseNamespaceDecl() {
         decl->isFileScoped = true;
         decl->body = std::nullopt;
     }
+    decl->location = SourceRange(startToken.location.start, previous().location.end());
     return decl;
 }
 
 // ================== Statements ==================
 
 Statement* Parser::parseStatement() {
+    auto startToken = tokens.current();
     if (check(TokenKind::If)) return parseIfStatement();
     if (check(TokenKind::While)) return parseWhileStatement();
     if (check(TokenKind::For)) return parseForStatement();
@@ -612,12 +660,10 @@ Statement* Parser::parseStatement() {
         return parseDeclaration();
     }
     
-    // Check if this might be a typed variable declaration (Type varName)
     if (check(TokenKind::Identifier)) {
         auto checkpoint = tokens.checkpoint();
         auto* type = parseTypeRef();
         if (type && check(TokenKind::Identifier)) {
-            // This looks like a typed declaration
             tokens.restore(checkpoint);
             return parseDeclaration();
         }
@@ -628,6 +674,7 @@ Statement* Parser::parseStatement() {
 }
 
 Block* Parser::parseBlock() {
+    auto startToken = tokens.current();
     auto* block = arena.make<Block>();
     consume(TokenKind::LeftBrace);
     
@@ -640,10 +687,12 @@ Block* Parser::parseBlock() {
     block->statements = arena.makeList(statements);
     
     expect(TokenKind::RightBrace, "Expected '}' to close block");
+    block->location = SourceRange(startToken.location.start, previous().location.end());
     return block;
 }
 
 Statement* Parser::parseIfStatement() {
+    auto startToken = tokens.current();
     consume(TokenKind::If);
     expect(TokenKind::LeftParen, "Expected '(' after 'if'");
 
@@ -665,13 +714,16 @@ Statement* Parser::parseIfStatement() {
     ifExpr->condition = condition;
     ifExpr->thenBranch = thenStmt;
     ifExpr->elseBranch = elseStmt;
+    ifExpr->location = SourceRange(startToken.location.start, previous().location.end());
 
     auto* exprStmt = arena.make<ExpressionStmt>();
     exprStmt->expression = ifExpr;
+    exprStmt->location = ifExpr->location; // The statement wraps the expression exactly.
     return exprStmt;
 }
 
 WhileStmt* Parser::parseWhileStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<WhileStmt>();
     consume(TokenKind::While);
     expect(TokenKind::LeftParen, "Expected '(' after 'while'");
@@ -684,6 +736,7 @@ WhileStmt* Parser::parseWhileStatement() {
     stmt->body = withContext(Context::LOOP, [this]() { return parseStatement(); });
     if (!stmt->body) stmt->body = errorStmt("Expected loop body");
 
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
@@ -714,30 +767,25 @@ Statement* Parser::parseForStatement() {
 }
 
 ForStmt* Parser::parseTraditionalForStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<ForStmt>();
     consume(TokenKind::For);
     expect(TokenKind::LeftParen, "Expected '(' after 'for'");
 
     if (!check(TokenKind::Semicolon)) {
-    // Check for typed declaration pattern (Type identifier = ...)
-    auto checkpoint = tokens.checkpoint();
-    auto* type = parseTypeRef();
-    if (type && check(TokenKind::Identifier)) {
-        // This is a typed declaration
-        tokens.restore(checkpoint);
-        stmt->initializer = parseDeclaration();
-    } else {
-        tokens.restore(checkpoint);
-        if (checkDeclarationStart() || tokens.current().is_modifier()) {
+        auto checkpoint = tokens.checkpoint();
+        auto* type = parseTypeRef();
+        if (type && check(TokenKind::Identifier)) {
+            tokens.restore(checkpoint);
             stmt->initializer = parseDeclaration();
         } else {
-            stmt->initializer = parseExpressionStatement();
+            tokens.restore(checkpoint);
+            if (checkDeclarationStart() || tokens.current().is_modifier()) {
+                stmt->initializer = parseDeclaration();
+            } else {
+                stmt->initializer = parseExpressionStatement();
+            }
         }
-    }
-}
-
-    if (!stmt->initializer || !stmt->initializer->is<VariableDecl>()) {
-        expect(TokenKind::Semicolon, "Expected ';' after initializer");
     }
 
     if (!check(TokenKind::Semicolon)) {
@@ -761,10 +809,12 @@ ForStmt* Parser::parseTraditionalForStatement() {
     stmt->body = withContext(Context::LOOP, [this]() { return parseStatement(); });
     if (!stmt->body) stmt->body = errorStmt("Expected loop body");
 
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
 ForInStmt* Parser::parseForInStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<ForInStmt>();
     consume(TokenKind::For);
     expect(TokenKind::LeftParen, "Expected '(' after 'for'");
@@ -793,10 +843,12 @@ ForInStmt* Parser::parseForInStatement() {
     stmt->body = withContext(Context::LOOP, [this]() { return parseStatement(); });
     if (!stmt->body) stmt->body = errorStmt("Expected loop body");
 
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
 ReturnStmt* Parser::parseReturnStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<ReturnStmt>();
     consume(TokenKind::Return);
 
@@ -810,26 +862,31 @@ ReturnStmt* Parser::parseReturnStatement() {
     if (!inFunction() && !inGetter() && !inSetter()) {
         warning("Return statement outside function or property");
     }
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
 BreakStmt* Parser::parseBreakStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<BreakStmt>();
     consume(TokenKind::Break);
     expect(TokenKind::Semicolon, "Expected ';' after break");
     if (!inLoop()) {
         warning("Break statement outside loop");
     }
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
 ContinueStmt* Parser::parseContinueStatement() {
+    auto startToken = tokens.current();
     auto* stmt = arena.make<ContinueStmt>();
     consume(TokenKind::Continue);
     expect(TokenKind::Semicolon, "Expected ';' after continue");
     if (!inLoop()) {
         warning("Continue statement outside loop");
     }
+    stmt->location = SourceRange(startToken.location.start, previous().location.end());
     return stmt;
 }
 
@@ -840,10 +897,12 @@ ExpressionStmt* Parser::parseExpressionStatement() {
         stmt->expression = errorExpr("Expected expression");
     }
     expect(TokenKind::Semicolon, "Expected ';' after expression");
+    stmt->location = SourceRange(stmt->expression->location.start, previous().location.end());
     return stmt;
 }
 
 UsingDirective* Parser::parseUsingDirective() {
+    auto startToken = tokens.current();
     auto* directive = arena.make<UsingDirective>();
     consume(TokenKind::Using);
 
@@ -872,6 +931,7 @@ UsingDirective* Parser::parseUsingDirective() {
     }
 
     expect(TokenKind::Semicolon, "Expected ';' after using directive");
+    directive->location = SourceRange(startToken.location.start, previous().location.end());
     return directive;
 }
 
@@ -880,8 +940,7 @@ UsingDirective* Parser::parseUsingDirective() {
 Expression* Parser::parseExpression(int minPrecedence) {
     auto* left = parsePrimaryExpression();
     if (!left) {
-        synchronize();
-        return nullptr; // No need for error here, primary parser handles it.
+        return nullptr;
     }
     return parseBinaryExpression(left, minPrecedence);
 }
@@ -891,38 +950,28 @@ Expression* Parser::parseBinaryExpression(Expression* left, int minPrecedence) {
         Token op = tokens.current();
         int precedence = op.get_binary_precedence();
 
-        // handle ternary operator (cond ? then : else)
         if (op.kind == TokenKind::Question)
         {
-            if (minPrecedence > precedence) {
-                break;
-            }
+            if (minPrecedence > precedence) break;
             
-            tokens.advance();  // consume '?'
+            tokens.advance();
             
             auto* conditional = arena.make<ConditionalExpr>();
             conditional->condition = left;
             
-            // Parse the then branch (with higher precedence)
             conditional->thenExpr = parseExpression(precedence + 1);
-            if (!conditional->thenExpr) {
-                conditional->thenExpr = errorExpr("Expected expression after '?'");
-            }
+            if (!conditional->thenExpr) conditional->thenExpr = errorExpr("Expected expression after '?'");
             
             expect(TokenKind::Colon, "Expected ':' in conditional expression");
             
-            // Parse the else branch with same precedence (right-associative)
             conditional->elseExpr = parseExpression(precedence);
-            if (!conditional->elseExpr) {
-                conditional->elseExpr = errorExpr("Expected expression after ':'");
-            }
+            if (!conditional->elseExpr) conditional->elseExpr = errorExpr("Expected expression after ':'");
             
+            conditional->location = SourceRange(left->location.start, conditional->elseExpr->location.end());
             return conditional;
         }
 
-        if (precedence < minPrecedence || precedence == 0) {
-            break;
-        }
+        if (precedence < minPrecedence || precedence == 0) break;
 
         if (op.is_assignment_operator()) {
             tokens.advance();
@@ -930,9 +979,9 @@ Expression* Parser::parseBinaryExpression(Expression* left, int minPrecedence) {
             assign->target = left;
             assign->op = op.to_assignment_operator_kind();
             assign->value = parseExpression(precedence);
-            if (!assign->value) {
-                assign->value = errorExpr("Expected value in assignment");
-            }
+            if (!assign->value) assign->value = errorExpr("Expected value in assignment");
+            
+            assign->location = SourceRange(left->location.start, assign->value->location.end());
             return assign;
         }
 
@@ -944,14 +993,13 @@ Expression* Parser::parseBinaryExpression(Expression* left, int minPrecedence) {
         int nextPrecedence = op.is_right_associative() ? precedence : precedence + 1;
 
         auto* right = parseExpression(nextPrecedence);
-        if (!right) {
-            right = errorExpr("Expected right operand");
-        }
+        if (!right) right = errorExpr("Expected right operand");
 
         auto* binary = arena.make<BinaryExpr>();
         binary->left = left;
         binary->op = op.to_binary_operator_kind();
         binary->right = right;
+        binary->location = SourceRange(left->location.start, right->location.end());
         left = binary;
     }
     return left;
@@ -966,10 +1014,20 @@ Expression* Parser::parsePrimaryExpression() {
     } else if (tokens.current().is_literal()) {
         expr = parseLiteral();
     } else if (check(TokenKind::Identifier)) {
-        expr = parseNameExpression();
+        auto checkpoint = tokens.checkpoint();
+        tokens.advance();
+        if (check(TokenKind::FatArrow)) {
+            tokens.restore(checkpoint);
+            expr = parseLambdaExpression();
+        } else {
+            tokens.restore(checkpoint);
+            expr = parseNameExpression();
+        }
     } else if (check(TokenKind::This)) {
+        auto startToken = tokens.current();
         auto* thisExpr = arena.make<ThisExpr>();
         tokens.advance();
+        thisExpr->location = startToken.location;
         expr = thisExpr;
     } else if (check(TokenKind::LeftParen)) {
         expr = parseParenthesizedOrLambda();
@@ -983,17 +1041,6 @@ Expression* Parser::parsePrimaryExpression() {
         expr = parseTypeOfExpression();
     } else if (check(TokenKind::Sizeof)) {
         expr = parseSizeOfExpression();
-    } else if (check(TokenKind::Dot)) {
-        tokens.advance();
-        if (check(TokenKind::Identifier)) {
-            auto* enumExpr = arena.make<NameExpr>();
-            std::vector<Identifier*> parts;
-            parts.push_back(parseIdentifier());
-            enumExpr->parts = arena.makeList(parts);
-            expr = enumExpr;
-        } else {
-            expr = errorExpr("Expected enum member after '.'");
-        }
     }
 
     if (!expr) {
@@ -1005,23 +1052,100 @@ Expression* Parser::parsePrimaryExpression() {
 
 Expression* Parser::parsePostfixExpression(Expression* expr) {
     while (true) {
-        if (check(TokenKind::LeftParen)) {
-            expr = parseCallExpression(expr);
+        if (check(TokenKind::Less)) {
+            auto checkpoint = tokens.checkpoint();
+            tokens.advance();
+            
+            bool isGenericCall = false;
+            std::vector<TypeRef*> genericArgs;
+            int angleDepth = 1;
+            
+            while (!tokens.at_end() && angleDepth > 0) {
+                auto typeCheckpoint = tokens.checkpoint();
+                auto* type = parseTypeRef();
+                if (!type) break;
+                
+                genericArgs.push_back(type);
+                
+                if (consume(TokenKind::Comma)) continue;
+                else if (check(TokenKind::Greater)) {
+                    angleDepth--;
+                    tokens.advance();
+                    if (angleDepth == 0 && check(TokenKind::LeftParen)) isGenericCall = true;
+                    break;
+                } else if (check(TokenKind::RightShift)) {
+                    if (angleDepth >= 2) {
+                        angleDepth -= 2;
+                        tokens.advance();
+                        if (angleDepth == 0 && check(TokenKind::LeftParen)) isGenericCall = true;
+                    } else {
+                        angleDepth = 0;
+                    }
+                    break;
+                } else if (check(TokenKind::Less)) {
+                    angleDepth++;
+                    tokens.advance();
+                } else break;
+            }
+            
+            if (isGenericCall) {
+                consume(TokenKind::LeftParen);
+                auto* call = arena.make<CallExpr>();
+                call->callee = expr;
+                call->genericArgs = arena.makeList(genericArgs);
+                
+                std::vector<Expression*> args;
+                while (!check(TokenKind::RightParen) && !tokens.at_end()) {
+                    auto* arg = parseExpression();
+                    if (!arg) break;
+                    args.push_back(arg);
+                    if (!consume(TokenKind::Comma)) break;
+                    if (check(TokenKind::RightParen)) break;
+                }
+                call->arguments = arena.makeList(args);
+                
+                expect(TokenKind::RightParen, "Expected ')' after arguments");
+                call->location = SourceRange(expr->location.start, previous().location.end());
+                expr = call;
+            } else {
+                tokens.restore(checkpoint);
+                break;
+            }
+        } else if (check(TokenKind::LeftParen)) {
+            tokens.advance();
+            auto* call = arena.make<CallExpr>();
+            call->callee = expr;
+            call->genericArgs = arena.emptyList<TypeRef*>();
+            
+            std::vector<Expression*> args;
+            while (!check(TokenKind::RightParen) && !tokens.at_end()) {
+                auto* arg = parseExpression();
+                if (!arg) break;
+                args.push_back(arg);
+                if (!consume(TokenKind::Comma)) break;
+                if (check(TokenKind::RightParen)) break;
+            }
+            call->arguments = arena.makeList(args);
+            
+            expect(TokenKind::RightParen, "Expected ')' after arguments");
+            call->location = SourceRange(expr->location.start, previous().location.end());
+            expr = call;
         } else if (check(TokenKind::Dot)) {
             tokens.advance();
             auto* member = arena.make<MemberAccessExpr>();
             member->object = expr;
             member->member = parseIdentifier();
+            member->location = SourceRange(expr->location.start, member->member->location.end());
             expr = member;
         } else if (check(TokenKind::LeftBracket)) {
             tokens.advance();
             auto* indexer = arena.make<IndexerExpr>();
             indexer->object = expr;
             indexer->index = parseExpression();
-            if (!indexer->index) {
-                indexer->index = errorExpr("Expected index expression");
-            }
+            if (!indexer->index) indexer->index = errorExpr("Expected index expression");
+            
             expect(TokenKind::RightBracket, "Expected ']' after index");
+            indexer->location = SourceRange(expr->location.start, previous().location.end());
             expr = indexer;
         } else if (checkAny({TokenKind::Increment, TokenKind::Decrement})) {
             auto* unary = arena.make<UnaryExpr>();
@@ -1029,6 +1153,7 @@ Expression* Parser::parsePostfixExpression(Expression* expr) {
             unary->op = tokens.current().to_unary_operator_kind();
             unary->isPostfix = true;
             tokens.advance();
+            unary->location = SourceRange(expr->location.start, previous().location.end());
             expr = unary;
         } else {
             break;
@@ -1038,6 +1163,7 @@ Expression* Parser::parsePostfixExpression(Expression* expr) {
 }
 
 Expression* Parser::parseUnaryExpression() {
+    auto startToken = tokens.current();
     auto* unary = arena.make<UnaryExpr>();
     Token op = tokens.current();
     tokens.advance();
@@ -1047,10 +1173,12 @@ Expression* Parser::parseUnaryExpression() {
     if (!unary->operand) {
         unary->operand = errorExpr("Expected operand after unary operator");
     }
+    unary->location = SourceRange(startToken.location.start, unary->operand->location.end());
     return unary;
 }
 
 Expression* Parser::parseRangeExpression(Expression* start) {
+    auto startLoc = start ? start->location.start : tokens.current().location.end();
     auto* range = arena.make<RangeExpr>();
     range->start = start;
 
@@ -1061,7 +1189,7 @@ Expression* Parser::parseRangeExpression(Expression* start) {
     }
 
     if (!isExpressionTerminator() && !check(TokenKind::By)) {
-        range->end = parseExpression(120); // High precedence to bind tightly
+        range->end = parseExpression(120);
     } else {
         range->end = nullptr;
     }
@@ -1074,12 +1202,14 @@ Expression* Parser::parseRangeExpression(Expression* start) {
     } else {
         range->step = nullptr;
     }
+    range->location = SourceRange(startLoc, previous().location.end());
     return range;
 }
 
 Expression* Parser::parseLiteral() {
     auto* lit = arena.make<LiteralExpr>();
     Token tok = tokens.current();
+    lit->location = tok.location;
     lit->value = tok.text;
 
     switch (tok.kind) {
@@ -1089,19 +1219,21 @@ Expression* Parser::parseLiteral() {
         case TokenKind::LiteralChar: lit->kind = LiteralExpr::Kind::Char; break;
         case TokenKind::LiteralBool: lit->kind = LiteralExpr::Kind::Bool; break;
         case TokenKind::Null: lit->kind = LiteralExpr::Kind::Null; break;
-        default: lit->kind = LiteralExpr::Kind::Integer; break; // Should not happen
+        default: lit->kind = LiteralExpr::Kind::Integer; break;
     }
     tokens.advance();
     return lit;
 }
 
 Expression* Parser::parseNameExpression() {
+    auto startToken = tokens.current();
     auto* name = arena.make<NameExpr>();
     std::vector<Identifier*> parts;
     do {
         parts.push_back(parseIdentifier());
-    } while (consume(TokenKind::DoubleColon) || (check(TokenKind::Dot) && peekNext() == TokenKind::Identifier && consume(TokenKind::Dot)));
+    } while ((check(TokenKind::Dot) && peekNext() == TokenKind::Identifier && consume(TokenKind::Dot)));
     name->parts = arena.makeList(parts);
+    name->location = SourceRange(startToken.location.start, previous().location.end());
     return name;
 }
 
@@ -1110,34 +1242,46 @@ Expression* Parser::parseParenthesizedOrLambda() {
     consume(TokenKind::LeftParen);
     
     bool isLambda = false;
-    if (check(TokenKind::RightParen)) {
-        tokens.advance();
-        if (check(TokenKind::FatArrow)) {
+    int parenDepth = 1;
+    
+    while (!tokens.at_end() && parenDepth > 0) {
+        if (check(TokenKind::LeftParen)) parenDepth++;
+        else if (check(TokenKind::RightParen)) {
+            parenDepth--;
+            if (parenDepth == 0) {
+                tokens.advance();
+                if (check(TokenKind::FatArrow)) isLambda = true;
+                break;
+            }
+        } else if (check(TokenKind::FatArrow) && parenDepth == 1) {
             isLambda = true;
+            break;
         }
-    } else if (check(TokenKind::Identifier)) {
         tokens.advance();
-        if (checkAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::Colon, TokenKind::Identifier})) {
-            isLambda = true;
-        }
-    } else if (check(TokenKind::FatArrow)) { // e.g., for `() => ...`
-        isLambda = true;
     }
-
+    
     tokens.restore(checkpoint);
-
+    
     if (isLambda) {
         return parseLambdaExpression();
     } else {
         consume(TokenKind::LeftParen);
+        if (check(TokenKind::RightParen)) {
+            error("Empty parentheses are not a valid expression");
+            consume(TokenKind::RightParen);
+            return errorExpr("Expected expression in parentheses");
+        }
+        
         auto* expr = parseExpression();
-        if (!expr) expr = errorExpr("Expected expression");
+        if (!expr) return errorExpr("Expected expression in parentheses");
+        
         expect(TokenKind::RightParen, "Expected ')' after expression");
         return expr;
     }
 }
 
 Expression* Parser::parseArrayLiteral() {
+    auto startToken = tokens.current();
     auto* array = arena.make<ArrayLiteralExpr>();
     consume(TokenKind::LeftBracket);
     
@@ -1151,43 +1295,23 @@ Expression* Parser::parseArrayLiteral() {
     array->elements = arena.makeList(elements);
     
     expect(TokenKind::RightBracket, "Expected ']' after array elements");
+    array->location = SourceRange(startToken.location.start, previous().location.end());
     return array;
 }
 
-Expression* Parser::parseCallExpression(Expression* callee) {
-    auto* call = arena.make<CallExpr>();
-    call->callee = callee;
-    consume(TokenKind::LeftParen);
-
-    std::vector<Expression*> args;
-    while (!check(TokenKind::RightParen) && !tokens.at_end()) {
-        if (auto* arg = parseExpression()) {
-            args.push_back(arg);
-        }
-        if (!consume(TokenKind::Comma)) break;
-    }
-    call->arguments = arena.makeList(args);
-    
-    expect(TokenKind::RightParen, "Expected ')' after arguments");
-    return call;
-}
-
 Expression* Parser::parseNewExpression() {
+    auto startToken = tokens.current();
     auto* newExpr = arena.make<NewExpr>();
     consume(TokenKind::New);
 
     newExpr->type = parseTypeRef();
-    if (!newExpr->type) {
-        newExpr->type = errorType("Expected type after 'new'");
-    }
+    if (!newExpr->type) newExpr->type = errorType("Expected type after 'new'");
 
     if (check(TokenKind::LeftParen)) {
         consume(TokenKind::LeftParen);
         std::vector<Expression*> args;
         while (!check(TokenKind::RightParen) && !tokens.at_end()) {
-            if (auto* arg = parseExpression()) {
-                args.push_back(arg);
-            }
+            if (auto* arg = parseExpression()) args.push_back(arg);
             if (!consume(TokenKind::Comma)) break;
         }
         newExpr->arguments = arena.makeList(args);
@@ -1195,10 +1319,12 @@ Expression* Parser::parseNewExpression() {
     } else {
         newExpr->arguments = arena.emptyList<Expression*>();
     }
+    newExpr->location = SourceRange(startToken.location.start, previous().location.end());
     return newExpr;
 }
 
 Expression* Parser::parseLambdaExpression() {
+    auto startToken = tokens.current();
     auto* lambda = arena.make<LambdaExpr>();
     
     if (check(TokenKind::LeftParen)) {
@@ -1206,6 +1332,7 @@ Expression* Parser::parseLambdaExpression() {
         std::vector<ParameterDecl*> params;
         while (!check(TokenKind::RightParen) && !tokens.at_end()) {
             auto* param = arena.make<ParameterDecl>();
+            auto paramStart = tokens.current();
             param->param = parseTypedIdentifier();
             if (!param->param) {
                 auto* ti = arena.make<TypedIdentifier>();
@@ -1214,20 +1341,23 @@ Expression* Parser::parseLambdaExpression() {
                 param->param = ti;
             }
             param->defaultValue = nullptr;
+            param->location = SourceRange(paramStart.location.start, previous().location.end());
             params.push_back(param);
             if (!consume(TokenKind::Comma)) break;
         }
         lambda->parameters = arena.makeList(params);
         expect(TokenKind::RightParen, "Expected ')' after lambda parameters");
     } else {
-        // Single parameter lambda: x => ...
         std::vector<ParameterDecl*> params;
         auto* param = arena.make<ParameterDecl>();
+        auto paramStart = tokens.current();
         auto* ti = arena.make<TypedIdentifier>();
-        ti->type = nullptr; // Inferred
+        ti->type = nullptr;
         ti->name = parseIdentifier();
+        ti->location = ti->name->location;
         param->param = ti;
         param->defaultValue = nullptr;
+        param->location = paramStart.location;
         params.push_back(param);
         lambda->parameters = arena.makeList(params);
     }
@@ -1241,12 +1371,15 @@ Expression* Parser::parseLambdaExpression() {
         if (!expr) expr = errorExpr("Expected lambda body");
         auto* exprStmt = arena.make<ExpressionStmt>();
         exprStmt->expression = expr;
+        exprStmt->location = expr->location;
         lambda->body = exprStmt;
     }
+    lambda->location = SourceRange(startToken.location.start, previous().location.end());
     return lambda;
 }
 
 Expression* Parser::parseMatchExpression() {
+    auto startToken = tokens.current();
     auto* match = arena.make<MatchExpr>();
     consume(TokenKind::Match);
     expect(TokenKind::LeftParen, "Expected '(' after 'match'");
@@ -1267,10 +1400,12 @@ Expression* Parser::parseMatchExpression() {
     match->arms = arena.makeList(arms);
     
     expect(TokenKind::RightBrace, "Expected '}' after match arms");
+    match->location = SourceRange(startToken.location.start, previous().location.end());
     return match;
 }
 
 MatchArm* Parser::parseMatchArm() {
+    auto startToken = tokens.current();
     auto* arm = arena.make<MatchArm>();
     arm->pattern = parsePattern();
     if (!arm->pattern) {
@@ -1282,29 +1417,25 @@ MatchArm* Parser::parseMatchArm() {
 
     expect(TokenKind::FatArrow, "Expected '=>' after pattern");
     
-    // Check if it's a block or expression
     if (check(TokenKind::LeftBrace)) {
-        // Block-style arm: parse as a block statement
         arm->result = parseBlock();
     } else {
-        // Expression-style arm: parse expression and wrap in ExpressionStmt
         auto* expr = parseExpression();
-        if (!expr) {
-            expr = errorExpr("Expected match arm result");
-        }
+        if (!expr) expr = errorExpr("Expected match arm result");
         auto* exprStmt = arena.make<ExpressionStmt>();
         exprStmt->expression = expr;
+        exprStmt->location = expr->location;
         arm->result = exprStmt;
     }
     
-    if (!arm->result) {
-        arm->result = errorStmt("Expected match arm result");
-    }
+    if (!arm->result) arm->result = errorStmt("Expected match arm result");
     
+    arm->location = SourceRange(startToken.location.start, previous().location.end());
     return arm;
 }
 
 Expression* Parser::parseTypeOfExpression() {
+    auto startToken = tokens.current();
     auto* typeOf = arena.make<TypeOfExpr>();
     consume(TokenKind::Typeof);
     expect(TokenKind::LeftParen, "Expected '(' after 'typeof'");
@@ -1313,10 +1444,12 @@ Expression* Parser::parseTypeOfExpression() {
     if (!typeOf->type) typeOf->type = errorType("Expected type");
     
     expect(TokenKind::RightParen, "Expected ')' after type");
+    typeOf->location = SourceRange(startToken.location.start, previous().location.end());
     return typeOf;
 }
 
 Expression* Parser::parseSizeOfExpression() {
+    auto startToken = tokens.current();
     auto* sizeOf = arena.make<SizeOfExpr>();
     consume(TokenKind::Sizeof);
     expect(TokenKind::LeftParen, "Expected '(' after 'sizeof'");
@@ -1325,12 +1458,14 @@ Expression* Parser::parseSizeOfExpression() {
     if (!sizeOf->type) sizeOf->type = errorType("Expected type");
     
     expect(TokenKind::RightParen, "Expected ')' after type");
+    sizeOf->location = SourceRange(startToken.location.start, previous().location.end());
     return sizeOf;
 }
 
 // ================== Types ==================
 
 TypeRef* Parser::parseTypeRef() {
+    auto startToken = tokens.current();
     if (check(TokenKind::Fn)) {
         return parseFunctionType();
     }
@@ -1348,11 +1483,13 @@ TypeRef* Parser::parseTypeRef() {
             expect(TokenKind::RightBracket, "Expected ']' for array type");
             auto* arrayType = arena.make<ArrayTypeRef>();
             arrayType->elementType = currentType;
+            arrayType->location = SourceRange(startToken.location.start, previous().location.end());
             currentType = arrayType;
         } else if (check(TokenKind::Question)) {
             tokens.advance();
             auto* nullableType = arena.make<NullableTypeRef>();
             nullableType->innerType = currentType;
+            nullableType->location = SourceRange(startToken.location.start, previous().location.end());
             currentType = nullableType;
         } else {
             break;
@@ -1365,6 +1502,7 @@ NamedTypeRef* Parser::parseNamedType() {
     if (!check(TokenKind::Identifier)) {
         return nullptr;
     }
+    auto startToken = tokens.current();
     auto* type = arena.make<NamedTypeRef>();
     
     std::vector<Identifier*> path;
@@ -1378,15 +1516,17 @@ NamedTypeRef* Parser::parseNamedType() {
     } else {
         type->genericArgs = arena.emptyList<TypeRef*>();
     }
+    type->location = SourceRange(startToken.location.start, previous().location.end());
     return type;
 }
 
 FunctionTypeRef* Parser::parseFunctionType() {
+    auto startToken = tokens.current();
     auto* type = arena.make<FunctionTypeRef>();
     consume(TokenKind::Fn);
 
     if (check(TokenKind::Less)) {
-        parseGenericArguments(); // Skipped for now
+        parseGenericArguments(); 
     }
 
     expect(TokenKind::LeftParen, "Expected '(' for function type");
@@ -1405,20 +1545,14 @@ FunctionTypeRef* Parser::parseFunctionType() {
     } else {
         type->returnType = nullptr;
     }
+    type->location = SourceRange(startToken.location.start, previous().location.end());
     return type;
 }
 
 // ================== Patterns ==================
 
 Pattern* Parser::parsePattern() {
-    if (tokens.current().is_literal()) {
-        auto* pattern = arena.make<LiteralPattern>();
-        pattern->literal = static_cast<LiteralExpr*>(parseLiteral());
-        return pattern;
-    }
-    if (checkAny({TokenKind::DotDot, TokenKind::DotDotEquals})) {
-        return parseRangePattern();
-    }
+    auto startToken = tokens.current();
     if (consume(TokenKind::In)) {
         auto* pattern = arena.make<InPattern>();
         pattern->innerPattern = parsePattern();
@@ -1427,9 +1561,28 @@ Pattern* Parser::parsePattern() {
             binding->name = nullptr;
             pattern->innerPattern = binding;
         }
+        pattern->location = SourceRange(startToken.location.start, previous().location.end());
         return pattern;
     }
-    if (check(TokenKind::Dot) || (check(TokenKind::Identifier) && peekNext() == TokenKind::Dot)) {
+    
+    auto checkpoint = tokens.checkpoint();
+    Expression* start = nullptr;
+    
+    if (tokens.current().is_literal()) start = parseLiteral();
+    
+    if (checkAny({TokenKind::DotDot, TokenKind::DotDotEquals})) {
+        tokens.restore(checkpoint);
+        return parseRangePattern();
+    }
+    
+    if (start) {
+        tokens.restore(checkpoint);
+        auto* pattern = arena.make<LiteralPattern>();
+        pattern->literal = static_cast<LiteralExpr*>(parseLiteral());
+        pattern->location = pattern->literal->location;
+        return pattern;
+    }
+    if (check(TokenKind::Identifier) && peekNext() == TokenKind::Dot) {
         return parseEnumPattern();
     }
     if (checkAny({TokenKind::Less, TokenKind::Greater, TokenKind::LessEqual, TokenKind::GreaterEqual})) {
@@ -1440,8 +1593,10 @@ Pattern* Parser::parsePattern() {
         if (check(TokenKind::Underscore)) {
             pattern->name = nullptr;
             tokens.advance();
+            pattern->location = startToken.location;
         } else {
             pattern->name = parseIdentifier();
+            pattern->location = pattern->name->location;
         }
         return pattern;
     }
@@ -1449,6 +1604,7 @@ Pattern* Parser::parsePattern() {
 }
 
 Pattern* Parser::parseRangePattern() {
+    auto startToken = tokens.current();
     auto* pattern = arena.make<RangePattern>();
     
     if (!checkAny({TokenKind::DotDot, TokenKind::DotDotEquals})) {
@@ -1468,20 +1624,19 @@ Pattern* Parser::parseRangePattern() {
     } else {
         pattern->end = nullptr;
     }
+    pattern->location = SourceRange(startToken.location.start, previous().location.end());
     return pattern;
 }
 
 Pattern* Parser::parseEnumPattern() {
+    auto startToken = tokens.current();
     auto* pattern = arena.make<EnumPattern>();
     std::vector<Identifier*> path;
     
-    if (consume(TokenKind::Dot)) {
+    do {
         path.push_back(parseIdentifier());
-    } else {
-        do {
-            path.push_back(parseIdentifier());
-        } while (consume(TokenKind::Dot));
-    }
+    } while (consume(TokenKind::Dot));
+    
     pattern->path = arena.makeList(path);
     
     if (check(TokenKind::LeftParen)) {
@@ -1498,10 +1653,12 @@ Pattern* Parser::parseEnumPattern() {
     } else {
         pattern->argumentPatterns = arena.emptyList<Pattern*>();
     }
+    pattern->location = SourceRange(startToken.location.start, previous().location.end());
     return pattern;
 }
 
 Pattern* Parser::parseComparisonPattern() {
+    auto startToken = tokens.current();
     auto* pattern = arena.make<ComparisonPattern>();
     Token op = tokens.current();
     tokens.advance();
@@ -1518,6 +1675,7 @@ Pattern* Parser::parseComparisonPattern() {
     if (!pattern->value) {
         pattern->value = errorExpr("Expected value after comparison operator");
     }
+    pattern->location = SourceRange(startToken.location.start, pattern->value->location.end());
     return pattern;
 }
 
@@ -1526,14 +1684,19 @@ Pattern* Parser::parseComparisonPattern() {
 Identifier* Parser::parseIdentifier() {
     if (!check(TokenKind::Identifier)) {
         error("Expected identifier");
-        return arena.makeIdentifier("");
+        auto* id = arena.makeIdentifier("");
+        id->location = tokens.current().location;
+        return id;
     }
-    auto* id = arena.makeIdentifier(tokens.current().text);
+    auto tok = tokens.current();
+    auto* id = arena.makeIdentifier(tok.text);
+    id->location = tok.location;
     tokens.advance();
     return id;
 }
 
 TypedIdentifier* Parser::parseTypedIdentifier() {
+    auto startToken = tokens.current();
     auto* ti = arena.make<TypedIdentifier>();
     if (consume(TokenKind::Var)) {
         ti->type = nullptr;
@@ -1546,6 +1709,7 @@ TypedIdentifier* Parser::parseTypedIdentifier() {
         }
         ti->name = parseIdentifier();
     }
+    ti->location = SourceRange(startToken.location.start, previous().location.end());
     return ti;
 }
 
@@ -1559,6 +1723,7 @@ List<GenericParamDecl*> Parser::parseGenericParams() {
         auto* param = arena.make<GenericParamDecl>();
         param->name = parseIdentifier();
         param->constraints = arena.emptyList<TypeConstraint*>();
+        param->location = param->name->location;
         params.push_back(param);
         if (!consume(TokenKind::Comma)) break;
     }
@@ -1587,6 +1752,7 @@ List<ParameterDecl*> Parser::parseParameterList() {
     
     std::vector<ParameterDecl*> params;
     while (!check(TokenKind::RightParen) && !tokens.at_end()) {
+        auto startToken = tokens.current();
         auto* param = arena.make<ParameterDecl>();
         param->param = parseTypedIdentifier();
         if (!param->param) {
@@ -1601,6 +1767,7 @@ List<ParameterDecl*> Parser::parseParameterList() {
         } else {
             param->defaultValue = nullptr;
         }
+        param->location = SourceRange(startToken.location.start, previous().location.end());
         params.push_back(param);
         if (!consume(TokenKind::Comma)) break;
     }
@@ -1631,19 +1798,21 @@ void Parser::parseWhereConstraints(List<GenericParamDecl*> params) {
         
         std::vector<TypeConstraint*> constraints;
         do {
+            auto constraintStart = tokens.current();
             if (check(TokenKind::Ref)) {
                 consume(TokenKind::Ref);
                 expect(TokenKind::Type, "Expected 'type' after 'ref' in constraint");
                 auto* kindConstraint = arena.make<TypeKindConstraint>();
                 kindConstraint->kind = TypeKindConstraint::Kind::RefType;
+                kindConstraint->location = SourceRange(constraintStart.location.start, previous().location.end());
                 constraints.push_back(kindConstraint);
             } else if (check(TokenKind::Type)) {
                 consume(TokenKind::Type);
                 auto* kindConstraint = arena.make<TypeKindConstraint>();
                 kindConstraint->kind = TypeKindConstraint::Kind::ValueType;
+                kindConstraint->location = SourceRange(constraintStart.location.start, previous().location.end());
                 constraints.push_back(kindConstraint);
-            }
-            if (consume(TokenKind::New)) {
+            } else if (consume(TokenKind::New)) {
                 auto* ctorConstraint = arena.make<ConstructorConstraint>();
                 if (check(TokenKind::LeftParen)) {
                     tokens.advance();
@@ -1657,6 +1826,7 @@ void Parser::parseWhereConstraints(List<GenericParamDecl*> params) {
                 } else {
                     ctorConstraint->parameterTypes = arena.emptyList<TypeRef*>();
                 }
+                ctorConstraint->location = SourceRange(constraintStart.location.start, previous().location.end());
                 constraints.push_back(ctorConstraint);
             } else {
                 auto* baseConstraint = arena.make<BaseTypeConstraint>();
@@ -1664,6 +1834,7 @@ void Parser::parseWhereConstraints(List<GenericParamDecl*> params) {
                 if (!baseConstraint->baseType) {
                     baseConstraint->baseType = errorType("Expected constraint type");
                 }
+                baseConstraint->location = SourceRange(constraintStart.location.start, previous().location.end());
                 constraints.push_back(baseConstraint);
             }
         } while (consume(TokenKind::Comma));
@@ -1689,4 +1860,4 @@ bool Parser::isPatternTerminator() {
                      TokenKind::RightParen, TokenKind::RightBrace});
 }
 
-} // namespace Myre::AST
+} // namespace Myre

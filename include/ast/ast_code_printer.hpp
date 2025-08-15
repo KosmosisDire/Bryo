@@ -38,22 +38,8 @@ private:
         output << "\n";
     }
 
-    void print_modifiers(const ModifierSet& modifiers) {
-        switch (modifiers.access) {
-            case ModifierSet::Access::Public:    emit("public "); break;
-            case ModifierSet::Access::Protected: emit("protected "); break;
-            case ModifierSet::Access::Private:   emit("private "); break;
-            case ModifierSet::Access::Internal:  emit("internal "); break;
-            default: break;
-        }
-        if (modifiers.isStatic)   emit("static ");
-        if (modifiers.isVirtual)  emit("virtual ");
-        if (modifiers.isAbstract) emit("abstract ");
-        if (modifiers.isOverride) emit("override ");
-        if (modifiers.isRef)      emit("ref ");
-        if (modifiers.isEnforced) emit("enforced ");
-        if (modifiers.isInherit)  emit("inherit ");
-        if (modifiers.isReadonly) emit("readonly ");
+    void print_modifiers(const ModifierKindFlags& modifiers) {
+        emit(to_string(modifiers) + " ");
     }
     
     void print_body(Statement* body) {

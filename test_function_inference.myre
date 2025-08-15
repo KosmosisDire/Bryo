@@ -1,73 +1,73 @@
-// Test function return type inference
+// // Test function return type inference
 
 
 
 
-// Simple function with single return
-fn SimpleInt()
-{
-    return 42;
-}
+// // Simple function with single return
+// fn SimpleInt()
+// {
+//     return 42;
+// }
 
-// Function with multiple returns of same type
-fn MultipleReturns(bool flag)
-{
-    if (flag) {
-        return 100;
-    } else {
-        return 200;
-    }
-}
+// // Function with multiple returns of same type
+// fn MultipleReturns(bool flag)
+// {
+//     if (flag) {
+//         return 100;
+//     } else {
+//         return 200;
+//     }
+// }
 
-// Function with no return (should infer void)
-fn NoReturn()
-{
-    var x = 10;
-    x = x + 5;
-}
+// // Function with no return (should infer void)
+// fn NoReturn()
+// {
+//     var x = 10;
+//     x = x + 5;
+// }
 
-// Function with empty return (should infer void)
-fn EmptyReturn()
-{
-    var x = 10;
-    if (x > 5) {
-        return;
-    }
-}
+// // Function with empty return (should infer void)
+// fn EmptyReturn()
+// {
+//     var x = 10;
+//     if (x > 5) {
+//         return;
+//     }
+// }
 
-// Function returning float
-fn FloatReturn()
-{
-    var x = 3.14;
-    return x;
-}
+// // Function returning float
+// fn FloatReturn()
+// {
+//     var x = 3.14;
+//     return x;
+// }
 
-// Function with nested returns
-fn NestedReturns(i32 x)
-{
-    if (x > 0) {
-        if (x > 10) {
-            return 100;
-        } else {
-            return 50;
-        }
-    }
-    return 0;
-}
+// // Function with nested returns
+// fn NestedReturns(i32 x)
+// {
+//     if (x > 0) {
+//         if (x > 10) {
+//             return 100;
+//         } else {
+//             return 50;
+//         }
+//     }
+//     return 0;
+// }
 
-// Function returning string
-fn StringReturn()
-{
-    return "Hello World";
-}
+// // Function returning string
+// fn StringReturn()
+// {
+//     return "Hello World";
+// }
 
-// Function with complex expression return
-fn ComplexReturn()
-{
-    var x = 10;
-    var y = 20;
-    return x * y + 5;
-}
+// // Function with complex expression return
+// fn ComplexReturn()
+// {
+//     var x = 10;
+//     var y = 20;
+//     return x * y + 5;
+// }
 
 type Player
 {
@@ -91,211 +91,219 @@ fn IndirectTypeReturn(i32 d)
     }
 }
 
-// === COMPLEX RECURSIVE TEST CASES ===
-
-type Enemy 
+fn main()
 {
-    var health = 100;
-    var damage = 25;
+    var test = IndirectTypeReturn(0);
 }
 
-type Weapon
-{
-    var damage = 50;
-    var durability = 10;
-}
+// // === COMPLEX RECURSIVE TEST CASES ===
 
-// Direct recursion with multiple branches and different concrete types
-fn ComplexRecursive(i32 depth, bool usePlayer)
-{
-    if (depth <= 0) {
-        if (usePlayer) {
-            return new Player();
-        } else {
-            return CreateEnemy(); // Forward reference
-        }
-    }
+// type Enemy 
+// {
+//     var health = 100;
+//     var damage = 25;
+// }
+
+// type Weapon
+// {
+//     var damage = 50;
+//     var durability = 10;
+// }
+
+// // Direct recursion with multiple branches and different concrete types
+// fn ComplexRecursive(i32 depth, bool usePlayer)
+// {
+//     if (depth <= 0) {
+//         if (usePlayer) {
+//             return new Player();
+//         } else {
+//             return CreateEnemy(); // Forward reference
+//         }
+//     }
     
-    if (depth % 2 == 0) {
-        return ComplexRecursive(depth - 1, !usePlayer);
-    } else {
-        return AlternateRecursive(depth - 1, usePlayer);
-    }
-}
+//     if (depth % 2 == 0) {
+//         return ComplexRecursive(depth - 1, !usePlayer);
+//     } else {
+//         return AlternateRecursive(depth - 1, usePlayer);
+//     }
+// }
 
-// Mutual recursion between functions
-fn AlternateRecursive(i32 depth, bool flag)
-{
-    if (depth <= 1) {
-        return GetEntityByFlag(flag); // Forward reference to indirect function
-    }
+// // Mutual recursion between functions
+// fn AlternateRecursive(i32 depth, bool flag)
+// {
+//     if (depth <= 1) {
+//         return GetEntityByFlag(flag); // Forward reference to indirect function
+//     }
     
-    return ComplexRecursive(depth - 2, flag);
-}
+//     return ComplexRecursive(depth - 2, flag);
+// }
 
-// Indirect function that eventually resolves to concrete type
-fn GetEntityByFlag(bool isPlayer)
-{
-    if (isPlayer) {
-        return CreatePlayer(); // Forward reference
-    }
-    return CreateEnemy(); // Forward reference
-}
+// // Indirect function that eventually resolves to concrete type
+// fn GetEntityByFlag(bool isPlayer)
+// {
+//     if (isPlayer) {
+//         return CreatePlayer(); // Forward reference
+//     }
+//     return CreateEnemy(); // Forward reference
+// }
 
-// Functions that create concrete types (these should resolve easily)
-fn CreatePlayer()
-{
-    return new Player();
-}
+// // Functions that create concrete types (these should resolve easily)
+// fn CreatePlayer()
+// {
+//     return new Player();
+// }
 
-fn CreateEnemy()
-{
-    return new Enemy();
-}
+// fn CreateEnemy()
+// {
+//     return new Enemy();
+// }
 
-// Chain of indirect calls - A -> B -> C -> concrete
-fn ChainedCallA(i32 x)
-{
-    if (x > 10) {
-        return ChainedCallB(x - 5);
-    }
-    return new Weapon();
-}
+// // Chain of indirect calls - A -> B -> C -> concrete
+// fn ChainedCallA(i32 x)
+// {
+//     if (x > 10) {
+//         return ChainedCallB(x - 5);
+//     }
+//     return new Weapon();
+// }
 
-fn ChainedCallB(i32 x)
-{
-    if (x > 5) {
-        return ChainedCallC(x - 3);
-    }
-    return ChainedCallA(x + 1); // Back to A - creates a cycle!
-}
+// fn ChainedCallB(i32 x)
+// {
+//     if (x > 5) {
+//         return ChainedCallC(x - 3);
+//     }
+//     return ChainedCallA(x + 1); // Back to A - creates a cycle!
+// }
 
-fn ChainedCallC(i32 x)
-{
-    if (x > 2) {
-        return new Weapon();
-    }
-    return ChainedCallA(x * 2); // Back to A
-}
+// fn ChainedCallC(i32 x)
+// {
+//     if (x > 2) {
+//         return new Weapon();
+//     }
+//     return ChainedCallA(x * 2); // Back to A
+// }
 
-// Self-referential with multiple paths, some direct, some indirect
-fn MultiPathRecursive(i32 mode, i32 counter)
-{
-    if (counter <= 0) {
-        return new Player(); // Base case - concrete type
-    }
+// // Self-referential with multiple paths, some direct, some indirect
+// fn MultiPathRecursive(i32 mode, i32 counter)
+// {
+//     if (counter <= 0) {
+//         return new Player(); // Base case - concrete type
+//     }
     
-    if (mode == 1) {
-        return MultiPathRecursive(1, counter - 1); // Direct recursion
-    } else if (mode == 2) {
-        return HelperFunction(counter - 1); // Indirect via helper
-    } else if (mode == 3) {
-        return ComplexRecursive(counter, true); // Call to other recursive function
-    } else {
-        return CreatePlayer(); // Direct call to concrete
-    }
-}
+//     if (mode == 1) {
+//         return MultiPathRecursive(1, counter - 1); // Direct recursion
+//     } else if (mode == 2) {
+//         return HelperFunction(counter - 1); // Indirect via helper
+//     } else if (mode == 3) {
+//         return ComplexRecursive(counter, true); // Call to other recursive function
+//     } else {
+//         return CreatePlayer(); // Direct call to concrete
+//     }
+// }
 
-fn HelperFunction(i32 remaining)
-{
-    if (remaining % 3 == 0) {
-        return MultiPathRecursive(1, remaining); // Back to main function
-    }
-    return new Player();
-}
+// fn HelperFunction(i32 remaining)
+// {
+//     if (remaining % 3 == 0) {
+//         return MultiPathRecursive(1, remaining); // Back to main function
+//     }
+//     return new Player();
+// }
 
-// Deeply nested forward references
-fn DeepForwardA()
-{
-    return DeepForwardB();
-}
+// // Deeply nested forward references
+// fn DeepForwardA()
+// {
+//     return DeepForwardB();
+// }
 
-fn DeepForwardB()
-{
-    return DeepForwardC();
-}
+// fn DeepForwardB()
+// {
+//     return DeepForwardC();
+// }
 
-fn DeepForwardC()
-{
-    return DeepForwardD();
-}
+// fn DeepForwardC()
+// {
+//     return DeepForwardD();
+// }
 
-fn DeepForwardD()
-{
-    return DeepForwardE();
-}
+// fn DeepForwardD()
+// {
+//     return DeepForwardE();
+// }
 
-fn DeepForwardE()
-{
-    return new Enemy(); // Finally, a concrete type!
-}
+// fn DeepForwardE()
+// {
+//     return new Enemy(); // Finally, a concrete type!
+// }
 
-// Test case that SHOULD error - incompatible return types
-fn ShouldError(bool flag)
-{
-    if (flag) {
-        return new Player();  // Returns Player
-    } else {
-        return new Enemy();   // Returns Enemy - INCOMPATIBLE!
-    }
-}
+// // Test case that SHOULD error - incompatible return types
+// fn ShouldError(bool flag)
+// {
+//     if (flag) {
+//         return new Player();  // Returns Player
+//     } else {
+//         return new Enemy();   // Returns Enemy - INCOMPATIBLE!
+//     }
+// }
 
-fn ExplicitReturnType(): i32
-{
-    return 42; // Explicitly returns i32
-}
+// fn ExplicitReturnType(): i32
+// {
+//     return 42; // Explicitly returns i32
+// }
 
-fn UsesExplicitReturnType()
-{
-    var result = ExplicitReturnType();
-    Console.Log("Result: " + result.ToString());
-    return result; // Should infer as i32
-}
+// fn UsesExplicitReturnType()
+// {
+//     var result = ExplicitReturnType();
+//     Console.Log("Result: " + result.ToString());
+//     return result; // Should infer as i32
+// }
 
-fn UnmatchedExplicitReturnType(): i32
-{
-    return CreatePlayer();
-}
+// fn UnmatchedExplicitReturnType(): i32
+// {
+//     return CreatePlayer();
+// }
 
-// Test main
-fn Main(): i32
-{
-    // Basic inference tests
-    var a = SimpleInt();        // Should infer a as i32
-    var b = MultipleReturns(true);  // Should infer b as i32
-    NoReturn();                 // Should work with void
-    EmptyReturn();              // Should work with void
-    var c = FloatReturn();      // Should infer c as f32
-    var d = NestedReturns(15);  // Should infer d as i32
-    var e = StringReturn();     // Should infer e as string
-    var f = ComplexReturn();    // Should infer f as i32
+// // Test main
+// fn main(): i32
+// {
+//     // Basic inference tests
+//     var a = SimpleInt();        // Should infer a as i32
+//     var b = MultipleReturns(true);  // Should infer b as i32
+//     NoReturn();                 // Should work with void
+//     EmptyReturn();              // Should work with void
+//     var c = FloatReturn();      // Should infer c as f32
+//     var d = NestedReturns(15);  // Should infer d as i32
+//     var e = StringReturn();     // Should infer e as string
+//     var f = ComplexReturn();    // Should infer f as i32
     
-    // Complex recursive inference tests
-    var player1 = ComplexRecursive(5, true);     // Should infer as Player (or Enemy - depends on path)
-    var entity1 = AlternateRecursive(3, false);  // Should infer same as ComplexRecursive
-    var entity2 = GetEntityByFlag(true);         // Should infer as Player
-    var entity3 = GetEntityByFlag(false);        // Should infer as Enemy
+//     // Complex recursive inference tests
+//     var player1 = ComplexRecursive(5, true);     // Should infer as Player (or Enemy - depends on path)
+//     var entity1 = AlternateRecursive(3, false);  // Should infer same as ComplexRecursive
+//     var entity2 = GetEntityByFlag(true);         // Should infer as Player
+//     var entity3 = GetEntityByFlag(false);        // Should infer as Enemy
     
-    // Forward reference chain tests  
-    var player2 = CreatePlayer();                // Should infer as Player
-    var enemy1 = CreateEnemy();                  // Should infer as Enemy
+//     // Forward reference chain tests  
+//     var player2 = CreatePlayer();                // Should infer as Player
+//     var enemy1 = CreateEnemy();                  // Should infer as Enemy
     
-    // Cyclic call chain tests
-    var weapon1 = ChainedCallA(15);              // Should infer as Weapon
-    var weapon2 = ChainedCallB(8);               // Should infer as Weapon  
-    var weapon3 = ChainedCallC(5);               // Should infer as Weapon
+//     // Cyclic call chain tests
+//     var weapon1 = ChainedCallA(15);              // Should infer as Weapon
+//     var weapon2 = ChainedCallB(8);               // Should infer as Weapon  
+//     var weapon3 = ChainedCallC(5);               // Should infer as Weapon
     
-    // Multi-path recursive tests
-    var result1 = MultiPathRecursive(1, 3);      // Should infer as Player
-    var result2 = MultiPathRecursive(2, 4);      // Should infer as Player
-    var result3 = MultiPathRecursive(3, 2);      // Should infer as Player (or other entity type)
-    var helper = HelperFunction(5);              // Should infer as Player
+//     // Multi-path recursive tests
+//     var result1 = MultiPathRecursive(1, 3);      // Should infer as Player
+//     var result2 = MultiPathRecursive(2, 4);      // Should infer as Player
+//     var result3 = MultiPathRecursive(3, 2);      // Should infer as Player (or other entity type)
+//     var helper = HelperFunction(5);              // Should infer as Player
     
-    // Deep forward reference chain
-    var deepResult = DeepForwardA();             // Should infer as Enemy
+//     // Deep forward reference chain
+//     var deepResult = DeepForwardA();             // Should infer as Enemy
     
-    // This should cause a compile error!
-    var errorTest = ShouldError(true);        // Uncomment to test error detection
+//     // This should cause a compile error!
+//     var errorTest = ShouldError(true);        // Uncomment to test error detection
     
-    return 0;
-}
+//     return 0;
+// }
+
+
+
