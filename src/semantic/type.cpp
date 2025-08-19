@@ -1,10 +1,13 @@
 #include "semantic/type.hpp"
 #include "semantic/symbol.hpp"
 
-namespace Myre {
+namespace Myre
+{
 
-std::string Type::get_name() const {
-    return std::visit([](const auto& v) -> std::string {
+    std::string Type::get_name() const
+    {
+        return std::visit([](const auto &v) -> std::string
+                          {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, PrimitiveType>) {
             switch (v.kind) {
@@ -27,9 +30,6 @@ std::string Type::get_name() const {
             return "unknown";
         } else if constexpr (std::is_same_v<T, TypeReference>) {
             return v.definition ? v.definition->name() : "unknown";
-        } else if constexpr (std::is_same_v<T, GenericInstance>) {
-            // TODO: Build full generic name like "List<Player>"
-            return "generic"; // Placeholder
         } else if constexpr (std::is_same_v<T, ArrayType>) {
             return "array";
         } else if constexpr (std::is_same_v<T, FunctionType>) {
@@ -37,12 +37,13 @@ std::string Type::get_name() const {
         } else if constexpr (std::is_same_v<T, UnresolvedType>) {
             return "var:" + std::to_string(v.id);
         }
-        return "unknown";
-    }, value);
-}
+        return "unknown"; }, value);
+    }
 
-bool Type::is_value_type() const {
-    return std::visit([](const auto& v) -> bool {
+    bool Type::is_value_type() const
+    {
+        return std::visit([](const auto &v) -> bool
+                          {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, PrimitiveType>) {
             // All primitives are value types
@@ -52,28 +53,21 @@ bool Type::is_value_type() const {
                 return !v.definition->has_modifier(SymbolModifiers::Ref);
             }
             return true; // Default to value type if definition is missing
-        } else if constexpr (std::is_same_v<T, GenericInstance>) {
-            if (v.genericDefinition) {
-                return !v.genericDefinition->has_modifier(SymbolModifiers::Ref);
-            }
-            return true; // Default to value type if definition is missing
         } else {
             return false; // Arrays, functions are reference types
-        }
-    }, value);
-}
+        } }, value);
+    }
 
-TypeLikeSymbol* Type::get_type_symbol() const {
-    return std::visit([](const auto& v) -> TypeLikeSymbol* {
+    TypeLikeSymbol *Type::get_type_symbol() const
+    {
+        return std::visit([](const auto &v) -> TypeLikeSymbol *
+                          {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, TypeReference>) {
             return v.definition;
-        } else if constexpr (std::is_same_v<T, GenericInstance>) {
-            return v.genericDefinition;
         } else {
             return nullptr; // Primitives, arrays, functions don't have Symbol definitions
-        }
-    }, value);
-}
+        } }, value);
+    }
 
 } // namespace Myre

@@ -1,5 +1,4 @@
 #include "compiled_module.hpp"
-#include "jit.hpp"
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
@@ -8,9 +7,6 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/TargetParser/Host.h>
-#include <llvm/IR/Verifier.h>
-#include <llvm/Transforms/Utils/Cloning.h>
-#include <iostream>
 
 namespace Myre
 {
@@ -190,41 +186,6 @@ namespace Myre
         dest.flush();
 
         return true;
-    }
-
-    int CompiledModule::execute_jit()
-    {
-        if (!is_valid())
-        {
-            std::cerr << "Cannot execute: module is invalid\n";
-            for (const auto &error : errors)
-            {
-                std::cerr << "  - " << error << "\n";
-            }
-            return -1;
-        }
-
-        // Verify module before JIT execution
-        std::string verify_error;
-        llvm::raw_string_ostream error_stream(verify_error);
-        if (llvm::verifyModule(*module, &error_stream))
-        {
-            std::cerr << "Module verification failed:\n"
-                      << verify_error << "\n";
-            return -1;
-        }
-
-        JIT jit;
-
-        // Move ownership to JIT (this will invalidate our module/context pointers)
-        if (!jit.add_module(std::move(module), std::move(context)))
-        {
-            std::cerr << "Failed to add module to JIT\n";
-            return -1;
-        }
-
-        // Note: After this point, module and context are nullptr
-        return jit.run_main();
     }
 
 } // namespace Myre

@@ -33,7 +33,16 @@ int main(int argc, char* argv[])
     compiler.set_print_ast(true);
     compiler.set_print_symbols(true);
 
-    std::vector<std::string> filenames = {"simple.myre"};
+    // Use command line arguments if provided, otherwise default to simple.myre
+    std::vector<std::string> filenames;
+    if (argc > 1) {
+        for (int i = 1; i < argc; i++) {
+            filenames.push_back(argv[i]);
+        }
+    } else {
+        filenames = {"simple.myre"};
+    }
+    
     std::vector<SourceFile> source_files;
     for (const auto& filename : filenames)
     {
@@ -46,7 +55,7 @@ int main(int argc, char* argv[])
     if (result->is_valid())
     {
         result->dump_ir();
-        auto ret = result->execute_jit();
+        auto ret = result->execute_jit<float>("Main").value_or(-1.0f);
         std::cout << "JIT execution returned: " << ret << std::endl;
     }
     else

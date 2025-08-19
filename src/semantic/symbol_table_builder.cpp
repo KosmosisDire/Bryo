@@ -32,34 +32,56 @@ namespace Myre
         }
     }
 
-    std::string SymbolTableBuilder::path_to_string(List<Identifier *> path)
+    std::string SymbolTableBuilder::build_qualified_name(MemberAccessExpr *memberAccess)
     {
+        if (!memberAccess)
+            return "";
+
         std::string result;
-        for (size_t i = 0; i < path.size(); ++i)
+
+        // Recursively build from nested member access
+        if (auto *nestedMember = memberAccess->object->as<MemberAccessExpr>())
         {
-            if (i > 0)
-                result += ".";
-            result += std::string(path[i]->text);
+            result = build_qualified_name(nestedMember) + ".";
         }
+        // Or get the base name
+        else if (auto *name = memberAccess->object->as<NameExpr>())
+        {
+            result = name->get_name() + ".";
+        }
+
+        // Add the member name
+        if (memberAccess->member)
+        {
+            result += memberAccess->member->text;
+        }
+
         return result;
     }
 
-    TypePtr SymbolTableBuilder::resolve_type(TypeRef *typeRef)
+    TypePtr SymbolTableBuilder::create_unresolved_type(Expression *typeExpr)
     {
-        if (!typeRef)
-            return typeSystem.get_unresolved_type();
+        // CRITICAL: Ensure type expression gets its containing scope set
+        // This is needed because type expressions may not be visited through normal visitor traversal
+        if (typeExpr)
+        {
+            annotate_scope(typeExpr);
+            // Mark this as a type expression to avoid treating it as a value expression later
+            typeExpr->isTypeExpression = true;
+            // Also visit children of the type expression to ensure they get scope annotation
+            typeExpr->accept(this);
+        }
 
-        if (auto *named = typeRef->as<NamedTypeRef>())
+        // SymbolTableBuilder should NOT resolve any types - just create unresolved types
+        // All type resolution happens later in TypeResolver
+        auto unresolved = typeSystem.get_unresolved_type();
+        if (typeExpr && std::get_if<UnresolvedType>(&unresolved->value))
         {
-            return symbolTable.resolve_type_name(path_to_string(named->path));
+            auto& unresolvedVar = unresolved->as<UnresolvedType>();
+            unresolvedVar.typeName = typeExpr;
+            unresolvedVar.definingScope = get_current_handle();
         }
-        else if (auto *array = typeRef->as<ArrayTypeRef>())
-        {
-            auto elemType = resolve_type(array->elementType);
-            return typeSystem.get_array_type(elemType);
-        }
-        // Add more type resolution as needed
-        return typeSystem.get_unresolved_type();
+        return unresolved;
     }
 
     void SymbolTableBuilder::collect(CompilationUnit *unit)
@@ -73,7 +95,6 @@ namespace Myre
     void SymbolTableBuilder::visit(Node *node)
     {
         annotate_scope(node);
-        DefaultVisitor::visit(node);
     }
 
     void SymbolTableBuilder::visit(CompilationUnit *node)
@@ -94,10 +115,23 @@ namespace Myre
     {
         annotate_scope(node);
 
-        if (node->path.empty())
+        if (!node->name)
             return;
 
-        std::string ns_name = path_to_string(node->path);
+        std::string ns_name;
+        // Handle single name or qualified name
+        if (auto *name = node->name->as<NameExpr>())
+        {
+            ns_name = name->get_name();
+        }
+        else if (auto *member = node->name->as<MemberAccessExpr>())
+        {
+            ns_name = build_qualified_name(member);
+        }
+        else
+        {
+            return; // Invalid namespace name
+        }
 
         // Check for file-scoped namespace restrictions
         if (node->isFileScoped && symbolTable.get_current_namespace() &&
@@ -160,26 +194,16 @@ namespace Myre
 
         std::string func_name(node->name->text);
 
-        // Build parameter types
-        std::vector<TypePtr> param_types;
-        for (auto *param : node->parameters)
-        {
-            if (param && param->param)
-            {
-                param_types.push_back(resolve_type(param->param->type));
-            }
-        }
-
         // Get return type
-        TypePtr return_type = resolve_type(node->returnType);
+        TypePtr return_type = create_unresolved_type(node->returnType);
 
         // Enter function scope
-        auto *func_symbol = symbolTable.enter_function(func_name, return_type, param_types);
+        auto *func_symbol = symbolTable.enter_function(func_name, return_type);
         node->functionSymbol = func_symbol->handle;
 
-        if (std::holds_alternative<UnresolvedType>(return_type->value))
+        if (return_type->is<UnresolvedType>())
         {
-            auto &unresolved = std::get<UnresolvedType>(return_type->value);
+            auto &unresolved = return_type->as<UnresolvedType>();
             unresolved.body = node->body;                   // Set the function body for analysis
             unresolved.definingScope = func_symbol->handle; // Set the scope to the function itself
         }
@@ -204,20 +228,27 @@ namespace Myre
 
         func_symbol->set_access(AccessLevel::Public);
 
-        // Add parameters to function scope
+        // Add parameters to function scope and visit ParameterDecl nodes
+        auto parameters = std::vector<SymbolHandle>(node->parameters.size());
         for (size_t i = 0; i < node->parameters.size(); ++i)
         {
             auto *param = node->parameters[i];
             if (param && param->param && param->param->name)
             {
                 std::string param_name(param->param->name->text);
-                auto *param_symbol = symbolTable.define_parameter(param_name, param_types[i]);
+                auto *param_symbol = symbolTable.define_parameter(param_name, create_unresolved_type(param->param->type));
                 if (!param_symbol)
                 {
                     errors.push_back("Parameter '" + param_name + "' already defined in function scope");
                 }
+
+                parameters[i] = param_symbol->handle;
+
+                // Visit the ParameterDecl node to annotate it with scope
+                param->accept(this);
             }
         }
+        func_symbol->set_parameters(std::move(parameters));
 
         // Visit function body
         if (node->body)
@@ -235,12 +266,12 @@ namespace Myre
         if (!node->variable)
             return;
 
-        TypePtr var_type = resolve_type(node->variable->type);
+        TypePtr var_type = create_unresolved_type(node->variable->type);
 
         // Handle type inference
-        if (std::holds_alternative<UnresolvedType>(var_type->value))
+        if (var_type->is<UnresolvedType>())
         {
-            auto &unresolved = std::get<UnresolvedType>(var_type->value);
+            auto &unresolved = var_type->as<UnresolvedType>();
             unresolved.initializer = node->initializer;
             unresolved.definingScope = get_current_handle();
         }
@@ -256,92 +287,51 @@ namespace Myre
             }
         }
 
-        // Continue visiting children
-        DefaultVisitor::visit(node);
+        // Manually visit initializer (variable->name and variable->type are handled by create_unresolved_type)
+        if (node->initializer)
+        {
+            node->initializer->accept(this);
+        }
     }
 
-    void SymbolTableBuilder::visit(MemberVariableDecl *node)
+    void SymbolTableBuilder::visit(PropertyDecl *node)
     {
         annotate_scope(node);
 
-        if (!node->name)
+        if (!node->variable || !node->variable->variable || !node->variable->variable->name)
             return;
 
-        std::string name(node->name->text);
-        TypePtr type = resolve_type(node->type);
+        std::string name(node->variable->variable->name->text);
+        TypePtr type = create_unresolved_type(node->variable->variable->type);
 
-        // Determine if this is a field or property
+        if (type->is<UnresolvedType>())
+        {
+            auto &unresolved = type->as<UnresolvedType>();
+            unresolved.initializer = node->variable->initializer;
+        }
+
+        auto *prop_symbol = symbolTable.enter_property(name, type);
+        if (!prop_symbol)
+        {
+            errors.push_back("Property '" + name + "' already defined in current scope");
+            return;
+        }
+
+        // Apply modifiers
+        if (has_flag(node->modifiers, ModifierKindFlags::Static))
+        {
+            prop_symbol->add_modifier(SymbolModifiers::Static);
+        }
+        prop_symbol->set_access(AccessLevel::Public);
+
+        // Visit accessors if they exist
         if (node->getter || node->setter)
         {
-            // It's a property
-            auto *prop_symbol = symbolTable.enter_property(name, type);
-
-            if (!prop_symbol)
-            {
-                errors.push_back("Property '" + name + "' already defined in current scope");
-                // NOTE: A property scope is entered, so we must exit even on error.
-                // Depending on implementation, you might want to return here.
-                // For now, assume we continue and exit at the end.
-            }
-            else
-            {
-                // Apply modifiers
-                if (has_flag(node->modifiers, ModifierKindFlags::Static))
-                {
-                    prop_symbol->add_modifier(SymbolModifiers::Static);
-                }
-                if (has_flag(node->modifiers, ModifierKindFlags::Virtual))
-                {
-                    prop_symbol->add_modifier(SymbolModifiers::Virtual);
-                }
-                if (has_flag(node->modifiers, ModifierKindFlags::Override))
-                {
-                    prop_symbol->add_modifier(SymbolModifiers::Override);
-                }
-                prop_symbol->set_access(AccessLevel::Public);
-            }
-
-            // Visit accessors
-            if (node->getter)
-            {
-                visit_property_accessor(node->getter, type);
-            }
-            if (node->setter)
-            {
-                visit_property_accessor(node->setter, type);
-            }
-
-            symbolTable.exit_scope();
-        }
-        else
-        {
-            // It's a field
-            if (std::holds_alternative<UnresolvedType>(type->value))
-            {
-                auto &unresolved = std::get<UnresolvedType>(type->value);
-                unresolved.initializer = node->initializer;
-                unresolved.definingScope = get_current_handle();
-            }
-
-            auto *field_symbol = symbolTable.define_field(name, type);
-
-            if (!field_symbol)
-            {
-                errors.push_back("Field '" + name + "' already defined in current scope");
-            }
-            else
-            {
-                // Apply modifiers
-                if (has_flag(node->modifiers, ModifierKindFlags::Static))
-                {
-                    field_symbol->add_modifier(SymbolModifiers::Static);
-                }
-                field_symbol->set_access(AccessLevel::Public);
-            }
+            visit_property_accessor(node->getter, type);
+            visit_property_accessor(node->setter, type);
         }
 
-        // Continue visiting children (initializer expression, etc.)
-        DefaultVisitor::visit(node);
+        symbolTable.exit_scope();
     }
 
     void SymbolTableBuilder::visit_property_accessor(PropertyAccessor *accessor, TypePtr propType)
@@ -392,7 +382,7 @@ namespace Myre
         {
             if (param && param->param)
             {
-                params.push_back(resolve_type(param->param->type));
+                params.push_back(create_unresolved_type(param->param->type));
             }
         }
 
@@ -402,8 +392,16 @@ namespace Myre
             errors.push_back("Enum case '" + case_name + "' already defined");
         }
 
-        // Continue visiting children
-        DefaultVisitor::visit(node);
+        // Manually visit name and associated data (already handled by create_unresolved_type above)
+        if (node->name)
+        {
+            node->name->accept(this);
+        }
+        for (auto *param : node->associatedData)
+        {
+            if (param)
+                param->accept(this);
+        }
     }
 
     void SymbolTableBuilder::visit(Block *node)
@@ -461,56 +459,6 @@ namespace Myre
             if (update)
                 update->accept(this);
         }
-        if (node->body)
-        {
-            if (auto *block = node->body->as<Block>())
-            {
-                visit_block_contents(block);
-            }
-            else
-            {
-                node->body->accept(this);
-            }
-        }
-
-        symbolTable.exit_scope();
-    }
-
-    void SymbolTableBuilder::visit(ForInStmt *node)
-    {
-        annotate_scope(node);
-
-        auto *forin_scope = symbolTable.enter_block("for-in");
-
-        // Define loop variable
-        if (node->iterator && node->iterator->name)
-        {
-            std::string iter_name(node->iterator->name->text);
-            TypePtr iter_type = resolve_type(node->iterator->type);
-
-            auto *iter_symbol = symbolTable.define_variable(iter_name, iter_type);
-            if (!iter_symbol)
-            {
-                errors.push_back("For-in iterator '" + iter_name + "' already defined");
-            }
-        }
-
-        // Define index variable if present
-        if (node->indexVar && node->indexVar->name)
-        {
-            std::string idx_name(node->indexVar->name->text);
-            TypePtr idx_type = resolve_type(node->indexVar->type);
-
-            auto *idx_symbol = symbolTable.define_variable(idx_name, idx_type);
-            if (!idx_symbol)
-            {
-                errors.push_back("For-in index '" + idx_name + "' already defined");
-            }
-        }
-
-        // Visit iterable and body
-        if (node->iterable)
-            node->iterable->accept(this);
         if (node->body)
         {
             if (auto *block = node->body->as<Block>())

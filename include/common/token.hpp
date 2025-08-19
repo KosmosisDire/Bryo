@@ -64,8 +64,6 @@ namespace Myre
         Override,
         Abstract,
         Extern,
-        Enforced,
-        Inherit,
         Ref,
 
         // Other keywords
@@ -176,8 +174,6 @@ namespace Myre
         Override = (int)TokenKind::Override,
         Abstract = (int)TokenKind::Abstract,
         Extern = (int)TokenKind::Extern,
-        Enforced = (int)TokenKind::Enforced,
-        Inherit = (int)TokenKind::Inherit,
         This = (int)TokenKind::This,
         Where = (int)TokenKind::Where,
         Using = (int)TokenKind::Using,
@@ -255,8 +251,6 @@ namespace Myre
         Override = 1 << 6,
         Abstract = 1 << 7,
         Extern = 1 << 8,
-        Enforced = 1 << 9,
-        Inherit = 1 << 10,
         Invalid = 1 << 11
     };
 
@@ -264,22 +258,19 @@ namespace Myre
     inline ModifierKindFlags operator|(ModifierKindFlags lhs, ModifierKindFlags rhs)
     {
         return static_cast<ModifierKindFlags>(
-            static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)
-        );
+            static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
     }
 
     inline ModifierKindFlags operator&(ModifierKindFlags lhs, ModifierKindFlags rhs)
     {
         return static_cast<ModifierKindFlags>(
-            static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)
-        );
+            static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs));
     }
 
     inline ModifierKindFlags operator^(ModifierKindFlags lhs, ModifierKindFlags rhs)
     {
         return static_cast<ModifierKindFlags>(
-            static_cast<uint32_t>(lhs) ^ static_cast<uint32_t>(rhs)
-        );
+            static_cast<uint32_t>(lhs) ^ static_cast<uint32_t>(rhs));
     }
 
     inline ModifierKindFlags operator~(ModifierKindFlags flags)
@@ -287,19 +278,19 @@ namespace Myre
         return static_cast<ModifierKindFlags>(~static_cast<uint32_t>(flags));
     }
 
-    inline ModifierKindFlags& operator|=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    inline ModifierKindFlags &operator|=(ModifierKindFlags &lhs, ModifierKindFlags rhs)
     {
         lhs = lhs | rhs;
         return lhs;
     }
 
-    inline ModifierKindFlags& operator&=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    inline ModifierKindFlags &operator&=(ModifierKindFlags &lhs, ModifierKindFlags rhs)
     {
         lhs = lhs & rhs;
         return lhs;
     }
 
-    inline ModifierKindFlags& operator^=(ModifierKindFlags& lhs, ModifierKindFlags rhs)
+    inline ModifierKindFlags &operator^=(ModifierKindFlags &lhs, ModifierKindFlags rhs)
     {
         lhs = lhs ^ rhs;
         return lhs;
@@ -614,9 +605,12 @@ namespace Myre
         bool first = true;
 
         // Helper lambda to check and append flag
-        auto check_and_append = [&](ModifierKindFlags flag, const char* name) {
-            if (has_flag(flags, flag)) {
-                if (!first) result += " ";
+        auto check_and_append = [&](ModifierKindFlags flag, const char *name)
+        {
+            if (has_flag(flags, flag))
+            {
+                if (!first)
+                    result += " ";
                 result += name;
                 first = false;
             }
@@ -632,8 +626,6 @@ namespace Myre
         check_and_append(ModifierKindFlags::Override, "override");
         check_and_append(ModifierKindFlags::Abstract, "abstract");
         check_and_append(ModifierKindFlags::Extern, "extern");
-        check_and_append(ModifierKindFlags::Enforced, "enforced");
-        check_and_append(ModifierKindFlags::Inherit, "inherit");
 
         return result.empty() ? "unknown modifier" : result;
     }
@@ -670,7 +662,7 @@ namespace Myre
     {
         std::string_view text;               // Text of the token (for debugging)
         TokenKind kind;                      // What type of token
-        SourceRange location;             // Absolute position in source
+        SourceRange location;                // Absolute position in source
         std::vector<Trivia> leading_trivia;  // Whitespace/comments before token
         std::vector<Trivia> trailing_trivia; // Whitespace/comments after token
 
@@ -736,8 +728,6 @@ namespace Myre
             case TokenKind::Override:
             case TokenKind::Abstract:
             case TokenKind::Extern:
-            case TokenKind::Enforced:
-            case TokenKind::Inherit:
                 return true;
             default:
                 return false;
@@ -783,30 +773,26 @@ namespace Myre
             switch (kind)
             {
             case TokenKind::Public:
-            return ModifierKindFlags::Public;
+                return ModifierKindFlags::Public;
             case TokenKind::Private:
-            return ModifierKindFlags::Private;
+                return ModifierKindFlags::Private;
             case TokenKind::Protected:
-            return ModifierKindFlags::Protected;
+                return ModifierKindFlags::Protected;
             case TokenKind::Static:
-            return ModifierKindFlags::Static;
+                return ModifierKindFlags::Static;
             case TokenKind::Ref:
-            return ModifierKindFlags::Ref;
+                return ModifierKindFlags::Ref;
             case TokenKind::Virtual:
-            return ModifierKindFlags::Virtual;
+                return ModifierKindFlags::Virtual;
             case TokenKind::Override:
-            return ModifierKindFlags::Override;
+                return ModifierKindFlags::Override;
             case TokenKind::Abstract:
-            return ModifierKindFlags::Abstract;
+                return ModifierKindFlags::Abstract;
             case TokenKind::Extern:
-            return ModifierKindFlags::Extern;
-            case TokenKind::Enforced:
-            return ModifierKindFlags::Enforced;
-            case TokenKind::Inherit:
-            return ModifierKindFlags::Inherit;
+                return ModifierKindFlags::Extern;
             default:
-            assert(false && "Invalid modifier token kind");
-            return ModifierKindFlags::Invalid;
+                assert(false && "Invalid modifier token kind");
+                return ModifierKindFlags::Invalid;
             }
         }
 
@@ -834,16 +820,16 @@ namespace Myre
         enum Precedence : int
         {
             PREC_NONE,
-            PREC_ASSIGNMENT,      // =, +=, -=, etc.
-            PREC_TERNARY,         // ?:
-            PREC_LOGICAL_OR,      // ||
-            PREC_LOGICAL_AND,     // &&
-            PREC_BITWISE_OR,      // |
-            PREC_BITWISE_XOR,     // ^
-            PREC_BITWISE_AND,     // &
-            PREC_EQUALITY,        // ==, !=
-            PREC_RELATIONAL,      // <, >, <=, >=
-            PREC_RANGE,           // .., ..=
+            PREC_ASSIGNMENT,     // =, +=, -=, etc.
+            PREC_TERNARY,        // ?:
+            PREC_LOGICAL_OR,     // ||
+            PREC_LOGICAL_AND,    // &&
+            PREC_BITWISE_OR,     // |
+            PREC_BITWISE_XOR,    // ^
+            PREC_BITWISE_AND,    // &
+            PREC_EQUALITY,       // ==, !=
+            PREC_RELATIONAL,     // <, >, <=, >=
+            PREC_RANGE,          // .., ..=
             PREC_SHIFT,          // <<, >>
             PREC_ADDITIVE,       // +, -
             PREC_MULTIPLICATIVE, // *, /, %
@@ -1087,8 +1073,6 @@ namespace Myre
             case TokenKind::Override:
             case TokenKind::Abstract:
             case TokenKind::Extern:
-            case TokenKind::Enforced:
-            case TokenKind::Inherit:
             case TokenKind::Ref:
                 return true;
             default:
@@ -1142,14 +1126,12 @@ namespace Myre
             {"override", TokenKind::Override},
             {"abstract", TokenKind::Abstract},
             {"extern", TokenKind::Extern},
-            {"enforced", TokenKind::Enforced},
             {"this", TokenKind::This},
             {"using", TokenKind::Using},
             {"namespace", TokenKind::Namespace},
             {"typeof", TokenKind::Typeof},
             {"sizeof", TokenKind::Sizeof},
             {"where", TokenKind::Where},
-            {"inherit", TokenKind::Inherit},
             {"in", TokenKind::In},
             {"at", TokenKind::At},
             {"by", TokenKind::By},

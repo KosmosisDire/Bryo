@@ -806,5 +806,5 @@ namespace Myre
 
         return TokenStream(std::move(tokens));
     }
-    
+
 } // namespace Myre

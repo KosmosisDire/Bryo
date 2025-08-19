@@ -53,7 +53,6 @@ private:
     void warning(const std::string& msg);
     ErrorExpression* errorExpr(const std::string& msg);
     ErrorStatement* errorStmt(const std::string& msg);
-    ErrorTypeRef* errorType(const std::string& msg);
     void synchronize();
 
     // ================== Context Management ==================
@@ -102,11 +101,9 @@ private:
     EnumCaseDecl* parseEnumCase();
     FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
     ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
-    InheritFunctionDecl* parseInheritFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
     Declaration* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
-    Declaration* parseTypedMemberDeclaration(ModifierKindFlags modifiers, TypeRef* type, const Token& startToken);
-    MemberVariableDecl* parseMemberVariableDecl(ModifierKindFlags modifiers, TypeRef* type, bool isVar, const Token& startToken);
-    void parsePropertyAccessors(MemberVariableDecl* prop);
+    Declaration* parseTypedMemberDeclaration(ModifierKindFlags modifiers, Expression* type, const Token& startToken);
+    void parsePropertyAccessors(PropertyDecl* prop);
     NamespaceDecl* parseNamespaceDecl(const Token& startToken);
 
     // ================== Statements ==================
@@ -116,7 +113,6 @@ private:
     WhileStmt* parseWhileStatement();
     Statement* parseForStatement();
     ForStmt* parseTraditionalForStatement();
-    ForInStmt* parseForInStatement();
     ReturnStmt* parseReturnStatement();
     BreakStmt* parseBreakStatement();
     ContinueStmt* parseContinueStatement();
@@ -129,37 +125,25 @@ private:
     Expression* parsePrimaryExpression();
     Expression* parsePostfixExpression(Expression* expr);
     Expression* parseUnaryExpression();
-    Expression* parseRangeExpression(Expression* start);
     Expression* parseLiteral();
     Expression* parseNameExpression();
     Expression* parseParenthesizedOrLambda();
     Expression* parseArrayLiteral();
     Expression* parseNewExpression();
     Expression* parseLambdaExpression();
-    Expression* parseMatchExpression();
-    MatchArm* parseMatchArm();
     Expression* parseTypeOfExpression();
     Expression* parseSizeOfExpression();
 
-    // ================== Types ==================
-    TypeRef* parseTypeRef();
-    NamedTypeRef* parseNamedType();
-    FunctionTypeRef* parseFunctionType();
-
-    // ================== Patterns ==================
-    Pattern* parsePattern();
-    Pattern* parseRangePattern();
-    Pattern* parseEnumPattern();
-    Pattern* parseComparisonPattern();
-
     // ================== Helper Functions ==================
+    // Note: Type parsing now uses parseExpression() directly!
+    // - parseTypeExpression() REMOVED - use parseExpression() 
+    // - parseArrayTypeExpression() REMOVED - use postfix [] parsing
+    // - parseFunctionTypeExpression() REMOVED - use lambda expression parsing
+    
     Identifier* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();
-    List<GenericParamDecl*> parseGenericParams();
-    List<TypeRef*> parseGenericArguments();
     List<ParameterDecl*> parseParameterList();
-    List<TypeRef*> parseBaseTypeList();
-    void parseWhereConstraints(List<GenericParamDecl*> params);
+    List<Expression*> parseBaseTypeList();  // Uses parseExpression() internally
 };
 
 } // namespace Myre

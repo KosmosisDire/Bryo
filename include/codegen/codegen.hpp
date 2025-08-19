@@ -16,159 +16,160 @@
 #include <string>
 #include <memory>
 
-namespace Myre {
+namespace Myre
+{
 
-/**
- * @struct CodeGenError
- * @brief Represents a single error that occurred during code generation.
- */
-struct CodeGenError {
-    std::string message;
-    SourceRange location;
+    /**
+     * @struct CodeGenError
+     * @brief Represents a single error that occurred during code generation.
+     */
+    struct CodeGenError
+    {
+        std::string message;
+        SourceRange location;
 
-    std::string to_string() const {
-        return "Error at " + std::to_string(location.start.line) + ":" +
-               std::to_string(location.start.column) + " - " + message;
-    }
-};
-
-class CodeGenerator : public DefaultVisitor {
-private:
-    // LLVM core objects
-    llvm::LLVMContext* context;
-    std::unique_ptr<llvm::Module> module;
-    std::unique_ptr<llvm::IRBuilder<>> builder;
-    
-    // Symbol table reference
-    SymbolTable& symbol_table;
-    
-    // Current function being generated
-    llvm::Function* current_function = nullptr;
-    
-    // Local variable storage (Symbol* -> alloca instruction)
-    std::unordered_map<ScopeNode*, llvm::Value*> locals;
-    
-    // Local variable types (Symbol* -> LLVM type)
-    // Required for LLVM 19+ opaque pointers
-    std::unordered_map<ScopeNode*, llvm::Type*> local_types;
-    
-    // Type cache to avoid recreating LLVM types
-    std::unordered_map<TypePtr, llvm::Type*> type_cache;
-    
-    // Stack for expression evaluation
-    std::stack<llvm::Value*> value_stack;
-    
-    // Track which functions have been declared
-    std::unordered_set<std::string> declared_functions;
-    
-    // Error tracking
-    std::vector<CodeGenError> errors;
-    
-    // === Helper Methods ===
-    
-    // Error reporting
-    void report_error(const Node* node, const std::string& message);
-    void report_general_error(const std::string& message);
-
-    // Type conversion
-    llvm::Type* get_llvm_type(TypePtr type);
-    llvm::Type* get_llvm_type_from_ref(TypeRef* type_ref);
-    
-    // Stack management
-    void push_value(llvm::Value* val);
-    llvm::Value* pop_value();
-    
-    // Constants
-    llvm::Value* create_constant(LiteralExpr* literal);
-    
-    // Function utilities
-    void ensure_terminator();
-    llvm::Function* declare_function_from_symbol(FunctionSymbol* func_symbol);
-    
-    // Symbol table traversal
-    void declare_all_functions_in_scope(Scope* scope);
-    
-    // Get symbol from node's resolved handle
-    Scope* get_containing_scope(Node* node);
-    
-    // Build qualified name from name expression
-    std::string build_qualified_name(NameExpr* name_expr);
-    
-public:
-    CodeGenerator(SymbolTable& st, const std::string& module_name, llvm::LLVMContext* ctx)
-        : symbol_table(st), context(ctx) {
-        module = std::make_unique<llvm::Module>(module_name, *context);
-        builder = std::make_unique<llvm::IRBuilder<>>(*context);
-    }
-    
-    // === Main API ===
-    
-    // Generate code for a compilation unit
-    std::unique_ptr<llvm::Module> generate(CompilationUnit* unit);
-    
-    // Multi-file support: declare all functions then generate bodies
-    void declare_all_functions();
-    void generate_definitions(CompilationUnit* unit);
-    
-    // Release ownership of the module
-    std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
-    
-    // Get errors
-    const std::vector<CodeGenError>& get_errors() const { return errors; }
-    
-    // === Visitor Methods (override from DefaultVisitor) ===
-    
-    // Root
-    void visit(CompilationUnit* node) override;
-    
-    // Declarations
-    void visit(NamespaceDecl* node) override;
-    void visit(FunctionDecl* node) override;
-    void visit(VariableDecl* node) override;
-    void visit(ParameterDecl* node) override;
-    void visit(TypeDecl* node) override;
-    
-    // Statements
-    void visit(Block* node) override;
-    void visit(ExpressionStmt* node) override;
-    void visit(ReturnStmt* node) override;
-    void visit(WhileStmt* node) override;
-    void visit(ForStmt* node) override;
-    void visit(ForInStmt* node) override;
-    void visit(BreakStmt* node) override;
-    void visit(ContinueStmt* node) override;
-    
-    // Expressions  
-    void visit(BinaryExpr* node) override;
-    void visit(UnaryExpr* node) override;
-    void visit(AssignmentExpr* node) override;
-    void visit(CallExpr* node) override;
-    void visit(NameExpr* node) override;
-    void visit(LiteralExpr* node) override;
-    void visit(IfExpr* node) override;
-    void visit(ConditionalExpr* node) override;
-    
-    // Error handling
-    void visit(ErrorExpression* node) override;
-    void visit(ErrorStatement* node) override;
-    void visit(ErrorTypeRef* node) override;
-    
-    // Default handlers for unsupported nodes
-    void visit(Expression* node) override {
-        report_error(node, "Codegen for this expression type is not yet implemented.");
-    }
-    
-    void visit(Statement* node) override {
-        if (auto* decl = dynamic_cast<Declaration*>(node)) {
-             visit(decl);
-        } else {
-             report_error(node, "Codegen for this statement type is not yet implemented.");
+        std::string to_string() const
+        {
+            if (location.start.line > 0)
+            {
+                return "Error at " + std::to_string(location.start.line) + ":" +
+                       std::to_string(location.start.column) + " - " + message;
+            }
+            return "General Error - " + message;
         }
-    }
-    
-    void visit(Declaration* node) override {
-        report_error(node, "Codegen for this declaration type is not yet implemented.");
-    }
-};
+    };
+
+    class CodeGenerator : public Visitor
+    {
+    private:
+        // LLVM core objects
+        llvm::LLVMContext *context;
+        std::unique_ptr<llvm::Module> module;
+        std::unique_ptr<llvm::IRBuilder<>> builder;
+
+        // Symbol table reference
+        SymbolTable &symbol_table;
+
+        // Current function being generated
+        llvm::Function *current_function = nullptr;
+
+        // Local variable storage (Symbol* -> alloca instruction)
+        std::unordered_map<ScopeNode *, llvm::Value *> locals;
+
+        // Local variable types (Symbol* -> LLVM type)
+        std::unordered_map<ScopeNode *, llvm::Type *> local_types;
+
+        // Type cache to avoid recreating LLVM types
+        std::unordered_map<TypePtr, llvm::Type *> type_cache;
+
+        // Cache for user-defined struct types (TypeSymbol -> llvm::Type)
+        std::unordered_map<TypeSymbol *, llvm::Type *> defined_types;
+
+        // Stack for expression evaluation
+        std::stack<llvm::Value *> value_stack;
+
+        // Track which functions have been declared
+        std::unordered_set<std::string> declared_functions;
+
+        // Error tracking
+        std::vector<CodeGenError> errors;
+
+        // === Helper Methods ===
+        void debug_print_module_state(const std::string& phase);
+        void report_error(const Node *node, const std::string &message);
+        void report_general_error(const std::string &message);
+        llvm::Type *get_llvm_type(TypePtr type);
+        void push_value(llvm::Value *val);
+        llvm::Value *pop_value();
+        llvm::Value *create_constant(LiteralExpr *literal);
+        void ensure_terminator();
+        Scope *get_containing_scope(Node *node);
+        std::string build_qualified_name(NameExpr *name_expr);
+
+        // --- Pre-declaration passes ---
+        void declare_all_types_in_scope(Scope *scope);
+        void declare_all_functions_in_scope(Scope *scope);
+        llvm::Function *declare_function_from_symbol(FunctionSymbol *func_symbol);
+        void generate_property_getter(PropertyDecl *prop_decl, TypeSymbol *type_symbol, llvm::StructType *struct_type);
+
+    public:
+        CodeGenerator(SymbolTable &st, const std::string &module_name, llvm::LLVMContext *ctx)
+            : symbol_table(st), context(ctx)
+        {
+            module = std::make_unique<llvm::Module>(module_name, *context);
+            builder = std::make_unique<llvm::IRBuilder<>>(*context);
+        }
+
+        // === Main API ===
+
+        std::unique_ptr<llvm::Module> generate(CompilationUnit *unit);
+        void declare_all_functions();
+        void declare_all_types();
+        void generate_definitions(CompilationUnit *unit);
+        std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
+        const std::vector<CodeGenError> &get_errors() const { return errors; }
+
+        // === Visitor Method Overrides ===
+
+        void visit(Node *node) override;
+        void visit(Expression *node) override;
+        void visit(Statement *node) override;
+        void visit(Declaration *node) override;
+
+        // Root
+        void visit(CompilationUnit *node) override;
+
+        // Declarations
+        void visit(NamespaceDecl *node) override;
+        void visit(TypeDecl *node) override;
+        void visit(FunctionDecl *node) override;
+        void visit(VariableDecl *node) override;
+        void visit(PropertyDecl *node) override;
+        void visit(ParameterDecl *node) override;
+
+        // Statements
+        void visit(Block *node) override;
+        void visit(ExpressionStmt *node) override;
+        void visit(ReturnStmt *node) override;
+
+        // Expressions
+        void visit(BinaryExpr *node) override;
+        void visit(UnaryExpr *node) override;
+        void visit(AssignmentExpr *node) override;
+        void visit(CallExpr *node) override;
+        void visit(NameExpr *node) override;
+        void visit(LiteralExpr *node) override;
+        void visit(NewExpr *node) override;
+        void visit(Identifier *node) override;
+
+        // Errors
+        void visit(ErrorExpression *node) override;
+        void visit(ErrorStatement *node) override;
+
+        // --- Unimplemented visitors will be caught by the base overrides ---
+        void visit(TypedIdentifier *n) override {}
+        void visit(ArrayLiteralExpr *n) override;
+        void visit(MemberAccessExpr *n) override;
+        void visit(IndexerExpr *n) override;
+        void visit(CastExpr *n) override;
+        void visit(ThisExpr *n) override;
+        void visit(LambdaExpr *n) override;
+        void visit(ConditionalExpr *n) override;
+        void visit(TypeOfExpr *n) override;
+        void visit(SizeOfExpr *n) override;
+        void visit(IfExpr *n) override;
+        void visit(BreakStmt *n) override;
+        void visit(ContinueStmt *n) override;
+        void visit(WhileStmt *n) override;
+        void visit(ForStmt *n) override;
+        void visit(UsingDirective *n) override;
+        void visit(ConstructorDecl *n) override;
+        void visit(PropertyAccessor *n) override;
+        void visit(EnumCaseDecl *n) override;
+
+        // Type expressions (now regular expressions) - treated as regular expressions
+        void visit(ArrayTypeExpr *n) override;
+        void visit(FunctionTypeExpr *n) override;
+    };
 
 } // namespace Myre

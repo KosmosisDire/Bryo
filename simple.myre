@@ -1,54 +1,152 @@
-// Check if a number is prime by testing divisibility
-fn IsPrime(i32 n)
+// Physics simulation test - projectile motion calculator
+
+type Point
 {
-    if (n < 2) {
-        return 0;  // 0 means false
+    f32 x;
+    f32 y;
+
+    f32 Length => Sqrt(x * x + y * y);
+
+    fn Sub(Point other)
+    {
+        return new Point(x - other.x, y - other.y);
+    }
+
+    fn DistanceTo(Point other)
+    {
+        return Sub(other).Length;
+    }
+}
+
+fn CalculateFlightTime(f32 velocity, f32 angleDeg, f32 gravity)
+{
+    // Convert angle to simplified calculation (sin(45°) ≈ 0.707)
+    var sinAngle = 0.707;
+    if (angleDeg < 30.0)
+    {
+        sinAngle = 0.5;
+    }
+    if (angleDeg > 60.0)
+    {
+        sinAngle = 0.866;
     }
     
-    // Check divisibility up to sqrt(n), approximated by n/2
-    for (var d = 2; d < n; d = d + 1) {
-        if (d * d > n) {
-            return 1;  // Early exit optimization
-        }
+    var verticalVelocity = velocity * sinAngle;
+    return 2.0 * verticalVelocity / gravity;
+}
+
+fn CalculateRange(f32 velocity, f32 angleDeg, f32 gravity)
+{
+    // Simplified range calculation
+    var velocitySquared = velocity * velocity;
+    var rangeFactor = 1.0; // sin(2θ) approximation
+    
+    if (angleDeg < 30.0)
+    {
+        rangeFactor = 0.866;
+    }
+    if (angleDeg > 60.0)
+    {
+        rangeFactor = 0.866;
+    }
+    
+    return velocitySquared * rangeFactor / gravity;
+}
+
+fn CalculateMaxHeight(f32 velocity, f32 angleDeg, f32 gravity)
+{
+    var sinAngle = 0.707;
+    if (angleDeg < 30.0)
+    {
+        sinAngle = 0.5;
+    }
+    if (angleDeg > 60.0)
+    {
+        sinAngle = 0.866;
+    }
+    
+    var verticalVelocity = velocity * sinAngle;
+    return verticalVelocity * verticalVelocity / (2.0 * gravity);
+}
+
+fn CalculateHeight(f32 velocity, f32 angleDeg, f32 gravity, f32 x)
+{
+    // Calculate height at horizontal position x
+    var sinAngle = 0.707;
+    var cosAngle = 0.707;
+    
+    if (angleDeg < 30.0)
+    {
+        sinAngle = 0.5;
+        cosAngle = 0.866;
+    }
+    if (angleDeg > 60.0)
+    {
+        sinAngle = 0.866;
+        cosAngle = 0.5;
+    }
+    
+    var horizontalVelocity = velocity * cosAngle;
+    var verticalVelocity = velocity * sinAngle;
+    
+    if (horizontalVelocity > 0.001)
+    {
+        var time = x / horizontalVelocity;
+        var height = verticalVelocity * time - 0.5 * gravity * time * time;
         
-        // Check if n is divisible by d
-        var quotient = n / d;
-        if (quotient * d == n) {
-            return 0;  // Not prime
+        if (height < 0.0)
+        {
+            return 0.0;
         }
+        return height;
     }
-    return 1;  // 1 means true
+    return 0.0;
 }
 
-// Calculate the nth triangular number (1+2+3+...+n)
-fn Triangular(i32 n)
+fn Sqrt(f32 value)
 {
-    var sum = 0;
-    for (var i = 1; i <= n; i = i + 1) {
-        sum = sum + i;
+    // Simple square root approximation for testing
+    var x = value;
+    var y = 1.0;
+    var e = 0.00001; // accuracy
+    while (x - y > e)
+    {
+        x = (x + y) / 2.0;
+        y = value / x;
     }
-    return sum;
+    return x;
 }
 
-// Main function: Sum of primes below 100
-fn main()
+
+fn Main()
 {
-    var primeSum = 0;
-    var primeCount = 0;
-
-    // Find all primes below 100
-    for (var num = 2; num < 100; num = num + 1) {
-        if (IsPrime(num) == 1) {
-            primeSum = primeSum + num;
-            primeCount = primeCount + 1;
-        }
-    }
-
-    // Bonus calculation: Add the triangular number of the prime count
-    // This makes the result more interesting
-    var triangularBonus = Triangular(primeCount);
+    // Initial projectile parameters
+    f32 velocity = 25.0;    // m/s
+    f32 angle = 45.0;       // degrees
+    f32 gravity = 9.81;     // m/s²
     
-    var result = primeSum + triangularBonus;
-
-    return result;  // Returns 1060 (sum of primes below 100) + 300 (triangular of 25 primes) = 1360, then transformed to 720
+    // Calculate flight time and distance
+    var flightTime = CalculateFlightTime(velocity, angle, gravity);
+    var maxRange = CalculateRange(velocity, angle, gravity);
+    var maxHeight = CalculateMaxHeight(velocity, angle, gravity);
+    
+    // Create trajectory points
+    Point launchPoint;
+    launchPoint.x = 0.0;
+    launchPoint.y = 0.0;
+    
+    Point midPoint;
+    midPoint.x = maxRange / 2.0;
+    midPoint.y = CalculateHeight(velocity, angle, gravity, midPoint.x);
+    
+    Point landingPoint;
+    landingPoint.x = maxRange;
+    landingPoint.y = 0.0;
+    
+    // Calculate total trajectory length (approximate)
+    var firstHalf = launchPoint.DistanceTo(midPoint);
+    var secondHalf = midPoint.DistanceTo(landingPoint);
+    var totalDistance = firstHalf + secondHalf;
+    
+    return totalDistance + maxHeight * flightTime;
 }

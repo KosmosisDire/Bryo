@@ -71,7 +71,7 @@ namespace Myre
         // Check if there were any lexical errors
         bool has_errors() const { return error_count_ > 0; }
         size_t error_count() const { return error_count_; }
-        const std::vector<LexerDiagnostic>& get_diagnostics() const { return diagnostics_; }
+        const std::vector<LexerDiagnostic> &get_diagnostics() const { return diagnostics_; }
 
     private:
         // Core tokenization methods (now private - used internally by tokenize_all)

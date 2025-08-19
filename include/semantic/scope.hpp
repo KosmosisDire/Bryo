@@ -70,6 +70,22 @@ public:
     // Must be implemented by classes that inherit both ScopeNode and Scope
     virtual ScopeNode* as_scope_node() = 0;
     virtual const ScopeNode* as_scope_node() const = 0;
+
+    // Type checking (deferred to ScopeNode)
+    template<typename T>
+    T* scope_as() {
+        return as_scope_node()->as<T>();
+    }
+    
+    template<typename T>
+    const T* scope_as() const {
+        return as_scope_node()->as<T>();
+    }
+    
+    template<typename T>
+    bool scope_is() const {
+        return as_scope_node()->is<T>();
+    }
     
     virtual ~Scope() = default;
 };

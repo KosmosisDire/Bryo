@@ -3,6 +3,7 @@
 #include <sstream>
 #include <functional>
 #include <stdexcept>
+#include <assert.h>
 
 namespace Myre
 {
@@ -77,18 +78,16 @@ namespace Myre
         return ptr;
     }
 
-    FunctionSymbol *SymbolTable::enter_function(const std::string &name, TypePtr return_type,
-                                                std::vector<TypePtr> params)
+    FunctionSymbol *SymbolTable::enter_function(const std::string &name, TypePtr return_type)
     {
         auto sym = std::make_unique<FunctionSymbol>();
         sym->set_name(name);
         sym->set_return_type(return_type);
-        sym->set_parameter_types(std::move(params));
         sym->set_access(AccessLevel::Private);
         FunctionSymbol *ptr = sym.get();
 
         // Check if this function has an unresolved return type and needs inference
-        if (return_type && std::holds_alternative<UnresolvedType>(return_type->value))
+        if (return_type && return_type->is<UnresolvedType>())
         {
             unresolved_symbols.push_back(ptr);
         }
@@ -107,7 +106,7 @@ namespace Myre
         PropertySymbol *ptr = sym.get();
 
         // Check if this property has an unresolved type and needs inference
-        if (type && std::holds_alternative<UnresolvedType>(type->value))
+        if (type && type->is<UnresolvedType>())
         {
             unresolved_symbols.push_back(ptr);
         }
@@ -141,10 +140,11 @@ namespace Myre
         sym->set_name(name);
         sym->set_type(type);
         sym->set_access(AccessLevel::Private);
+        sym->is_field = current->is<TypeLikeSymbol>();
         VariableSymbol *ptr = sym.get();
 
         // Check if this symbol has an unresolved type and needs inference
-        if (type && std::holds_alternative<UnresolvedType>(type->value))
+        if (type && type->is<UnresolvedType>())
         {
             unresolved_symbols.push_back(ptr);
         }
@@ -162,25 +162,7 @@ namespace Myre
         ParameterSymbol *ptr = sym.get();
 
         // Check if this symbol has an unresolved type and needs inference
-        if (type && std::holds_alternative<UnresolvedType>(type->value))
-        {
-            unresolved_symbols.push_back(ptr);
-        }
-
-        add_child(name, std::move(sym));
-        return ptr;
-    }
-
-    FieldSymbol *SymbolTable::define_field(const std::string &name, TypePtr type)
-    {
-        auto sym = std::make_unique<FieldSymbol>();
-        sym->set_name(name);
-        sym->set_type(type);
-        sym->set_access(AccessLevel::Private);
-        FieldSymbol *ptr = sym.get();
-
-        // Check if this symbol has an unresolved type and needs inference
-        if (type && std::holds_alternative<UnresolvedType>(type->value))
+        if (type && type->is<UnresolvedType>())
         {
             unresolved_symbols.push_back(ptr);
         }
@@ -284,6 +266,10 @@ namespace Myre
 
     void SymbolTable::mark_symbol_resolved(Symbol *symbol)
     {
+        // if symbol has an unresolved type assert
+        assert(symbol->is<TypedSymbol>() && "Symbol is not typed");
+        assert(!symbol->as<TypedSymbol>()->type()->is<UnresolvedType>() && "Symbol type must be unresolved");
+
         auto it = std::find(unresolved_symbols.begin(), unresolved_symbols.end(), symbol);
         if (it != unresolved_symbols.end())
         {

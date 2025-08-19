@@ -1,0 +1,201 @@
+// Comprehensive TypeResolver Test
+// Tests all major AST node types and type resolution scenarios
+
+// === TYPE DECLARATIONS ===
+type Point
+{
+    f32 x;
+    f32 y;
+}
+
+type Rectangle  
+{
+    Point topLeft;
+    Point bottomRight;
+    f32 area => (bottomRight.x - topLeft.x) * (bottomRight.y - topLeft.y);
+}
+
+type Calculator
+{
+    f32 lastResult;
+    
+    fn Add(f32 a, f32 b)
+    {
+        lastResult = a + b;
+        return lastResult;
+    }
+    
+    fn GetLastResult()
+    {
+        return this.lastResult;
+    }
+}
+
+// === FUNCTION DECLARATIONS ===
+fn CreatePoint(f32 x, f32 y): Point
+{
+    var p = new Point();
+    p.x = x;
+    p.y = y;
+    return p;
+}
+
+fn TestArithmetic(): f32
+{
+    // Binary expressions with type checking
+    var a = 10;      // i32 literal
+    var b = 5.5;     // f32 literal
+    var c = true;    // bool literal
+    
+    // Unary expressions
+    var negA = -a;           // UnaryExpr: minus
+    var notC = !c;           // UnaryExpr: logical not
+    var posB = +b;           // UnaryExpr: plus
+    
+    // Binary expressions with different operators
+    var sum = a + a;         // Addition (i32 + i32)
+    var diff = b - 2.0;      // Subtraction (f32 - f32)
+    var product = a * 3;     // Multiplication (i32 * i32)
+    var quotient = b / 2.0;  // Division (f32 / f32)
+    
+    // Comparison operators (should return bool)
+    var isEqual = (a == 10);           // Equals
+    var isNotEqual = (b != 3.0);       // NotEquals
+    var isLess = (a < 15);             // LessThan
+    var isGreater = (b > 1.0);         // GreaterThan
+    var isLessEq = (a <= 10);          // LessThanOrEqual
+    var isGreaterEq = (b >= 5.0);      // GreaterThanOrEqual
+    
+    // Assignment expressions
+    a = 20;                  // Assignment
+    b += 1.5;               // Compound assignment
+    
+    return sum + diff;       // Return with expression
+}
+
+fn TestControlFlow(bool condition) 
+{
+    // If statements with conditions
+    if (condition)
+    {
+        var x = 1;
+        x = x + 1;
+    }
+    
+    // While loop
+    var counter = 0;
+    while (counter < 5)
+    {
+        counter = counter + 1;
+        if (counter == 3)
+        {
+            continue;        // Continue statement
+        }
+        if (counter > 4) 
+        {
+            break;           // Break statement  
+        }
+    }
+    
+    // For loop
+    for (var i = 0; i < 10; i = i + 1)
+    {
+        var temp = i * 2;
+        // Nested if in for loop
+        if (temp > 10)
+        {
+            return;          // Return statement (void)
+        }
+    }
+}
+
+fn TestMemberAccess(): f32
+{
+    // NewExpr: object creation
+    var point = new Point();
+    var calc = new Calculator();
+    
+    // MemberAccess: field access
+    point.x = 10.0;
+    point.y = 20.0;
+    
+    // MemberAccess: method calls (CallExpr with MemberAccess)
+    var result = calc.Add(point.x, point.y);
+    var lastResult = calc.GetLastResult();
+    
+    // Chained member access
+    calc.lastResult = point.x + point.y;
+    
+    return result;
+}
+
+fn TestComplexExpressions(): bool
+{
+    var p1 = CreatePoint(1.0, 2.0);     // CallExpr: function call
+    var p2 = CreatePoint(3.0, 4.0);
+    
+    // Complex expression with multiple operations
+    var distance = ((p2.x - p1.x) * (p2.x - p1.x)) + ((p2.y - p1.y) * (p2.y - p1.y));
+    
+    // Conditional expression (ternary)
+    var isClose = (distance < 10.0) ? true : false;
+    
+    // Nested expressions with parentheses
+    var complex = (distance + 5.0) * (isClose ? 1.0 : 2.0);
+    
+    // Property access (arrow property)
+    var rect = new Rectangle();
+    rect.topLeft = p1;
+    rect.bottomRight = p2;
+    var area = rect.area;        // Property getter
+    
+    return isClose && (area > 0.0);
+}
+
+fn TestCasts(): i32
+{
+    var val = 3;
+    var intVal = val;
+    
+    return intVal;
+}
+
+fn TestThisKeyword(): f32
+{
+    // This would be in a type method, but testing the resolution
+    var calc = new Calculator();
+    return calc.GetLastResult();   // Method that uses 'this' internally
+}
+
+// === MAIN FUNCTION ===
+fn Main()
+{
+    // Variable declarations with different initializers
+    var arithmetic = TestArithmetic();
+    var complex = TestComplexExpressions();
+    var casted = TestCasts();
+    
+    // Function calls
+    TestControlFlow(true);
+    TestControlFlow(false);
+    
+    // Member access tests
+    var memberResult = TestMemberAccess();
+    
+    // Block statements with local variables
+    {
+        var localVar = 42;
+        var localCalc = localVar + arithmetic;
+        
+        if (complex)
+        {
+            localVar = localVar * 2;
+        }
+    }
+    
+    // Expression statements
+    TestThisKeyword();
+    
+    // Final complex expression combining multiple concepts
+    var finalTest = (arithmetic > 0.0) && complex && (casted > 0);
+}
