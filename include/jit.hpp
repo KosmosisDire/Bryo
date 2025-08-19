@@ -49,8 +49,5 @@ namespace Myre
             // Convert to function pointer
             return addr.toPtr<FuncType *>();
         }
-
-        // Convenience method for main() execution
-        int run_main();
     };
 }
