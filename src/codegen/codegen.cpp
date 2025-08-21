@@ -36,6 +36,8 @@ namespace Myre
         // This allows for mutual recursion and calls to functions defined later in the file.
         declare_all_functions();
 
+        generate_print_function();
+
         // Step 3: Generate the actual code for function bodies and global initializers.
         visit(unit);
 
@@ -239,7 +241,65 @@ namespace Myre
     }
 
     // === Helper Methods ===
+    void CodeGenerator::generate_print_function()
+    {
+        // First, declare the external printf function if not already declared
+        llvm::Function *printf_func = module->getFunction("printf");
+        if (!printf_func)
+        {
+            // printf signature: int printf(const char*, ...)
+            std::vector<llvm::Type *> printf_params;
+            printf_params.push_back(llvm::PointerType::get(*context, 0)); // Opaque pointer for format string
 
+            auto *printf_type = llvm::FunctionType::get(
+                llvm::Type::getInt32Ty(*context), // Returns int
+                printf_params,
+                true // Variadic function
+            );
+
+            printf_func = llvm::Function::Create(
+                printf_type,
+                llvm::Function::ExternalLinkage,
+                "printf",
+                module.get());
+        }
+
+        // Check if Print function already exists (might be declared by declare_all_functions)
+        llvm::Function *print_func = module->getFunction("Print");
+        if (print_func && print_func->empty()) // Function declared but no body
+        {
+            // Create the function body
+            auto *saved_function = current_function;
+            current_function = print_func;
+
+            auto *entry = llvm::BasicBlock::Create(*context, "entry", print_func);
+            builder->SetInsertPoint(entry);
+
+            // Get the array parameter (passed by value in your type system)
+            llvm::Value *array_param = print_func->arg_begin();
+            array_param->setName("message");
+
+            // Store the array to get a pointer (printf needs a pointer)
+            llvm::Type *array_type = array_param->getType();
+            auto *array_alloca = builder->CreateAlloca(array_type, nullptr, "message.ptr");
+            builder->CreateStore(array_param, array_alloca);
+
+            // Get pointer to the first element of the array for printf
+            std::vector<llvm::Value *> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)  // First element
+            };
+            auto *str_ptr = builder->CreateGEP(array_type, array_alloca, indices, "str.ptr");
+
+            // Call printf with the pointer
+            builder->CreateCall(printf_func, {str_ptr});
+
+            // Return void
+            builder->CreateRetVoid();
+
+            current_function = saved_function;
+        }
+    }
     void CodeGenerator::debug_print_module_state(const std::string &phase)
     {
         std::cerr << "\n===== MODULE STATE: " << phase << " =====\n";
@@ -460,14 +520,14 @@ namespace Myre
                 // For now, use a simple fixed-size array approach
                 // TODO: Handle dynamic arrays with proper memory management
                 uint64_t array_size = 10; // Default size for dynamic arrays
-                
+
                 if (arr->fixedSizes.size() > 0 && arr->fixedSizes[0] > 0)
                 {
                     array_size = static_cast<uint64_t>(arr->fixedSizes[0]);
                 }
-                
+
                 llvm_type = llvm::ArrayType::get(element_type, array_size);
-                
+
                 // Handle multi-dimensional arrays
                 for (int i = 1; i < arr->rank; i++)
                 {
@@ -782,7 +842,7 @@ namespace Myre
             report_error(node, "Cannot declare a variable of type 'void'");
             return;
         }
-        
+
         auto *alloca = builder->CreateAlloca(llvm_type, nullptr, node->variable->name->text);
         locals[var_symbol] = alloca;
         local_types[var_symbol] = llvm_type;
@@ -1004,15 +1064,11 @@ namespace Myre
             llvm::Value *new_value = nullptr;
             if (node->op == UnaryOperatorKind::PostIncrement || node->op == UnaryOperatorKind::PreIncrement)
             {
-                new_value = operand_type->isFloatingPointTy() ? 
-                    builder->CreateFAdd(current_value, one, "inc") :
-                    builder->CreateAdd(current_value, one, "inc");
+                new_value = operand_type->isFloatingPointTy() ? builder->CreateFAdd(current_value, one, "inc") : builder->CreateAdd(current_value, one, "inc");
             }
             else
             {
-                new_value = operand_type->isFloatingPointTy() ?
-                    builder->CreateFSub(current_value, one, "dec") :
-                    builder->CreateSub(current_value, one, "dec");
+                new_value = operand_type->isFloatingPointTy() ? builder->CreateFSub(current_value, one, "dec") : builder->CreateSub(current_value, one, "dec");
             }
 
             // Store the new value
@@ -1323,7 +1379,7 @@ namespace Myre
 
                     // Call getter with 'this' pointer as argument
                     auto *result = builder->CreateCall(getter_func, {first_param}, "prop.get");
-                    
+
                     // For properties, we need to create a temporary alloca to store the result
                     // so that parent nodes can treat it like a variable
                     llvm::Type *prop_type = get_llvm_type(prop_symbol->type());
@@ -1333,7 +1389,7 @@ namespace Myre
                     return;
                 }
             }
-            
+
             report_error(node, "Property access outside of method context not supported");
             return;
         }
@@ -1360,7 +1416,7 @@ namespace Myre
             // Create temporary alloca and store constant
             auto *temp = builder->CreateAlloca(constant->getType(), nullptr, "literal.tmp");
             builder->CreateStore(constant, temp);
-            push_value(temp);  // Return pointer to temporary
+            push_value(temp); // Return pointer to temporary
         }
     }
 
@@ -1470,30 +1526,30 @@ namespace Myre
         // Initialize array elements
         for (size_t i = 0; i < node->elements.size(); i++)
         {
-            // Get the element value 
+            // Get the element value
             node->elements[i]->accept(this);
             auto *element_value_or_ptr = pop_value();
-            
+
             if (element_value_or_ptr)
             {
                 llvm::Type *element_type = get_llvm_type(array_type->elementType);
                 llvm::Value *element_value = element_value_or_ptr;
-                
+
                 // If we got a pointer, load the value from it
                 if (element_value_or_ptr->getType()->isPointerTy())
                 {
                     element_value = builder->CreateLoad(element_type, element_value_or_ptr, "elem.load");
                 }
-                
+
                 // Create GEP to access array element
                 std::vector<llvm::Value *> indices = {
                     llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
                     llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), i)  // Element index
                 };
-                
-                auto *array_element_ptr = builder->CreateGEP(llvm_array_type, array_alloca, indices, 
-                                                       "element." + std::to_string(i));
-                
+
+                auto *array_element_ptr = builder->CreateGEP(llvm_array_type, array_alloca, indices,
+                                                             "element." + std::to_string(i));
+
                 // Store the actual value in the array
                 builder->CreateStore(element_value, array_element_ptr);
             }
@@ -1664,7 +1720,7 @@ namespace Myre
             // Use GEP to access the array element
             std::vector<llvm::Value *> indices = {
                 llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
-                index_value  // Element index
+                index_value                                                  // Element index
             };
 
             auto *element_ptr = builder->CreateGEP(array_type, array_value_or_ptr, indices, "array.index");
@@ -1676,10 +1732,10 @@ namespace Myre
             // Store it in a temporary alloca, then use GEP
             auto *temp_alloca = builder->CreateAlloca(array_type, nullptr, "array.temp");
             builder->CreateStore(array_value_or_ptr, temp_alloca);
-            
+
             std::vector<llvm::Value *> indices = {
                 llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
-                index_value  // Element index
+                index_value                                                  // Element index
             };
 
             auto *element_ptr = builder->CreateGEP(array_type, temp_alloca, indices, "array.index");

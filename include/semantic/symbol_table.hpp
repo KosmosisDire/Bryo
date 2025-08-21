@@ -34,6 +34,11 @@ namespace Myre
         // Enter anonymous scope
         BlockScope *enter_block(const std::string &debug_name = "block");
 
+        void set_current_scope(ScopeNode *scope)
+        {
+            current = scope;
+        }
+
         // Exit current scope
         void exit_scope();
 
@@ -89,10 +94,10 @@ namespace Myre
 
         // Debug/display functions
         std::string to_string() const;
-
-    private:
+        
         // Helper to add a child to current scope
         void add_child(const std::string &key, std::unique_ptr<ScopeNode> child);
+    private:
     };
 
 } // namespace Myre

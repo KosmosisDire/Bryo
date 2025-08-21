@@ -105,6 +105,7 @@ namespace Myre
         std::unique_ptr<llvm::Module> generate(CompilationUnit *unit);
         void declare_all_functions();
         void declare_all_types();
+        void generate_print_function();
         void generate_definitions(CompilationUnit *unit);
         std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
         const std::vector<CodeGenError> &get_errors() const { return errors; }

@@ -169,6 +169,23 @@ namespace Myre
             return std::make_unique<CompiledModule>();
         }
 
+        // add the Log function to the global namespace
+        auto log_function_ptr = new FunctionSymbol();
+        log_function_ptr->set_name("Print");
+        log_function_ptr->set_return_type(global_symbols->get_type_system().get_primitive("void"));
+
+        auto log_param = std::make_unique<ParameterSymbol>();
+        log_param->set_name("message");
+        log_param->set_type(global_symbols->get_type_system().get_array_type(global_symbols->get_type_system().get_primitive("i8")));
+        
+        log_function_ptr->set_parameters({log_param->handle});
+
+        global_symbols->set_current_scope(global_symbols->get_global_namespace());
+        global_symbols->add_child("Print", std::unique_ptr<FunctionSymbol>(log_function_ptr));
+
+        global_symbols->set_current_scope(log_function_ptr);
+        global_symbols->add_child("message", std::move(log_param));
+
         // === PHASE 4: Type resolution with global symbol table ===
         LOG_HEADER("Phase 4: Type resolution", LogCategory::COMPILER);
 
@@ -229,6 +246,7 @@ namespace Myre
         // Quick pass: declare all functions from symbol table
         codegen.declare_all_types();
         codegen.declare_all_functions();
+        codegen.generate_print_function();
 
         // Single AST pass: generate all bodies
         for (const auto &state : file_states)

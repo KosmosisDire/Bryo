@@ -9,5 +9,11 @@ fn Main()
 {
     String s;
     s.data[0] = 'H';
+    s.data[1] = 'e';
+    s.data[2] = 'l';
+    s.data[3] = 'l';
+    s.data[4] = 'o';
+    Print(s.data);
+    
     return 0.0;
 }
