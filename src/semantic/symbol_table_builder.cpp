@@ -508,4 +508,18 @@ namespace Myre
         symbolTable.exit_scope();
     }
 
+    void SymbolTableBuilder::visit(ArrayTypeExpr *node)
+    {
+        // Call base visitor to annotate scope
+        visit(static_cast<Expression *>(node));
+
+        // Mark element type as a type expression and visit it
+        if (node->elementType)
+        {
+            annotate_scope(node->elementType);
+            node->elementType->isTypeExpression = true;
+            node->elementType->accept(this);
+        }
+    }
+
 } // namespace Myre

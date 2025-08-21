@@ -102,7 +102,7 @@ private:
     FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
     ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
     Declaration* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
-    Declaration* parseTypedMemberDeclaration(ModifierKindFlags modifiers, Expression* type, const Token& startToken);
+    std::vector<Declaration*> parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression* type, const Token& startToken);
     void parsePropertyAccessors(PropertyDecl* prop);
     NamespaceDecl* parseNamespaceDecl(const Token& startToken);
 

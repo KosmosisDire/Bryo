@@ -265,7 +265,10 @@ namespace Myre
         auto *type = parseExpression();
         if (type && check(TokenKind::Identifier))
         {
-            return parseTypedMemberDeclaration(modifiers, type, startToken);
+            // Parse all comma-separated declarations with the same type
+            auto allDeclarations = parseTypedMemberDeclarations(modifiers, type, startToken);
+            // TODO: Return the first one for now (caller will need to handle multiple)
+            return allDeclarations.empty() ? nullptr : allDeclarations[0];
         }
 
         tokens.restore(checkpoint);
@@ -350,7 +353,22 @@ namespace Myre
                     tokens.advance();
                 }
             } else {
-                if (auto* member = parseDeclaration()) members.push_back(member);
+                // Check if this is a typed declaration that could have multiple comma-separated variables
+                auto checkpoint = tokens.checkpoint();
+                auto *type = parseExpression();
+                if (type && check(TokenKind::Identifier))
+                {
+                    // Parse all comma-separated declarations with the same type
+                    auto declarations = parseTypedMemberDeclarations(ModifierKindFlags::None, type, previous());
+                    for (auto* decl : declarations) {
+                        members.push_back(decl);
+                    }
+                } else {
+                    tokens.restore(checkpoint);
+                    if (auto* member = parseDeclaration()) {
+                        members.push_back(member);
+                    }
+                }
             }
             consume(TokenKind::Comma);
             consume(TokenKind::Semicolon);
@@ -555,7 +573,7 @@ namespace Myre
         return decl;
     }
 
-    Declaration *Parser::parseTypedMemberDeclaration(ModifierKindFlags modifiers, Expression *type, const Token &startToken)
+    std::vector<Declaration *> Parser::parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression *type, const Token &startToken)
     {
         std::vector<Declaration *> declarations;
         bool hasProperties = false;
@@ -632,14 +650,16 @@ namespace Myre
         {
             expect(TokenKind::Semicolon, "Expected ';' after field declaration");
         }
-        // The location for the entire statement (if it had multiple fields) is not represented by a single node
-        // as this function only returns the first declaration.
-        if (!declarations.empty())
+        
+        // Set location for all declarations to span from the type to the end
+        for (auto *decl : declarations)
         {
-            declarations[0]->location = SourceRange(startToken.location.start, previous().location.end());
+            decl->location = SourceRange(startToken.location.start, previous().location.end());
         }
-        return declarations.empty() ? nullptr : declarations[0];
+        
+        return declarations;
     }
+
 
 
     void Parser::parsePropertyAccessors(PropertyDecl *prop)
@@ -812,6 +832,8 @@ namespace Myre
             auto *type = parseExpression();
             if (type && check(TokenKind::Identifier))
             {
+                // TODO: This could be a typed variable declaration with multiple comma-separated variables
+                // For now, just return the first one, but we should handle this better
                 tokens.restore(checkpoint);
                 return parseDeclaration();
             }
@@ -830,7 +852,29 @@ namespace Myre
         std::vector<Statement *> statements;
         while (!check(TokenKind::RightBrace) && !tokens.at_end())
         {
-            if (auto *stmt = parseStatement())
+            // Check for typed declarations that might have multiple comma-separated variables
+            if (check(TokenKind::Identifier))
+            {
+                auto checkpoint = tokens.checkpoint();
+                auto *type = parseExpression();
+                if (type && check(TokenKind::Identifier))
+                {
+                    // Parse all comma-separated declarations with the same type
+                    auto declarations = parseTypedMemberDeclarations(ModifierKindFlags::None, type, previous());
+                    for (auto* decl : declarations) {
+                        statements.push_back(decl);
+                    }
+                }
+                else
+                {
+                    tokens.restore(checkpoint);
+                    if (auto *stmt = parseStatement())
+                    {
+                        statements.push_back(stmt);
+                    }
+                }
+            }
+            else if (auto *stmt = parseStatement())
             {
                 statements.push_back(stmt);
             }
@@ -1262,15 +1306,29 @@ namespace Myre
             else if (check(TokenKind::LeftBracket))
             {
                 tokens.advance();
-                auto *indexer = arena.make<IndexerExpr>();
-                indexer->object = expr;
-                indexer->index = parseExpression();
-                if (!indexer->index)
-                    indexer->index = errorExpr("Expected index expression");
+                
+                // Check if this is an empty bracket for array type (e.g., i32[])
+                if (check(TokenKind::RightBracket))
+                {
+                    tokens.advance(); // consume ']'
+                    auto *arrayType = arena.make<ArrayTypeExpr>();
+                    arrayType->elementType = expr;
+                    arrayType->location = SourceRange(expr->location.start, previous().location.end());
+                    expr = arrayType;
+                }
+                else
+                {
+                    // Regular indexer expression (arr[index])
+                    auto *indexer = arena.make<IndexerExpr>();
+                    indexer->object = expr;
+                    indexer->index = parseExpression();
+                    if (!indexer->index)
+                        indexer->index = errorExpr("Expected index expression");
 
-                expect(TokenKind::RightBracket, "Expected ']' after index");
-                indexer->location = SourceRange(expr->location.start, previous().location.end());
-                expr = indexer;
+                    expect(TokenKind::RightBracket, "Expected ']' after index");
+                    indexer->location = SourceRange(expr->location.start, previous().location.end());
+                    expr = indexer;
+                }
             }
             else if (checkAny({TokenKind::Increment, TokenKind::Decrement}))
             {

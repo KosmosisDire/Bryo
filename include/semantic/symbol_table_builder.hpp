@@ -71,6 +71,9 @@ namespace Myre
         void visit(WhileStmt *node) override;
         void visit(ForStmt *node) override;
         void visit(IfExpr *node) override;
+
+        // === Type expressions ===
+        void visit(ArrayTypeExpr *node) override;
     };
 
 } // namespace Myre

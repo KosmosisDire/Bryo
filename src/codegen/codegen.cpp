@@ -66,6 +66,7 @@ namespace Myre
         if (!scope)
             return;
 
+        // Phase 1: Create all opaque struct types first
         for (const auto &[name, symbol] : scope->symbols)
         {
             if (auto *type_sym = symbol->as<TypeSymbol>())
@@ -77,6 +78,27 @@ namespace Myre
                 // recursive types (e.g., struct Node { Node* next; }).
                 llvm::StructType *struct_type = llvm::StructType::create(*context, type_sym->get_qualified_name());
                 defined_types[type_sym] = struct_type;
+            }
+
+            // Recursively process nested scopes (e.g., namespaces)
+            if (auto *nested_scope = symbol->as<Scope>())
+            {
+                declare_all_types_in_scope(nested_scope);
+            }
+        }
+
+        // Phase 2: Now set the body of all struct types
+        for (const auto &[name, symbol] : scope->symbols)
+        {
+            if (auto *type_sym = symbol->as<TypeSymbol>())
+            {
+                auto type_it = defined_types.find(type_sym);
+                if (type_it == defined_types.end())
+                    continue; // Already processed
+
+                llvm::StructType *struct_type = llvm::cast<llvm::StructType>(type_it->second);
+                if (!struct_type->isOpaque())
+                    continue; // Body already set
 
                 // Now, define the body of the struct by resolving its member types.
                 std::vector<llvm::Type *> member_types;
@@ -88,12 +110,6 @@ namespace Myre
                     }
                 }
                 struct_type->setBody(member_types);
-            }
-
-            // Recursively process nested scopes (e.g., namespaces)
-            if (auto *nested_scope = symbol->as<Scope>())
-            {
-                declare_all_types_in_scope(nested_scope);
             }
         }
     }
@@ -321,10 +337,9 @@ namespace Myre
             if (result)
             {
                 // Load the value if it's a pointer (but not for structs)
-                if (result->getType()->isPointerTy() &&
-                    !result->getType()->getContainedType(0)->isStructTy())
+                auto *prop_type = get_llvm_type((*expr)->resolvedType);
+                if (result->getType()->isPointerTy() && prop_type && !prop_type->isStructTy())
                 {
-                    auto *prop_type = get_llvm_type((*expr)->resolvedType);
                     result = builder->CreateLoad(prop_type, result);
                 }
                 builder->CreateRet(result);
@@ -424,6 +439,39 @@ namespace Myre
                 report_general_error("Unsupported primitive type for codegen");
                 llvm_type = llvm::Type::getVoidTy(*context);
                 break;
+            }
+        }
+        else if (auto *arr = std::get_if<ArrayType>(&type->value))
+        {
+            llvm::Type *element_type = get_llvm_type(arr->elementType);
+            if (!element_type)
+            {
+                report_general_error("Failed to get LLVM type for array element");
+                llvm_type = llvm::Type::getVoidTy(*context);
+            }
+            else
+            {
+                // For now, use a simple fixed-size array approach
+                // TODO: Handle dynamic arrays with proper memory management
+                uint64_t array_size = 10; // Default size for dynamic arrays
+                
+                if (arr->fixedSizes.size() > 0 && arr->fixedSizes[0] > 0)
+                {
+                    array_size = static_cast<uint64_t>(arr->fixedSizes[0]);
+                }
+                
+                llvm_type = llvm::ArrayType::get(element_type, array_size);
+                
+                // Handle multi-dimensional arrays
+                for (int i = 1; i < arr->rank; i++)
+                {
+                    uint64_t dim_size = 10; // Default size
+                    if (i < arr->fixedSizes.size() && arr->fixedSizes[i] > 0)
+                    {
+                        dim_size = static_cast<uint64_t>(arr->fixedSizes[i]);
+                    }
+                    llvm_type = llvm::ArrayType::get(llvm_type, dim_size);
+                }
             }
         }
         else if (auto *ref = std::get_if<TypeReference>(&type->value))
@@ -724,7 +772,7 @@ namespace Myre
             report_error(node, "Cannot declare a variable of type 'void'");
             return;
         }
-
+        
         auto *alloca = builder->CreateAlloca(llvm_type, nullptr, node->variable->name->text);
         locals[var_symbol] = alloca;
         local_types[var_symbol] = llvm_type;
@@ -736,15 +784,26 @@ namespace Myre
 
             if (init_value)
             {
-                // If the initializer was a 'new' expression, it returned a pointer to the temp memory.
-                // We need to load from that temp memory and store into our variable's memory.
-                if (llvm::isa<llvm::AllocaInst>(init_value) && llvm_type->isStructTy())
+                // For arrays and structs, we need to copy the entire value
+                if (llvm::isa<llvm::AllocaInst>(init_value) && (llvm_type->isStructTy() || llvm_type->isArrayTy()))
                 {
+                    // Copy the entire value from the initializer location to the variable location
                     builder->CreateStore(builder->CreateLoad(llvm_type, init_value), alloca);
                 }
                 else
                 {
-                    builder->CreateStore(init_value, alloca);
+                    // Check if we need to load the value or use it directly
+                    if (init_value->getType()->isPointerTy())
+                    {
+                        // Load from pointer and store to variable
+                        auto *value = builder->CreateLoad(llvm_type, init_value, "var.init.load");
+                        builder->CreateStore(value, alloca);
+                    }
+                    else
+                    {
+                        // Direct value, store as-is
+                        builder->CreateStore(init_value, alloca);
+                    }
                 }
             }
         }
@@ -833,24 +892,17 @@ namespace Myre
         if (!right)
             return;
 
-        // If operands are pointers to values, load them
-        // We need to check the resolved types from the AST nodes
-        if (left->getType()->isPointerTy())
+        // Always load both operands since binary operations require values
+        llvm::Type *left_type = get_llvm_type(node->left->resolvedType);
+        if (left_type && !left_type->isStructTy() && left->getType()->isPointerTy())
         {
-            llvm::Type *left_type = get_llvm_type(node->left->resolvedType);
-            if (!left_type->isStructTy()) // Don't load struct pointers
-            {
-                left = builder->CreateLoad(left_type, left, "load_left");
-            }
+            left = builder->CreateLoad(left_type, left, "load_left");
         }
 
-        if (right->getType()->isPointerTy())
+        llvm::Type *right_type = get_llvm_type(node->right->resolvedType);
+        if (right_type && !right_type->isStructTy() && right->getType()->isPointerTy())
         {
-            llvm::Type *right_type = get_llvm_type(node->right->resolvedType);
-            if (!right_type->isStructTy()) // Don't load struct pointers
-            {
-                right = builder->CreateLoad(right_type, right, "load_right");
-            }
+            right = builder->CreateLoad(right_type, right, "load_right");
         }
 
         llvm::Value *result = nullptr;
@@ -888,8 +940,14 @@ namespace Myre
         case BinaryOperatorKind::LessThanOrEqual:
             result = is_float ? builder->CreateFCmpOLE(left, right, "letmp") : builder->CreateICmpSLE(left, right, "letmp");
             break;
+        case BinaryOperatorKind::LogicalAnd:
+            result = builder->CreateAnd(left, right, "andtmp");
+            break;
+        case BinaryOperatorKind::LogicalOr:
+            result = builder->CreateOr(left, right, "ortmp");
+            break;
         default:
-            report_error(node, "Unsupported binary operator");
+            assert(false && "Unsupported binary operator");
             break;
         }
 
@@ -901,24 +959,94 @@ namespace Myre
     {
         if (!node || !node->operand)
             return;
-        node->operand->accept(this);
-        auto *operand = pop_value();
-        if (!operand)
-            return;
 
         llvm::Value *result = nullptr;
-        switch (node->op)
+
+        // Handle increment/decrement operators specially (they modify the operand)
+        if (node->op == UnaryOperatorKind::PostIncrement || node->op == UnaryOperatorKind::PreIncrement ||
+            node->op == UnaryOperatorKind::PostDecrement || node->op == UnaryOperatorKind::PreDecrement)
         {
-        case UnaryOperatorKind::Minus:
-            result = operand->getType()->isFloatingPointTy() ? builder->CreateFNeg(operand, "negtmp") : builder->CreateNeg(operand, "negtmp");
-            break;
-        case UnaryOperatorKind::Not:
-            result = builder->CreateNot(operand, "nottmp");
-            break;
-        default:
-            report_error(node, "Unsupported unary operator");
-            break;
+            // For increment/decrement, we need the operand as an lvalue (pointer)
+            node->operand->accept(this);
+            auto *operand_ptr = pop_value();
+            if (!operand_ptr || !operand_ptr->getType()->isPointerTy())
+            {
+                report_error(node, "Increment/decrement operators require an lvalue");
+                return;
+            }
+
+            // Load the current value
+            auto *operand_type = get_llvm_type(node->operand->resolvedType);
+            auto *current_value = builder->CreateLoad(operand_type, operand_ptr, "current");
+
+            // Create the increment/decrement value
+            llvm::Value *one = nullptr;
+            if (operand_type->isFloatingPointTy())
+            {
+                one = llvm::ConstantFP::get(operand_type, 1.0);
+            }
+            else
+            {
+                one = llvm::ConstantInt::get(operand_type, 1);
+            }
+
+            // Calculate new value
+            llvm::Value *new_value = nullptr;
+            if (node->op == UnaryOperatorKind::PostIncrement || node->op == UnaryOperatorKind::PreIncrement)
+            {
+                new_value = operand_type->isFloatingPointTy() ? 
+                    builder->CreateFAdd(current_value, one, "inc") :
+                    builder->CreateAdd(current_value, one, "inc");
+            }
+            else
+            {
+                new_value = operand_type->isFloatingPointTy() ?
+                    builder->CreateFSub(current_value, one, "dec") :
+                    builder->CreateSub(current_value, one, "dec");
+            }
+
+            // Store the new value
+            builder->CreateStore(new_value, operand_ptr);
+
+            // For post-increment/decrement, return the old value; for pre-, return the new value
+            if (node->op == UnaryOperatorKind::PostIncrement || node->op == UnaryOperatorKind::PostDecrement)
+            {
+                result = current_value;
+            }
+            else
+            {
+                result = new_value;
+            }
         }
+        else
+        {
+            // Regular unary operators that don't modify operands
+            node->operand->accept(this);
+            auto *operand = pop_value();
+            if (!operand)
+                return;
+
+            // Load the value for computation
+            llvm::Type *operand_type = get_llvm_type(node->operand->resolvedType);
+            if (operand_type && !operand_type->isStructTy() && operand->getType()->isPointerTy())
+            {
+                operand = builder->CreateLoad(operand_type, operand, "unary_load");
+            }
+
+            switch (node->op)
+            {
+            case UnaryOperatorKind::Minus:
+                result = operand->getType()->isFloatingPointTy() ? builder->CreateFNeg(operand, "negtmp") : builder->CreateNeg(operand, "negtmp");
+                break;
+            case UnaryOperatorKind::Not:
+                result = builder->CreateNot(operand, "nottmp");
+                break;
+            default:
+                report_error(node, "Unsupported unary operator");
+                break;
+            }
+        }
+
         if (result)
             push_value(result);
     }
@@ -941,7 +1069,39 @@ namespace Myre
             if (!value)
                 return;
 
+            // Load the value if it's a pointer (for pass-by-value semantics)
+            if (node->value->resolvedType && value->getType()->isPointerTy())
+            {
+                llvm::Type *value_llvm_type = get_llvm_type(node->value->resolvedType);
+                value = builder->CreateLoad(value_llvm_type, value, "member.assign.load");
+            }
+
             builder->CreateStore(value, member_ptr);
+            push_value(value); // Assignments are expressions
+            return;
+        }
+
+        // Handle array element assignment
+        if (auto *indexer = node->target->as<IndexerExpr>())
+        {
+            indexer->accept(this);
+            auto *element_ptr = pop_value();
+            if (!element_ptr)
+                return;
+
+            node->value->accept(this);
+            auto *value = pop_value();
+            if (!value)
+                return;
+
+            // Load the value if it's a pointer (for pass-by-value semantics)
+            if (node->value->resolvedType && value->getType()->isPointerTy())
+            {
+                llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
+                value = builder->CreateLoad(value_type, value, "elem.assign.load");
+            }
+
+            builder->CreateStore(value, element_ptr);
             push_value(value); // Assignments are expressions
             return;
         }
@@ -950,7 +1110,7 @@ namespace Myre
         auto *name_expr = node->target->as<NameExpr>();
         if (!name_expr)
         {
-            report_error(node->target, "Assignment target must be an identifier or member access");
+            report_error(node->target, "Assignment target must be an identifier, member access, or array element");
             return;
         }
 
@@ -976,6 +1136,13 @@ namespace Myre
         auto *value = pop_value();
         if (!value)
             return;
+
+        // Load the value if it's a pointer (for pass-by-value semantics)
+        if (node->value->resolvedType && value->getType()->isPointerTy())
+        {
+            llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
+            value = builder->CreateLoad(value_type, value, "assign.load");
+        }
 
         builder->CreateStore(value, alloca);
         push_value(value); // Assignments are expressions
@@ -1076,32 +1243,22 @@ namespace Myre
         }
 
         // Add regular arguments
-        size_t param_index = this_ptr ? 1 : 0; // Start from 1 if we have 'this'
         for (auto *arg : node->arguments)
         {
             arg->accept(this);
             llvm::Value *arg_value = pop_value();
 
-            // Load from pointer if necessary
-            if (arg_value && arg_value->getType()->isPointerTy())
+            // Always load arguments for pass-by-value (including structs)
+            if (arg_value && arg->resolvedType && arg_value->getType()->isPointerTy())
             {
-                // Get the expected parameter type from the function signature
-                if (param_index < callee_func->arg_size())
+                llvm::Type *arg_type = get_llvm_type(arg->resolvedType);
+                if (arg_type)
                 {
-                    llvm::Type *expected_type = callee_func->getFunctionType()->getParamType(param_index);
-
-                    // If we have a pointer but the function expects a value, load it
-                    if (!expected_type->isPointerTy() && arg->resolvedType)
-                    {
-                        llvm::Type *arg_llvm_type = get_llvm_type(arg->resolvedType);
-                        // Load the value - this includes structs when passed by value
-                        arg_value = builder->CreateLoad(arg_llvm_type, arg_value, "arg.load");
-                    }
+                    arg_value = builder->CreateLoad(arg_type, arg_value, "arg.load");
                 }
             }
 
             args.push_back(arg_value);
-            param_index++;
         }
 
         if (args.size() != callee_func->arg_size())
@@ -1135,6 +1292,43 @@ namespace Myre
             return;
         }
 
+        // Check if this is a property reference
+        if (auto *prop_symbol = var_symbol->as<PropertySymbol>())
+        {
+            // This is a property access - we need to call the getter
+            // Check if we're inside a method and have access to 'this'
+            if (current_function && current_function->arg_size() > 0)
+            {
+                auto *first_param = current_function->arg_begin();
+                if (first_param->getName() == "this")
+                {
+                    // We're in a method context - call the property getter with 'this'
+                    std::string getter_name = prop_symbol->get_qualified_name() + ".get";
+                    auto *getter_func = module->getFunction(getter_name);
+                    if (!getter_func)
+                    {
+                        report_error(node, "Property getter not found: " + getter_name);
+                        return;
+                    }
+
+                    // Call getter with 'this' pointer as argument
+                    auto *result = builder->CreateCall(getter_func, {first_param}, "prop.get");
+                    
+                    // For properties, we need to create a temporary alloca to store the result
+                    // so that parent nodes can treat it like a variable
+                    llvm::Type *prop_type = get_llvm_type(prop_symbol->type());
+                    auto *temp_alloca = builder->CreateAlloca(prop_type, nullptr, "prop.temp");
+                    builder->CreateStore(result, temp_alloca);
+                    push_value(temp_alloca);
+                    return;
+                }
+            }
+            
+            report_error(node, "Property access outside of method context not supported");
+            return;
+        }
+
+        // Handle regular variables
         auto it = locals.find(var_symbol);
         if (it == locals.end())
         {
@@ -1143,16 +1337,9 @@ namespace Myre
         }
         auto *alloca = it->second;
 
-        // Load the value from the memory location (alloca) and push it to the stack.
-        // For structs, we push the pointer (alloca) itself, as we operate on them by reference.
-        if (get_llvm_type(node->resolvedType)->isStructTy())
-        {
-            push_value(alloca);
-        }
-        else
-        {
-            push_value(builder->CreateLoad(local_types[var_symbol], alloca, var_name));
-        }
+        // Always push the pointer to the memory location (alloca).
+        // Parent nodes will decide whether they need to load the value or use the pointer.
+        push_value(alloca);
     }
 
     void CodeGenerator::visit(LiteralExpr *node)
@@ -1160,7 +1347,10 @@ namespace Myre
         auto *constant = create_constant(node);
         if (constant)
         {
-            push_value(constant);
+            // Create temporary alloca and store constant
+            auto *temp = builder->CreateAlloca(constant->getType(), nullptr, "literal.tmp");
+            builder->CreateStore(constant, temp);
+            push_value(temp);  // Return pointer to temporary
         }
     }
 
@@ -1241,7 +1431,67 @@ namespace Myre
     void CodeGenerator::visit(Declaration *node) { report_error(node, "Codegen for this declaration type is not yet implemented."); }
     void CodeGenerator::visit(ErrorExpression *n) { report_error(n, "Error expression: " + std::string(n->message)); }
     void CodeGenerator::visit(ErrorStatement *n) { report_error(n, "Error statement: " + std::string(n->message)); }
-    void CodeGenerator::visit(ArrayLiteralExpr *n) { report_error(n, "Array literals not yet supported."); }
+    void CodeGenerator::visit(ArrayLiteralExpr *node)
+    {
+        if (!node || !node->resolvedType)
+        {
+            report_error(node, "Array literal has no resolved type");
+            return;
+        }
+
+        // Get the array type from the resolved type
+        auto *array_type = std::get_if<ArrayType>(&node->resolvedType->value);
+        if (!array_type)
+        {
+            report_error(node, "Array literal's resolved type is not an array type");
+            return;
+        }
+
+        llvm::Type *llvm_array_type = get_llvm_type(node->resolvedType);
+        if (!llvm_array_type)
+        {
+            report_error(node, "Failed to get LLVM type for array literal");
+            return;
+        }
+
+        // Create a temporary alloca for the array
+        auto *array_alloca = builder->CreateAlloca(llvm_array_type, nullptr, "array.literal");
+
+        // Initialize array elements
+        for (size_t i = 0; i < node->elements.size(); i++)
+        {
+            // Get the element value 
+            node->elements[i]->accept(this);
+            auto *element_value_or_ptr = pop_value();
+            
+            if (element_value_or_ptr)
+            {
+                llvm::Type *element_type = get_llvm_type(array_type->elementType);
+                llvm::Value *element_value = element_value_or_ptr;
+                
+                // If we got a pointer, load the value from it
+                if (element_value_or_ptr->getType()->isPointerTy())
+                {
+                    element_value = builder->CreateLoad(element_type, element_value_or_ptr, "elem.load");
+                }
+                
+                // Create GEP to access array element
+                std::vector<llvm::Value *> indices = {
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), i)  // Element index
+                };
+                
+                auto *array_element_ptr = builder->CreateGEP(llvm_array_type, array_alloca, indices, 
+                                                       "element." + std::to_string(i));
+                
+                // Store the actual value in the array
+                builder->CreateStore(element_value, array_element_ptr);
+            }
+        }
+
+        // Push the array pointer to the stack
+        push_value(array_alloca);
+    }
 
     void CodeGenerator::visit(MemberAccessExpr *node)
     {
@@ -1357,7 +1607,80 @@ namespace Myre
         }
     }
 
-    void CodeGenerator::visit(IndexerExpr *n) { report_error(n, "Indexer expressions not yet supported."); }
+    void CodeGenerator::visit(IndexerExpr *node)
+    {
+        if (!node || !node->object || !node->index)
+            return;
+
+        // Get the array/object being indexed
+        node->object->accept(this);
+        auto *array_value_or_ptr = pop_value();
+        if (!array_value_or_ptr)
+            return;
+
+        // Get the index value
+        node->index->accept(this);
+        auto *index_value = pop_value();
+        if (!index_value)
+            return;
+
+        // Load the index if it's stored in memory
+        if (index_value->getType()->isPointerTy())
+        {
+            auto *index_type = get_llvm_type(node->index->resolvedType);
+            if (!index_type->isStructTy())
+            {
+                index_value = builder->CreateLoad(index_type, index_value, "index.load");
+            }
+        }
+
+        // Determine the array type
+        llvm::Type *array_type = nullptr;
+        if (node->object->resolvedType)
+        {
+            array_type = get_llvm_type(node->object->resolvedType);
+        }
+
+        if (!array_type || !array_type->isArrayTy())
+        {
+            report_error(node, "Indexer operand is not an array type");
+            return;
+        }
+
+        // Handle two cases: array pointer vs array value
+        if (array_value_or_ptr->getType()->isPointerTy())
+        {
+            // Case 1: We have a pointer to an array (e.g., from a variable)
+            // Use GEP to access the array element
+            std::vector<llvm::Value *> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
+                index_value  // Element index
+            };
+
+            auto *element_ptr = builder->CreateGEP(array_type, array_value_or_ptr, indices, "array.index");
+            push_value(element_ptr);
+        }
+        else if (array_value_or_ptr->getType()->isArrayTy())
+        {
+            // Case 2: We have an array value (e.g., from a function call)
+            // Store it in a temporary alloca, then use GEP
+            auto *temp_alloca = builder->CreateAlloca(array_type, nullptr, "array.temp");
+            builder->CreateStore(array_value_or_ptr, temp_alloca);
+            
+            std::vector<llvm::Value *> indices = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
+                index_value  // Element index
+            };
+
+            auto *element_ptr = builder->CreateGEP(array_type, temp_alloca, indices, "array.index");
+            push_value(element_ptr);
+        }
+        else
+        {
+            report_error(node, "Indexer operand is neither an array pointer nor an array value");
+            return;
+        }
+    }
     void CodeGenerator::visit(CastExpr *n) { report_error(n, "Cast expressions not yet supported."); }
     void CodeGenerator::visit(ThisExpr *n) { report_error(n, "'this' expressions not yet supported."); }
     void CodeGenerator::visit(LambdaExpr *n) { report_error(n, "Lambda expressions not yet supported."); }
@@ -1431,7 +1754,69 @@ namespace Myre
         builder->SetInsertPoint(loop_exit);
     }
 
-    void CodeGenerator::visit(ForStmt *n) { report_error(n, "For loops not yet supported."); }
+    void CodeGenerator::visit(ForStmt *node)
+    {
+        if (!node || !node->condition || !node->body)
+            return;
+
+        // Create basic blocks for the for loop
+        auto *init_bb = llvm::BasicBlock::Create(*context, "for.init", current_function);
+        auto *cond_bb = llvm::BasicBlock::Create(*context, "for.cond", current_function);
+        auto *body_bb = llvm::BasicBlock::Create(*context, "for.body", current_function);
+        auto *increment_bb = llvm::BasicBlock::Create(*context, "for.inc", current_function);
+        auto *exit_bb = llvm::BasicBlock::Create(*context, "for.exit", current_function);
+
+        // Jump to initialization
+        builder->CreateBr(init_bb);
+
+        // Initialization block
+        builder->SetInsertPoint(init_bb);
+        if (node->initializer)
+        {
+            node->initializer->accept(this);
+        }
+        builder->CreateBr(cond_bb);
+
+        // Condition block
+        builder->SetInsertPoint(cond_bb);
+        node->condition->accept(this);
+        auto *cond_value = pop_value();
+        if (cond_value)
+        {
+            builder->CreateCondBr(cond_value, body_bb, exit_bb);
+        }
+        else
+        {
+            builder->CreateBr(exit_bb);
+        }
+
+        // Body block
+        builder->SetInsertPoint(body_bb);
+        node->body->accept(this);
+        if (!builder->GetInsertBlock()->getTerminator())
+        {
+            builder->CreateBr(increment_bb);
+        }
+
+        // Increment block
+        builder->SetInsertPoint(increment_bb);
+        if (!node->updates.empty())
+        {
+            for (auto *update_expr : node->updates)
+            {
+                update_expr->accept(this);
+                // Pop the value if there is one (for expression statements)
+                if (!value_stack.empty())
+                {
+                    pop_value();
+                }
+            }
+        }
+        builder->CreateBr(cond_bb);
+
+        // Continue with exit block
+        builder->SetInsertPoint(exit_bb);
+    }
     void CodeGenerator::visit(UsingDirective *n) { /* No codegen needed */ }
     void CodeGenerator::visit(ConstructorDecl *n) { report_error(n, "Constructors not yet supported."); }
     void CodeGenerator::visit(PropertyAccessor *n) { report_error(n, "Properties not yet supported."); }

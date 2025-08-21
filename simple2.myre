@@ -1,10 +1,15 @@
 
-fn Add(i32 x, i32 y)
+fn Add(f32 x, f32 y)
 {
     return x + y;
 }
 
-fn Subtract(i32 x, i32 y)
+fn Subtract(f32 x, f32 y)
 {
     return x - y;
+}
+
+fn Main(): f32
+{
+    return Add(5.0, 3.0);
 }

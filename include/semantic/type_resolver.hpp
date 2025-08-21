@@ -102,6 +102,7 @@ namespace Myre
 
         // Expressions are the primary source of type information
         void visit(LiteralExpr *node) override;
+        void visit(ArrayLiteralExpr *node) override;
         void visit(NameExpr *node) override;
         void visit(BinaryExpr *node) override;
         void visit(AssignmentExpr *node) override;
@@ -431,6 +432,60 @@ namespace Myre
     {
         std::string type_name = std::string(to_string(node->kind));
         annotate_expression(node, typeSystem.get_primitive(type_name));
+    }
+
+    void TypeResolver::visit(ArrayLiteralExpr *node)
+    {
+        // Visit all elements first
+        for (auto *elem : node->elements)
+        {
+            if (elem)
+                elem->accept(this);
+        }
+
+        // Handle empty array - type remains unresolved until context provides type
+        if (node->elements.empty())
+        {
+            annotate_expression(node, typeSystem.get_unresolved_type());
+            return;
+        }
+
+        // Determine element type by unifying all elements
+        TypePtr elementType = nullptr;
+        for (auto *elem : node->elements)
+        {
+            if (!elem)
+                continue;
+                
+            TypePtr elemType = get_node_type(elem);
+            if (!elemType)
+            {
+                // Error already reported by element
+                annotate_expression(node, typeSystem.get_unresolved_type());
+                return;
+            }
+
+            if (!elementType)
+            {
+                elementType = elemType;
+            }
+            else
+            {
+                unify(elementType, elemType, node, "array element types");
+                elementType = apply_substitution(elementType);
+            }
+        }
+
+        // Create array type with the unified element type
+        if (elementType)
+        {
+            TypePtr arrayType = typeSystem.get_array_type(elementType);
+            annotate_expression(node, arrayType);
+        }
+        else
+        {
+            annotate_expression(node, typeSystem.get_unresolved_type());
+        }
     }
 
     void TypeResolver::visit(NameExpr *node)
@@ -1210,6 +1265,36 @@ namespace Myre
         if (node->getter)
         {
             node->getter->accept(this);
+            
+            // For type inference: if property type is unresolved, infer from getter
+            if (prop_symbol && prop_symbol->type()->is<UnresolvedType>())
+            {
+                // Get the type of the getter expression
+                TypePtr getterType = nullptr;
+                if (auto *expr = std::get_if<Expression *>(&node->getter->body))
+                {
+                    if (*expr)
+                    {
+                        getterType = get_node_type(*expr);
+                    }
+                }
+                
+                if (getterType && !getterType->is<UnresolvedType>())
+                {
+                    // Infer the property type from the getter
+                    TypePtr oldType = prop_symbol->type();
+                    
+                    // Remove old unresolved type from pending constraints
+                    pendingConstraints.erase(oldType);
+                    
+                    // Add substitution for type unification
+                    substitution[oldType] = getterType;
+                    
+                    // Update the symbol
+                    prop_symbol->set_type(getterType);
+                    symbolTable.mark_symbol_resolved(symbol);
+                }
+            }
         }
         if (node->setter)
         {
