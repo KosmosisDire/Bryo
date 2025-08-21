@@ -18,8 +18,14 @@ namespace Myre
         Invalid,
 
         // Literals
+        LiteralI8,
+        LiteralU8,
+        LiteralI16,
+        LiteralU16,
         LiteralI32,
+        LiteralU32,
         LiteralI64,
+        LiteralU64,
         LiteralF32,
         LiteralF64,
         LiteralString,
@@ -305,6 +311,7 @@ namespace Myre
     enum class LiteralKind
     {
         Invalid = (int)TokenKind::Invalid,
+        I8 = (int)TokenKind::LiteralI8,
         I32 = (int)TokenKind::LiteralI32,
         I64 = (int)TokenKind::LiteralI64,
         F32 = (int)TokenKind::LiteralF32,

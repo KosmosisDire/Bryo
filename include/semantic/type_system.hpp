@@ -70,7 +70,7 @@ namespace Myre
         create_primitive("f64", PrimitiveType::F64);
         create_primitive("bool", PrimitiveType::Bool);
         create_primitive("string", PrimitiveType::String);
-        create_primitive("char", PrimitiveType::Char);
+        create_primitive("char", PrimitiveType::I8);
         create_primitive("u32", PrimitiveType::U32);
         create_primitive("u64", PrimitiveType::U64);
         create_primitive("i8", PrimitiveType::I8);

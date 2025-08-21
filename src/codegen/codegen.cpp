@@ -417,6 +417,12 @@ namespace Myre
         {
             switch (prim->kind)
             {
+            case PrimitiveType::I8:
+                llvm_type = llvm::Type::getInt8Ty(*context);
+                break;
+            case PrimitiveType::I16:
+                llvm_type = llvm::Type::getInt16Ty(*context);
+                break;
             case PrimitiveType::I32:
                 llvm_type = llvm::Type::getInt32Ty(*context);
                 break;
@@ -515,6 +521,10 @@ namespace Myre
 
         switch (literal->kind)
         {
+        case LiteralKind::I8:
+            return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), std::stoll(text));
+        case LiteralKind::Char:
+            return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), static_cast<int8_t>(text[1]));
         case LiteralKind::I32:
             return llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), std::stoll(text));
         case LiteralKind::F32:
