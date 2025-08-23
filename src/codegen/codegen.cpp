@@ -2108,5 +2108,7 @@ namespace Myre
     void CodeGenerator::visit(EnumCaseDecl *n) { /* No codegen needed */ }
     void CodeGenerator::visit(ArrayTypeExpr *n) { /* Type expressions are not executed */ }
     void CodeGenerator::visit(FunctionTypeExpr *n) { /* Type expressions are not executed */ }
+    void CodeGenerator::visit(GenericTypeExpr *n) { /* Generic type expressions are not executed - handled during type resolution */ }
+    void CodeGenerator::visit(TypeParameterDecl *n) { /* Type parameter declarations don't generate code - handled during monomorphization */ }
 
 } // namespace Myre

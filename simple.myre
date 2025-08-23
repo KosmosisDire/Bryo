@@ -1,5 +1,10 @@
 
 
+type Array<T>
+{
+    T[] data;
+}
+
 type String
 {
     i8[12] data;

@@ -171,6 +171,8 @@ namespace Myre
         // Type expressions (now regular expressions) - treated as regular expressions
         void visit(ArrayTypeExpr *n) override;
         void visit(FunctionTypeExpr *n) override;
+        void visit(GenericTypeExpr *n) override;  // NEW: Generic type instantiation
+        void visit(TypeParameterDecl *n) override;  // NEW: Generic type parameter
     };
 
 } // namespace Myre

@@ -56,6 +56,7 @@ namespace Myre
     // Type expressions (expressions that represent types)
     struct ArrayTypeExpr;
     struct FunctionTypeExpr;
+    struct GenericTypeExpr;
 
     // Statements
     struct ExpressionStmt;
@@ -73,6 +74,7 @@ namespace Myre
     struct ConstructorDecl;
     struct EnumCaseDecl;
     struct TypeDecl;
+    struct TypeParameterDecl;
     struct NamespaceDecl;
 
     // Root
@@ -128,6 +130,7 @@ namespace Myre
         virtual void visit(IfExpr *node) = 0;
         virtual void visit(ArrayTypeExpr *node) = 0;
         virtual void visit(FunctionTypeExpr *node) = 0;
+        virtual void visit(GenericTypeExpr *node) = 0;
 
         // Statements
         virtual void visit(ExpressionStmt *node) = 0;
@@ -147,6 +150,7 @@ namespace Myre
         virtual void visit(PropertyAccessor *node) = 0;
         virtual void visit(EnumCaseDecl *node) = 0;
         virtual void visit(TypeDecl *node) = 0;
+        virtual void visit(TypeParameterDecl *node) = 0;
         virtual void visit(NamespaceDecl *node) = 0;
 
         // Root
@@ -382,6 +386,13 @@ namespace Myre
         ACCEPT_VISITOR
     };
 
+    struct GenericTypeExpr : Expression
+    {
+        Expression *baseType;               // The generic type (e.g., Array, Optional)
+        List<Expression *> typeArguments;  // The type arguments (e.g., i32, String)
+        ACCEPT_VISITOR
+    };
+
     // Single block type for both statements and expressions
     struct Block : Statement
     {
@@ -487,6 +498,7 @@ namespace Myre
     struct FunctionDecl : Declaration
     {
         Identifier *name; // Never null
+        List<TypeParameterDecl *> typeParameters;
         List<ParameterDecl *> parameters;
         Expression *returnType;      // null = void - now Expression instead of TypeRef
         Block *body;                 // Can be null (abstract)
@@ -542,8 +554,16 @@ namespace Myre
 
         Identifier *name; // Never null
         Kind kind;
+        List<TypeParameterDecl *> typeParameters; // NEW: Generic type parameters <T, U>
         List<Expression *> baseTypes; // Now Expression instead of TypeRef
         List<Declaration *> members;
+        ACCEPT_VISITOR
+    };
+
+    struct TypeParameterDecl : Declaration
+    {
+        Identifier *name; // Never null - the type parameter name (T, U, etc.)
+        // Future: constraints can be added here
         ACCEPT_VISITOR
     };
 
@@ -771,6 +791,18 @@ namespace Myre
                 node->returnType->accept(this);
         }
 
+        void visit(GenericTypeExpr *node) override
+        {
+            visit(static_cast<Expression *>(node));
+            if (node->baseType)
+                node->baseType->accept(this);
+            for (auto *typeArg : node->typeArguments)
+            {
+                if (typeArg)
+                    typeArg->accept(this);
+            }
+        }
+
         void visit(ExpressionStmt *node) override
         {
             visit(static_cast<Statement *>(node));
@@ -856,6 +888,11 @@ namespace Myre
         {
             visit(static_cast<Declaration *>(node));
             node->name->accept(this);
+            for (auto *typeParam : node->typeParameters)
+            {
+                if (typeParam)
+                    typeParam->accept(this);
+            }
             for (auto *param : node->parameters)
             {
                 param->accept(this);
@@ -903,6 +940,11 @@ namespace Myre
         {
             visit(static_cast<Declaration *>(node));
             node->name->accept(this);
+            for (auto *typeParam : node->typeParameters)
+            {
+                if (typeParam)
+                    typeParam->accept(this);
+            }
             for (auto *base : node->baseTypes)
             {
                 base->accept(this);
@@ -911,6 +953,13 @@ namespace Myre
             {
                 member->accept(this);
             }
+        }
+
+        void visit(TypeParameterDecl *node) override
+        {
+            visit(static_cast<Declaration *>(node));
+            if (node->name)
+                node->name->accept(this);
         }
 
         void visit(NamespaceDecl *node) override
