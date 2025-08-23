@@ -101,14 +101,14 @@ namespace Myre
         }
 
         // Helper factory methods
-        Identifier *makeIdentifier(std::string_view text)
+        Identifier *makeIdentifier(std::string text)
         {
             auto *id = make<Identifier>();
             id->text = text;
             return id;
         }
 
-        ErrorExpression *makeErrorExpr(std::string_view message)
+        ErrorExpression *makeErrorExpr(std::string message)
         {
             auto *error = make<ErrorExpression>();
             error->message = message;
@@ -116,7 +116,7 @@ namespace Myre
             return error;
         }
 
-        ErrorStatement *makeErrorStmt(std::string_view message)
+        ErrorStatement *makeErrorStmt(std::string message)
         {
             auto *error = make<ErrorStatement>();
             error->message = message;

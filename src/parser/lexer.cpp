@@ -499,15 +499,15 @@ namespace Myre
         // Skip opening quote
         advance_char();
 
+        std::string processed_string;
+        
         while (!at_end() && current_char() != '"')
         {
             if (current_char() == '\\')
             {
-                advance_char(); // Skip escape character
-                if (!at_end())
-                {
-                    advance_char(); // Skip escaped character
-                }
+                // Process escape sequence and add the interpreted character
+                char escaped_char = interpret_escape_sequence();
+                processed_string += escaped_char;
             }
             else if (current_char() == '\n')
             {
@@ -516,6 +516,7 @@ namespace Myre
             }
             else
             {
+                processed_string += current_char();
                 advance_char();
             }
         }
@@ -529,7 +530,9 @@ namespace Myre
             report_error("Unterminated string literal");
         }
 
-        return Token(TokenKind::LiteralString, SourceRange(start_location, current_offset_ - start), source_);
+        Token token(TokenKind::LiteralString, SourceRange(start_location, current_offset_ - start), source_);
+        token.text = std::move(processed_string);
+        return token;
     }
 
     Token Lexer::scan_char_literal()
@@ -540,17 +543,33 @@ namespace Myre
         // Skip opening quote
         advance_char();
 
+        std::string processed_char;
+        
         if (!at_end() && current_char() != '\'')
         {
             if (current_char() == '\\')
             {
-                advance_char(); // Skip escape character
-                if (!at_end())
-                {
-                    advance_char(); // Skip escaped character
-                }
+                // Process escape sequence and add the interpreted character
+                char escaped_char = interpret_escape_sequence();
+                processed_char += escaped_char;
             }
             else
+            {
+                processed_char += current_char();
+                advance_char();
+            }
+        }
+        else
+        {
+            report_error("Empty character literal");
+        }
+
+        // Check for additional characters (invalid)
+        if (!at_end() && current_char() != '\'')
+        {
+            report_error("Character literal contains multiple characters");
+            // Skip to closing quote or end
+            while (!at_end() && current_char() != '\'')
             {
                 advance_char();
             }
@@ -565,7 +584,9 @@ namespace Myre
             report_error("Unterminated character literal");
         }
 
-        return Token(TokenKind::LiteralChar, SourceRange(start_location, current_offset_ - start), source_);
+        Token token(TokenKind::LiteralChar, SourceRange(start_location, current_offset_ - start), source_);
+        token.text = std::move(processed_char);
+        return token;
     }
 
     Token Lexer::scan_identifier_or_keyword()
@@ -776,6 +797,81 @@ namespace Myre
     void Lexer::report_warning(const std::string &message)
     {
         diagnostics_.emplace_back(current_location_, message, false);
+    }
+
+    char Lexer::interpret_escape_sequence()
+    {
+        // Current character should be backslash
+        if (current_char() != '\\')
+        {
+            report_error("Expected escape sequence");
+            return '\0';
+        }
+
+        advance_char(); // Skip backslash
+
+        if (at_end())
+        {
+            report_error("Unexpected end of file in escape sequence");
+            return '\0';
+        }
+
+        char escaped_char = current_char();
+        advance_char(); // Skip the escaped character
+
+        switch (escaped_char)
+        {
+        case 'n':
+            return '\n';
+        case 't':
+            return '\t';
+        case 'r':
+            return '\r';
+        case 'b':
+            return '\b';
+        case 'f':
+            return '\f';
+        case 'v':
+            return '\v';
+        case 'a':
+            return '\a';
+        case '0':
+            return '\0';
+        case '\\':
+            return '\\';
+        case '\'':
+            return '\'';
+        case '\"':
+            return '\"';
+        case 'x':
+        {
+            // Hexadecimal escape sequence \xHH
+            if (at_end() || !is_hex_digit(current_char()))
+            {
+                report_error("Invalid hexadecimal escape sequence");
+                return '\0';
+            }
+            
+            int hex_value = 0;
+            for (int i = 0; i < 2 && !at_end() && is_hex_digit(current_char()); ++i)
+            {
+                char hex_char = current_char();
+                advance_char();
+                
+                if (hex_char >= '0' && hex_char <= '9')
+                    hex_value = hex_value * 16 + (hex_char - '0');
+                else if (hex_char >= 'a' && hex_char <= 'f')
+                    hex_value = hex_value * 16 + (hex_char - 'a' + 10);
+                else if (hex_char >= 'A' && hex_char <= 'F')
+                    hex_value = hex_value * 16 + (hex_char - 'A' + 10);
+            }
+            
+            return static_cast<char>(hex_value);
+        }
+        default:
+            report_error("Invalid escape sequence: \\" + std::string(1, escaped_char));
+            return escaped_char; // Return the character as-is
+        }
     }
 
     TokenStream Lexer::tokenize_all()

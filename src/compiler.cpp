@@ -176,7 +176,7 @@ namespace Myre
 
         auto log_param = std::make_unique<ParameterSymbol>();
         log_param->set_name("message");
-        log_param->set_type(global_symbols->get_type_system().get_array_type(global_symbols->get_type_system().get_primitive("i8")));
+        log_param->set_type(global_symbols->get_type_system().get_array_type(global_symbols->get_type_system().get_primitive("i8"), -1));
         
         log_function_ptr->set_parameters({log_param->handle});
 

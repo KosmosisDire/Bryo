@@ -2,18 +2,32 @@
 
 type String
 {
-    i8[] data;
+    i8[12] data;
+}
+
+fn PrintString(String s)
+{
+    Print(s.data);
+}
+
+fn StrLen(i8[] s)
+{
+    f32 length = 0.0;
+    i32 i = 0;
+    while (s[i] != '\0')
+    {
+        length += 1.0;
+        i++;
+    }
+    return length;
 }
 
 fn Main()
 {
     String s;
-    s.data[0] = 'H';
-    s.data[1] = 'e';
-    s.data[2] = 'l';
-    s.data[3] = 'l';
-    s.data[4] = 'o';
-    Print(s.data);
-    
-    return 0.0;
+    s.data = ['H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '\0'];
+
+    PrintString(s);
+
+    return StrLen(s.data);
 }

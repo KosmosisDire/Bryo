@@ -102,6 +102,7 @@ private:
     FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
     ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
     Declaration* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
+    Expression* convertToArrayTypeIfNeeded(Expression* expr);
     std::vector<Declaration*> parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression* type, const Token& startToken);
     void parsePropertyAccessors(PropertyDecl* prop);
     NamespaceDecl* parseNamespaceDecl(const Token& startToken);
@@ -133,12 +134,6 @@ private:
     Expression* parseLambdaExpression();
     Expression* parseTypeOfExpression();
     Expression* parseSizeOfExpression();
-
-    // ================== Helper Functions ==================
-    // Note: Type parsing now uses parseExpression() directly!
-    // - parseTypeExpression() REMOVED - use parseExpression() 
-    // - parseArrayTypeExpression() REMOVED - use postfix [] parsing
-    // - parseFunctionTypeExpression() REMOVED - use lambda expression parsing
     
     Identifier* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();

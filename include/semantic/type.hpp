@@ -43,8 +43,7 @@ namespace Myre
     struct ArrayType
     {
         TypePtr elementType;
-        int rank = 1;                // Number of dimensions
-        std::vector<int> fixedSizes; // length must match rank, 0 means any size (aka size is not encoded in the type)
+        int fixedSize = -1; // length must match rank, < 0 means any size (aka size is not encoded in the type)
     };
 
     // Reference to a defined type (Player, Enemy, etc.)

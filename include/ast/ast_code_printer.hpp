@@ -662,7 +662,12 @@ namespace Myre
         void visit(ArrayTypeExpr *node) override
         {
             node->elementType->accept(this);
-            emit("[]");
+            emit("[");
+            if (node->size)
+            {
+                node->size->accept(this);
+            }
+            emit("]");
         }
 
         void visit(FunctionTypeExpr *node) override

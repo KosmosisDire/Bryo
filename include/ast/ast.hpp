@@ -215,7 +215,7 @@ namespace Myre
 
     struct Identifier : Node
     {
-        std::string_view text;
+        std::string text;
         ACCEPT_VISITOR
     };
 
@@ -233,14 +233,14 @@ namespace Myre
 
     struct ErrorExpression : Expression
     {
-        std::string_view message;
+        std::string message;
         List<Node *> partialNodes;
         ACCEPT_VISITOR
     };
 
     struct ErrorStatement : Statement
     {
-        std::string_view message;
+        std::string message;
         List<Node *> partialNodes;
         ACCEPT_VISITOR
     };
@@ -252,7 +252,7 @@ namespace Myre
     struct LiteralExpr : Expression
     {
         LiteralKind kind;
-        std::string_view value; // Raw text from source
+        std::string value; // Raw text from source
         ACCEPT_VISITOR
     };
 
@@ -371,6 +371,7 @@ namespace Myre
     struct ArrayTypeExpr : Expression
     {
         Expression *elementType; // Never null - the element type expression
+        LiteralExpr *size;       // Can be null (size not type-checked), must be an integer literal if specified in the type
         ACCEPT_VISITOR
     };
 
@@ -754,6 +755,8 @@ namespace Myre
             visit(static_cast<Expression *>(node));
             if (node->elementType)
                 node->elementType->accept(this);
+            if (node->size)
+                node->size->accept(this);
         }
 
         void visit(FunctionTypeExpr *node) override

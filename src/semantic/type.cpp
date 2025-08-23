@@ -32,9 +32,11 @@ namespace Myre
             return v.definition ? v.definition->name() : "unknown";
         } else if constexpr (std::is_same_v<T, ArrayType>) {
             std::string result = v.elementType ? v.elementType->get_name() : "unknown";
-            for (int i = 0; i < v.rank; i++) {
+
+            if (v.fixedSize >= 0)
+                result += "[" + std::to_string(v.fixedSize) + "]";
+            else
                 result += "[]";
-            }
             return result;
         } else if constexpr (std::is_same_v<T, FunctionType>) {
             return "function";

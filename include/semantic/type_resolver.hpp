@@ -329,7 +329,12 @@ namespace Myre
         else if (auto *array = type_expr->as<ArrayTypeExpr>())
         {
             TypePtr elemType = resolve_ast_type_expr(array->elementType, scope);
-            return typeSystem.get_array_type(elemType);
+            int arrSize = -1;
+            if (array->size)
+            {
+                arrSize = std::stoi(std::string(array->size->value));
+            }
+            return typeSystem.get_array_type(elemType, arrSize);
         }
         // Function type (like "fn(i32, i32) -> i32")
         else if (auto *func = type_expr->as<FunctionTypeExpr>())
@@ -479,7 +484,7 @@ namespace Myre
         // Create array type with the unified element type
         if (elementType)
         {
-            TypePtr arrayType = typeSystem.get_array_type(elementType);
+            TypePtr arrayType = typeSystem.get_array_type(elementType, node->elements.size());
             annotate_expression(node, arrayType);
         }
         else

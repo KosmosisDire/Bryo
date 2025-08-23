@@ -148,6 +148,9 @@ namespace Myre
         bool is_octal_digit(char ch) const;
         bool is_binary_digit(char ch) const;
 
+        // Escape sequence processing
+        char interpret_escape_sequence();
+
         // Error reporting
         void report_error(const std::string &message);
         void report_warning(const std::string &message);

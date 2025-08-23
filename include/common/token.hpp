@@ -667,7 +667,7 @@ namespace Myre
     // Main token structure with absolute position and relative trivia
     struct Token
     {
-        std::string_view text;               // Text of the token (for debugging)
+        std::string text;                    // Text of the token (for debugging)
         TokenKind kind;                      // What type of token
         SourceRange location;                // Absolute position in source
         std::vector<Trivia> leading_trivia;  // Whitespace/comments before token
@@ -679,7 +679,7 @@ namespace Myre
             : kind(kind), location(location)
         {
             if (location.end_offset() <= source.size())
-                text = source.substr(location.start.offset, location.width);
+                text = std::string(source.substr(location.start.offset, location.width));
             else
                 text = {};
         }

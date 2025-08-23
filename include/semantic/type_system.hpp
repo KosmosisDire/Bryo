@@ -44,7 +44,7 @@ namespace Myre
         }
 
         // Type creation/lookup methods
-        TypePtr get_array_type(TypePtr element, int rank = 1);
+        TypePtr get_array_type(TypePtr element, int fixedSize);
         TypePtr get_function_type(std::vector<TypePtr> params, TypePtr ret);
         TypePtr get_type_reference(TypeLikeSymbol *type_symbol);
         TypePtr get_unresolved_type();
@@ -82,13 +82,13 @@ namespace Myre
     }
 
     // Type creation with canonicalization
-    inline TypePtr TypeSystem::get_array_type(TypePtr element, int rank)
+    inline TypePtr TypeSystem::get_array_type(TypePtr element, int fixedSize)
     {
         if (!element)
             return nullptr;
 
         // Create cache key
-        std::string key = "array:" + element->get_name() + ":" + std::to_string(rank);
+        std::string key = element->get_name() + "[" + std::to_string(fixedSize) + "]";
 
         // Check cache
         auto it = canonical_types.find(key);
@@ -98,7 +98,7 @@ namespace Myre
         }
 
         // Create new type
-        auto type = Type::create(ArrayType{element, rank});
+        auto type = Type::create(ArrayType{element, fixedSize});
         canonical_types[key] = type;
         return type;
     }

@@ -573,8 +573,40 @@ namespace Myre
         return decl;
     }
 
+    Expression* Parser::convertToArrayTypeIfNeeded(Expression* expr)
+    {
+        if (auto* indexer = expr->as<IndexerExpr>())
+        {
+            // Convert IndexerExpr to ArrayTypeExpr for type declarations
+            // Check if the index is a literal (array size)
+            if (auto* literal = indexer->index->as<LiteralExpr>())
+            {
+                if (literal->kind == LiteralKind::I32 || 
+                    literal->kind == LiteralKind::I64 ||
+                    literal->kind == LiteralKind::I8)
+                {
+                    auto* arrayType = arena.make<ArrayTypeExpr>();
+                    arrayType->elementType = indexer->object;
+                    arrayType->size = literal;
+                    arrayType->location = indexer->location;
+                    arrayType->isTypeExpression = true;
+                    return arrayType;
+                }
+            }
+            // For non-literal indices, still convert but without size
+            auto* arrayType = arena.make<ArrayTypeExpr>();
+            arrayType->elementType = indexer->object;
+            arrayType->size = nullptr;
+            arrayType->location = indexer->location;
+            arrayType->isTypeExpression = true;
+            return arrayType;
+        }
+        return expr;
+    }
+
     std::vector<Declaration *> Parser::parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression *type, const Token &startToken)
     {
+        type = convertToArrayTypeIfNeeded(type);
         std::vector<Declaration *> declarations;
         bool hasProperties = false;
 

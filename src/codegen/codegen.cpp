@@ -185,6 +185,7 @@ namespace Myre
             }
         }
     }
+
     llvm::Function *CodeGenerator::declare_function_from_symbol(FunctionSymbol *func_symbol)
     {
         if (!func_symbol)
@@ -219,7 +220,18 @@ namespace Myre
                 report_general_error("Internal error: Parameter symbol not found");
                 continue;
             }
-            param_types.push_back(get_llvm_type(param_symbol->type()));
+
+            llvm::Type *param_type = get_llvm_type(param_symbol->type());
+
+            // If parameter is an array, use pointer instead of array type
+            if (param_type->isArrayTy())
+            {
+                param_types.push_back(llvm::PointerType::get(*context, 0)); // Opaque pointer for arrays
+            }
+            else
+            {
+                param_types.push_back(param_type);
+            }
         }
 
         llvm::Type *return_type = get_llvm_type(func_symbol->return_type());
@@ -275,24 +287,13 @@ namespace Myre
             auto *entry = llvm::BasicBlock::Create(*context, "entry", print_func);
             builder->SetInsertPoint(entry);
 
-            // Get the array parameter (passed by value in your type system)
-            llvm::Value *array_param = print_func->arg_begin();
-            array_param->setName("message");
+            // Get the array parameter (now passed as a pointer)
+            llvm::Value *array_ptr = print_func->arg_begin();
+            array_ptr->setName("message.ptr");
 
-            // Store the array to get a pointer (printf needs a pointer)
-            llvm::Type *array_type = array_param->getType();
-            auto *array_alloca = builder->CreateAlloca(array_type, nullptr, "message.ptr");
-            builder->CreateStore(array_param, array_alloca);
-
-            // Get pointer to the first element of the array for printf
-            std::vector<llvm::Value *> indices = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0)  // First element
-            };
-            auto *str_ptr = builder->CreateGEP(array_type, array_alloca, indices, "str.ptr");
-
-            // Call printf with the pointer
-            builder->CreateCall(printf_func, {str_ptr});
+            // The array is already a pointer, so we can directly call printf with it
+            // (assuming it's a char array/string)
+            builder->CreateCall(printf_func, {array_ptr});
 
             // Return void
             builder->CreateRetVoid();
@@ -300,6 +301,7 @@ namespace Myre
             current_function = saved_function;
         }
     }
+
     void CodeGenerator::debug_print_module_state(const std::string &phase)
     {
         std::cerr << "\n===== MODULE STATE: " << phase << " =====\n";
@@ -519,25 +521,14 @@ namespace Myre
             {
                 // For now, use a simple fixed-size array approach
                 // TODO: Handle dynamic arrays with proper memory management
-                uint64_t array_size = 10; // Default size for dynamic arrays
+                uint64_t array_size = 10; // Default size for unsized arrays
 
-                if (arr->fixedSizes.size() > 0 && arr->fixedSizes[0] > 0)
+                if (arr->fixedSize >= 0)
                 {
-                    array_size = static_cast<uint64_t>(arr->fixedSizes[0]);
+                    array_size = static_cast<uint64_t>(arr->fixedSize);
                 }
 
                 llvm_type = llvm::ArrayType::get(element_type, array_size);
-
-                // Handle multi-dimensional arrays
-                for (int i = 1; i < arr->rank; i++)
-                {
-                    uint64_t dim_size = 10; // Default size
-                    if (i < arr->fixedSizes.size() && arr->fixedSizes[i] > 0)
-                    {
-                        dim_size = static_cast<uint64_t>(arr->fixedSizes[i]);
-                    }
-                    llvm_type = llvm::ArrayType::get(llvm_type, dim_size);
-                }
             }
         }
         else if (auto *ref = std::get_if<TypeReference>(&type->value))
@@ -584,7 +575,7 @@ namespace Myre
         case LiteralKind::I8:
             return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), std::stoll(text));
         case LiteralKind::Char:
-            return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), static_cast<int8_t>(text[1]));
+            return llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context), static_cast<int8_t>(text[0]));
         case LiteralKind::I32:
             return llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), std::stoll(text));
         case LiteralKind::F32:
@@ -761,6 +752,7 @@ namespace Myre
             }
         }
     }
+
     void CodeGenerator::visit(FunctionDecl *node)
     {
         if (!node || !node->name)
@@ -802,13 +794,24 @@ namespace Myre
                 continue;
             }
 
-            // Create alloca for parameter
-            auto *alloca = builder->CreateAlloca(get_llvm_type(param_symbol->type()), nullptr, param_symbol->name());
+            llvm::Type *param_type = get_llvm_type(param_symbol->type());
             auto *param_value = function->arg_begin() + param_index;
-            builder->CreateStore(param_value, alloca);
 
-            locals[param_symbol] = alloca;
-            local_types[param_symbol] = get_llvm_type(param_symbol->type());
+            // If parameter is an array, it's already a pointer - just store it directly
+            if (param_type->isArrayTy())
+            {
+                // Array parameters come in as pointers, store them directly
+                locals[param_symbol] = param_value;
+                local_types[param_symbol] = param_type;
+            }
+            else
+            {
+                // Non-array parameters: create alloca and store
+                auto *alloca = builder->CreateAlloca(param_type, nullptr, param_symbol->name());
+                builder->CreateStore(param_value, alloca);
+                locals[param_symbol] = alloca;
+                local_types[param_symbol] = param_type;
+            }
             param_index++;
         }
 
@@ -1130,20 +1133,79 @@ namespace Myre
             if (!member_ptr)
                 return;
 
-            node->value->accept(this);
-            auto *value = pop_value();
-            if (!value)
-                return;
-
-            // Load the value if it's a pointer (for pass-by-value semantics)
-            if (node->value->resolvedType && value->getType()->isPointerTy())
+            // Handle compound assignment vs regular assignment for member access
+            llvm::Value *final_value = nullptr;
+            
+            if (node->op == AssignmentOperatorKind::Assign)
             {
-                llvm::Type *value_llvm_type = get_llvm_type(node->value->resolvedType);
-                value = builder->CreateLoad(value_llvm_type, value, "member.assign.load");
+                // Regular assignment: member = value
+                node->value->accept(this);
+                auto *value = pop_value();
+                if (!value)
+                    return;
+
+                // Load the value if it's a pointer (for pass-by-value semantics)
+                if (node->value->resolvedType && value->getType()->isPointerTy())
+                {
+                    llvm::Type *value_llvm_type = get_llvm_type(node->value->resolvedType);
+                    value = builder->CreateLoad(value_llvm_type, value, "member.assign.load");
+                }
+                final_value = value;
+            }
+            else
+            {
+                // Compound assignment: member op= value
+                // Load current member value
+                auto *member_type = get_llvm_type(member_access->resolvedType);
+                auto *current_value = builder->CreateLoad(member_type, member_ptr, "member.compound.current");
+
+                // Evaluate RHS
+                node->value->accept(this);
+                auto *rhs_value = pop_value();
+                if (!rhs_value)
+                    return;
+
+                if (node->value->resolvedType && rhs_value->getType()->isPointerTy())
+                {
+                    llvm::Type *rhs_type = get_llvm_type(node->value->resolvedType);
+                    if (!rhs_type->isStructTy())
+                    {
+                        rhs_value = builder->CreateLoad(rhs_type, rhs_value, "member.compound.rhs.load");
+                    }
+                }
+
+                // Perform operation
+                bool is_float = current_value->getType()->isFloatingPointTy();
+                
+                switch (node->op)
+                {
+                case AssignmentOperatorKind::Add:
+                    final_value = is_float ? builder->CreateFAdd(current_value, rhs_value, "member.compound.add") 
+                                           : builder->CreateAdd(current_value, rhs_value, "member.compound.add");
+                    break;
+                case AssignmentOperatorKind::Subtract:
+                    final_value = is_float ? builder->CreateFSub(current_value, rhs_value, "member.compound.sub") 
+                                           : builder->CreateSub(current_value, rhs_value, "member.compound.sub");
+                    break;
+                case AssignmentOperatorKind::Multiply:
+                    final_value = is_float ? builder->CreateFMul(current_value, rhs_value, "member.compound.mul") 
+                                           : builder->CreateMul(current_value, rhs_value, "member.compound.mul");
+                    break;
+                case AssignmentOperatorKind::Divide:
+                    final_value = is_float ? builder->CreateFDiv(current_value, rhs_value, "member.compound.div") 
+                                           : builder->CreateSDiv(current_value, rhs_value, "member.compound.div");
+                    break;
+                default:
+                    report_error(node, "Unsupported compound assignment operator for member access");
+                    return;
+                }
             }
 
-            builder->CreateStore(value, member_ptr);
-            push_value(value); // Assignments are expressions
+            if (final_value)
+            {
+                builder->CreateStore(final_value, member_ptr);
+                push_value(final_value); // Assignments are expressions
+            }
             return;
         }
 
@@ -1155,20 +1217,79 @@ namespace Myre
             if (!element_ptr)
                 return;
 
-            node->value->accept(this);
-            auto *value = pop_value();
-            if (!value)
-                return;
-
-            // Load the value if it's a pointer (for pass-by-value semantics)
-            if (node->value->resolvedType && value->getType()->isPointerTy())
+            // Handle compound assignment vs regular assignment for array elements
+            llvm::Value *final_value = nullptr;
+            
+            if (node->op == AssignmentOperatorKind::Assign)
             {
-                llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
-                value = builder->CreateLoad(value_type, value, "elem.assign.load");
+                // Regular assignment: array[index] = value
+                node->value->accept(this);
+                auto *value = pop_value();
+                if (!value)
+                    return;
+
+                // Load the value if it's a pointer (for pass-by-value semantics)
+                if (node->value->resolvedType && value->getType()->isPointerTy())
+                {
+                    llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
+                    value = builder->CreateLoad(value_type, value, "elem.assign.load");
+                }
+                final_value = value;
+            }
+            else
+            {
+                // Compound assignment: array[index] op= value
+                // Load current element value
+                auto *element_type = get_llvm_type(indexer->resolvedType);
+                auto *current_value = builder->CreateLoad(element_type, element_ptr, "elem.compound.current");
+
+                // Evaluate RHS
+                node->value->accept(this);
+                auto *rhs_value = pop_value();
+                if (!rhs_value)
+                    return;
+
+                if (node->value->resolvedType && rhs_value->getType()->isPointerTy())
+                {
+                    llvm::Type *rhs_type = get_llvm_type(node->value->resolvedType);
+                    if (!rhs_type->isStructTy())
+                    {
+                        rhs_value = builder->CreateLoad(rhs_type, rhs_value, "elem.compound.rhs.load");
+                    }
+                }
+
+                // Perform operation
+                bool is_float = current_value->getType()->isFloatingPointTy();
+                
+                switch (node->op)
+                {
+                case AssignmentOperatorKind::Add:
+                    final_value = is_float ? builder->CreateFAdd(current_value, rhs_value, "elem.compound.add") 
+                                           : builder->CreateAdd(current_value, rhs_value, "elem.compound.add");
+                    break;
+                case AssignmentOperatorKind::Subtract:
+                    final_value = is_float ? builder->CreateFSub(current_value, rhs_value, "elem.compound.sub") 
+                                           : builder->CreateSub(current_value, rhs_value, "elem.compound.sub");
+                    break;
+                case AssignmentOperatorKind::Multiply:
+                    final_value = is_float ? builder->CreateFMul(current_value, rhs_value, "elem.compound.mul") 
+                                           : builder->CreateMul(current_value, rhs_value, "elem.compound.mul");
+                    break;
+                case AssignmentOperatorKind::Divide:
+                    final_value = is_float ? builder->CreateFDiv(current_value, rhs_value, "elem.compound.div") 
+                                           : builder->CreateSDiv(current_value, rhs_value, "elem.compound.div");
+                    break;
+                default:
+                    report_error(node, "Unsupported compound assignment operator for array element");
+                    return;
+                }
             }
 
-            builder->CreateStore(value, element_ptr);
-            push_value(value); // Assignments are expressions
+            if (final_value)
+            {
+                builder->CreateStore(final_value, element_ptr);
+                push_value(final_value); // Assignments are expressions
+            }
             return;
         }
 
@@ -1198,22 +1319,81 @@ namespace Myre
         }
         auto *alloca = it->second;
 
-        node->value->accept(this);
-        auto *value = pop_value();
-        if (!value)
-            return;
-
-        // Load the value if it's a pointer (for pass-by-value semantics)
-        if (node->value->resolvedType && value->getType()->isPointerTy())
+        // Handle compound assignment vs regular assignment
+        llvm::Value *final_value = nullptr;
+        
+        if (node->op == AssignmentOperatorKind::Assign)
         {
-            llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
-            value = builder->CreateLoad(value_type, value, "assign.load");
+            // Regular assignment: target = value
+            node->value->accept(this);
+            auto *value = pop_value();
+            if (!value)
+                return;
+
+            // Load the value if it's a pointer (for pass-by-value semantics)
+            if (node->value->resolvedType && value->getType()->isPointerTy())
+            {
+                llvm::Type *value_type = get_llvm_type(node->value->resolvedType);
+                value = builder->CreateLoad(value_type, value, "assign.load");
+            }
+            final_value = value;
+        }
+        else
+        {
+            // Compound assignment: target op= value
+            // First, load the current value from the target
+            auto *target_type = get_llvm_type(node->target->resolvedType);
+            auto *current_value = builder->CreateLoad(target_type, alloca, "compound.current");
+
+            // Evaluate the right-hand side
+            node->value->accept(this);
+            auto *rhs_value = pop_value();
+            if (!rhs_value)
+                return;
+
+            // Load RHS if it's a pointer
+            if (node->value->resolvedType && rhs_value->getType()->isPointerTy())
+            {
+                llvm::Type *rhs_type = get_llvm_type(node->value->resolvedType);
+                if (!rhs_type->isStructTy())
+                {
+                    rhs_value = builder->CreateLoad(rhs_type, rhs_value, "compound.rhs.load");
+                }
+            }
+
+            // Perform the binary operation
+            bool is_float = current_value->getType()->isFloatingPointTy();
+            
+            switch (node->op)
+            {
+            case AssignmentOperatorKind::Add:
+                final_value = is_float ? builder->CreateFAdd(current_value, rhs_value, "compound.add") 
+                                       : builder->CreateAdd(current_value, rhs_value, "compound.add");
+                break;
+            case AssignmentOperatorKind::Subtract:
+                final_value = is_float ? builder->CreateFSub(current_value, rhs_value, "compound.sub") 
+                                       : builder->CreateSub(current_value, rhs_value, "compound.sub");
+                break;
+            case AssignmentOperatorKind::Multiply:
+                final_value = is_float ? builder->CreateFMul(current_value, rhs_value, "compound.mul") 
+                                       : builder->CreateMul(current_value, rhs_value, "compound.mul");
+                break;
+            case AssignmentOperatorKind::Divide:
+                final_value = is_float ? builder->CreateFDiv(current_value, rhs_value, "compound.div") 
+                                       : builder->CreateSDiv(current_value, rhs_value, "compound.div");
+                break;
+            default:
+                report_error(node, "Unsupported compound assignment operator");
+                return;
+            }
         }
 
-        builder->CreateStore(value, alloca);
-        push_value(value); // Assignments are expressions
+        if (final_value)
+        {
+            builder->CreateStore(final_value, alloca);
+            push_value(final_value); // Assignments are expressions
+        }
     }
-
     void CodeGenerator::visit(CallExpr *node)
     {
         if (!node || !node->callee)
@@ -1309,17 +1489,33 @@ namespace Myre
         }
 
         // Add regular arguments
-        for (auto *arg : node->arguments)
+        size_t param_offset = this_ptr ? 1 : 0;
+        for (size_t i = 0; i < node->arguments.size(); i++)
         {
+            auto *arg = node->arguments[i];
             arg->accept(this);
             llvm::Value *arg_value = pop_value();
 
-            // Always load arguments for pass-by-value (including structs)
-            if (arg_value && arg->resolvedType && arg_value->getType()->isPointerTy())
+            if (arg_value && arg->resolvedType)
             {
                 llvm::Type *arg_type = get_llvm_type(arg->resolvedType);
-                if (arg_type)
+
+                // For arrays, pass the pointer directly
+                if (arg_type && arg_type->isArrayTy())
                 {
+                    // If it's already a pointer (from variable or array literal), use it directly
+                    // If it's an array value, we need to store it first
+                    if (!arg_value->getType()->isPointerTy())
+                    {
+                        auto *temp_alloca = builder->CreateAlloca(arg_type, nullptr, "array.arg.temp");
+                        builder->CreateStore(arg_value, temp_alloca);
+                        arg_value = temp_alloca;
+                    }
+                    // arg_value is now a pointer to the array, which is what we want
+                }
+                else if (arg_value->getType()->isPointerTy())
+                {
+                    // Non-array arguments: load the value
                     arg_value = builder->CreateLoad(arg_type, arg_value, "arg.load");
                 }
             }
@@ -1331,6 +1527,26 @@ namespace Myre
         {
             report_error(node, "Incorrect number of arguments");
             return;
+        }
+
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            if (args[i]->getType() != callee_func->getArg(i)->getType())
+            {
+                std::string arg_type_str;
+                std::string param_type_str;
+                
+                llvm::raw_string_ostream arg_stream(arg_type_str);
+                llvm::raw_string_ostream param_stream(param_type_str);
+                
+                args[i]->getType()->print(arg_stream);
+                callee_func->getArg(i)->getType()->print(param_stream);
+                
+                report_error(node, "Type mismatch for argument " + std::to_string(i) + 
+                            ": got '" + arg_stream.str() + 
+                            "', expected '" + param_stream.str() + "'");
+                return;
+            }
         }
 
         auto *call_value = builder->CreateCall(callee_func, args,
@@ -1700,37 +1916,40 @@ namespace Myre
             }
         }
 
-        // Determine the array type
-        llvm::Type *array_type = nullptr;
+        // Get the element type from the array type
+        llvm::Type *element_type = nullptr;
         if (node->object->resolvedType)
         {
-            array_type = get_llvm_type(node->object->resolvedType);
+            auto *array_type_ptr = std::get_if<ArrayType>(&node->object->resolvedType->value);
+            if (!array_type_ptr)
+            {
+                report_error(node, "Indexer operand is not an array type");
+                return;
+            }
+            element_type = get_llvm_type(array_type_ptr->elementType);
         }
 
-        if (!array_type || !array_type->isArrayTy())
+        if (!element_type)
         {
-            report_error(node, "Indexer operand is not an array type");
+            report_error(node, "Could not determine array element type");
             return;
         }
 
-        // Handle two cases: array pointer vs array value
+        // Handle array indexing using pointer arithmetic (size-agnostic)
         if (array_value_or_ptr->getType()->isPointerTy())
         {
-            // Case 1: We have a pointer to an array (e.g., from a variable)
-            // Use GEP to access the array element
-            std::vector<llvm::Value *> indices = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context), 0), // Array base
-                index_value                                                  // Element index
-            };
-
-            auto *element_ptr = builder->CreateGEP(array_type, array_value_or_ptr, indices, "array.index");
+            // Case 1: We have a pointer to an array or array parameter
+            // For arrays passed as parameters, this is an opaque pointer
+            // Use GEP with element type for pointer arithmetic
+            auto *element_ptr = builder->CreateGEP(element_type, array_value_or_ptr, index_value, "array.index");
             push_value(element_ptr);
         }
         else if (array_value_or_ptr->getType()->isArrayTy())
         {
-            // Case 2: We have an array value (e.g., from a function call)
-            // Store it in a temporary alloca, then use GEP
-            auto *temp_alloca = builder->CreateAlloca(array_type, nullptr, "array.temp");
+            // Case 2: We have a direct array value (from array literal)
+            // Get the actual array type and use traditional GEP
+            auto *actual_array_type = array_value_or_ptr->getType();
+            auto *temp_alloca = builder->CreateAlloca(actual_array_type, nullptr, "array.temp");
             builder->CreateStore(array_value_or_ptr, temp_alloca);
 
             std::vector<llvm::Value *> indices = {
@@ -1738,7 +1957,7 @@ namespace Myre
                 index_value                                                  // Element index
             };
 
-            auto *element_ptr = builder->CreateGEP(array_type, temp_alloca, indices, "array.index");
+            auto *element_ptr = builder->CreateGEP(actual_array_type, temp_alloca, indices, "array.index");
             push_value(element_ptr);
         }
         else
