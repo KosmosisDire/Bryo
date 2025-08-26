@@ -90,7 +90,8 @@ while (x < 10)
 for (5) // run a loop 5 times
 for (var i in ..5) // run a loop 5 times with an iterator variable
 for (var i in 10..20 by 2) // run a loop from 10 - 20 jumping by twos (10, 12, 14, 16, 18, 20) 
-for (var i in iterable) // loop through an iterable (list, array, etc)
+for (var item in iterable) // loop through items in an iterable (list, array, etc)
+for (var item in iterable at var i) // loop through items in an iterable and track the index too
 ```
 
 
