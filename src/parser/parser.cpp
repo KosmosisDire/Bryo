@@ -1,8 +1,16 @@
 #include "parser/parser.hpp"
 
+// #define REQUIRE_SEMI
+#ifdef REQUIRE_SEMI
+#define HANDLE_SEMI \
+    expect(TokenKind::Semicolon, "Expected ';' to end statement");
+#else
+#define HANDLE_SEMI \
+    requireSemicolonIfSameLine();
+#endif
+
 namespace Myre
 {
-
     Parser::Parser(TokenStream &tokens) : tokens(tokens)
     {
         contextStack.push_back(Context::TOP_LEVEL);
@@ -14,7 +22,7 @@ namespace Myre
 
     CompilationUnit *Parser::parse()
     {
-        auto *unit = arena.make<CompilationUnit>();
+        auto unit = arena.make<CompilationUnit>();
         if (tokens.at_end())
         {
             unit->location = {{0, 1, 1}, 0};
@@ -27,7 +35,7 @@ namespace Myre
 
         while (!tokens.at_end())
         {
-            auto *stmt = parseTopLevelStatement();
+            auto stmt = parseTopLevelStatement();
             if (stmt)
             {
                 statements.push_back(stmt);
@@ -73,7 +81,7 @@ namespace Myre
     ErrorExpression *Parser::errorExpr(const std::string &msg)
     {
         error(msg);
-        auto *err = arena.makeErrorExpr(msg);
+        auto err = arena.makeErrorExpr(msg);
         err->location = tokens.previous().location;
         return err;
     }
@@ -81,7 +89,7 @@ namespace Myre
     ErrorStatement *Parser::errorStmt(const std::string &msg)
     {
         error(msg);
-        auto *err = arena.makeErrorStmt(msg);
+        auto err = arena.makeErrorStmt(msg);
         err->location = tokens.previous().location;
         return err;
     }
@@ -240,7 +248,7 @@ namespace Myre
 
         if (check(TokenKind::Namespace))
         {
-            auto *ns = parseNamespaceDecl(startToken);
+            auto ns = parseNamespaceDecl(startToken);
             ns->modifiers = modifiers;
             return ns;
         }
@@ -262,7 +270,7 @@ namespace Myre
         }
 
         auto checkpoint = tokens.checkpoint();
-        auto *type = parseExpression();
+        auto type = parseTypeExpression();
         if (type && check(TokenKind::Identifier))
         {
             // Parse all comma-separated declarations with the same type
@@ -289,7 +297,7 @@ namespace Myre
 
     TypeDecl *Parser::parseTypeDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto *decl = arena.make<TypeDecl>();
+        auto decl = arena.make<TypeDecl>();
         decl->modifiers = modifiers;
 
         if (consume(TokenKind::Static))
@@ -328,6 +336,16 @@ namespace Myre
             decl->name = arena.makeIdentifier("");
         }
 
+        // Parse generic type parameters: <T, U, V>
+        if (check(TokenKind::Less))
+        {
+            decl->typeParameters = parseTypeParameterList();
+        }
+        else
+        {
+            decl->typeParameters = arena.emptyList<TypeParameterDecl *>();
+        }
+
         if (consume(TokenKind::Colon))
         {
             decl->baseTypes = parseBaseTypeList();
@@ -345,9 +363,9 @@ namespace Myre
         while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
             if (decl->kind == TypeDecl::Kind::Enum) {
                 if (tokens.current().is_modifier() || check(TokenKind::Fn)) {
-                    if (auto* member = parseDeclaration()) members.push_back(member);
+                    if (auto member = parseDeclaration()) members.push_back(member);
                 } else if (check(TokenKind::Identifier)) {
-                    if (auto* enumCase = parseEnumCase()) members.push_back(enumCase);
+                    if (auto enumCase = parseEnumCase()) members.push_back(enumCase);
                 } else {
                     error("Unexpected token in enum body");
                     tokens.advance();
@@ -355,17 +373,17 @@ namespace Myre
             } else {
                 // Check if this is a typed declaration that could have multiple comma-separated variables
                 auto checkpoint = tokens.checkpoint();
-                auto *type = parseExpression();
+                auto type = parseTypeExpression();
                 if (type && check(TokenKind::Identifier))
                 {
                     // Parse all comma-separated declarations with the same type
                     auto declarations = parseTypedMemberDeclarations(ModifierKindFlags::None, type, previous());
-                    for (auto* decl : declarations) {
+                    for (auto decl : declarations) {
                         members.push_back(decl);
                     }
                 } else {
                     tokens.restore(checkpoint);
-                    if (auto* member = parseDeclaration()) {
+                    if (auto member = parseDeclaration()) {
                         members.push_back(member);
                     }
                 }
@@ -384,7 +402,7 @@ namespace Myre
     EnumCaseDecl *Parser::parseEnumCase()
     {
         auto startToken = tokens.current();
-        auto *decl = arena.make<EnumCaseDecl>();
+        auto decl = arena.make<EnumCaseDecl>();
         decl->name = parseIdentifier();
 
         if (check(TokenKind::LeftParen))
@@ -402,7 +420,7 @@ namespace Myre
 
     FunctionDecl *Parser::parseFunctionDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto *decl = arena.make<FunctionDecl>();
+        auto decl = arena.make<FunctionDecl>();
         decl->modifiers = modifiers;
 
         consume(TokenKind::Fn);
@@ -411,7 +429,7 @@ namespace Myre
 
         if (consume(TokenKind::Colon))
         {
-            decl->returnType = parseExpression();
+            decl->returnType = parseTypeExpression();
             if (!decl->returnType)
             {
                 decl->returnType = errorExpr("Expected return type");
@@ -443,7 +461,7 @@ namespace Myre
 
     ConstructorDecl *Parser::parseConstructorDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto *decl = arena.make<ConstructorDecl>();
+        auto decl = arena.make<ConstructorDecl>();
         decl->modifiers = modifiers;
 
         consume(TokenKind::New);
@@ -455,7 +473,7 @@ namespace Myre
 
         if (!decl->body)
         {
-            auto *block = arena.make<Block>();
+            auto block = arena.make<Block>();
             block->location = previous().location;
             block->statements = arena.emptyList<Statement *>();
             decl->body = block;
@@ -476,12 +494,12 @@ namespace Myre
             tokens.restore(checkpoint);
             return nullptr;
         }
-        auto *name = parseIdentifier();
+        auto name = parseIdentifier();
 
         // Check if this is a property (has arrow syntax or braces after optional initializer)
         bool isProperty = false;
         Expression *initializer = nullptr;
-        
+
         if (checkAny({TokenKind::FatArrow, TokenKind::LeftBrace}))
         {
             isProperty = true;
@@ -503,50 +521,51 @@ namespace Myre
                 tokens.restore(initCheckpoint);
             }
         }
-        
+
         if (isProperty)
         {
             // Create PropertyDecl with embedded VariableDecl
-            auto *prop = arena.make<PropertyDecl>();
+            auto prop = arena.make<PropertyDecl>();
             prop->modifiers = modifiers;
 
             // Create the underlying variable
-            auto *varDecl = arena.make<VariableDecl>();
+            auto varDecl = arena.make<VariableDecl>();
             varDecl->modifiers = modifiers;
-            
-            auto *ti = arena.make<TypedIdentifier>();
+
+            auto ti = arena.make<TypedIdentifier>();
             ti->name = name;
             ti->type = nullptr; // Type inference for var
             ti->location = SourceRange(startToken.location.start, name->location.end());
-            
+
             varDecl->variable = ti;
             varDecl->initializer = initializer;
             varDecl->location = SourceRange(startToken.location.start, previous().location.end());
-            
+
             prop->variable = varDecl;
 
             if (consume(TokenKind::FatArrow))
             {
-                auto *getter = arena.make<PropertyAccessor>();
+                auto getter = arena.make<PropertyAccessor>();
                 getter->kind = PropertyAccessor::Kind::Get;
                 getter->body = parseExpression();
                 prop->getter = getter;
                 prop->setter = nullptr;
-                expect(TokenKind::Semicolon, "Expected ';' after arrow property");
+                HANDLE_SEMI
             }
             else if (check(TokenKind::LeftBrace))
             {
                 parsePropertyAccessors(prop);
             }
+
             prop->location = SourceRange(startToken.location.start, previous().location.end());
             return prop;
         }
 
         // Always create VariableDecl - the context doesn't matter for the AST structure
-        auto *decl = arena.make<VariableDecl>();
+        auto decl = arena.make<VariableDecl>();
         decl->modifiers = modifiers;
 
-        auto *ti = arena.make<TypedIdentifier>();
+        auto ti = arena.make<TypedIdentifier>();
         ti->name = name;
 
         // Only type inference allowed for var declarations
@@ -568,37 +587,35 @@ namespace Myre
             decl->initializer = nullptr;
         }
 
-        expect(TokenKind::Semicolon, "Expected ';' after variable declaration");
+        HANDLE_SEMI
         decl->location = SourceRange(startToken.location.start, previous().location.end());
         return decl;
     }
 
-    Expression* Parser::convertToArrayTypeIfNeeded(Expression* expr)
+    Expression *Parser::convertToArrayTypeIfNeeded(Expression *expr)
     {
-        if (auto* indexer = expr->as<IndexerExpr>())
+        if (auto indexer = expr->as<IndexerExpr>())
         {
             // Convert IndexerExpr to ArrayTypeExpr for type declarations
             // Check if the index is a literal (array size)
-            if (auto* literal = indexer->index->as<LiteralExpr>())
+            if (auto literal = indexer->index->as<LiteralExpr>())
             {
-                if (literal->kind == LiteralKind::I32 || 
+                if (literal->kind == LiteralKind::I32 ||
                     literal->kind == LiteralKind::I64 ||
                     literal->kind == LiteralKind::I8)
                 {
-                    auto* arrayType = arena.make<ArrayTypeExpr>();
-                    arrayType->elementType = indexer->object;
+                    auto arrayType = arena.make<ArrayTypeExpr>();
+                    arrayType->baseType = indexer->object;
                     arrayType->size = literal;
                     arrayType->location = indexer->location;
-                    arrayType->isTypeExpression = true;
                     return arrayType;
                 }
             }
             // For non-literal indices, still convert but without size
-            auto* arrayType = arena.make<ArrayTypeExpr>();
-            arrayType->elementType = indexer->object;
+            auto arrayType = arena.make<ArrayTypeExpr>();
+            arrayType->baseType = indexer->object;
             arrayType->size = nullptr;
             arrayType->location = indexer->location;
-            arrayType->isTypeExpression = true;
             return arrayType;
         }
         return expr;
@@ -613,7 +630,7 @@ namespace Myre
         do
         {
             auto fieldStartToken = tokens.current();
-            auto *name = parseIdentifier();
+            auto name = parseIdentifier();
             Expression *initializer = nullptr;
 
             if (consume(TokenKind::Assign))
@@ -624,32 +641,32 @@ namespace Myre
             if (checkAny({TokenKind::FatArrow, TokenKind::LeftBrace}))
             {
                 // Create PropertyDecl with embedded VariableDecl
-                auto *prop = arena.make<PropertyDecl>();
+                auto prop = arena.make<PropertyDecl>();
                 prop->modifiers = modifiers;
 
                 // Create the underlying variable
-                auto *varDecl = arena.make<VariableDecl>();
+                auto varDecl = arena.make<VariableDecl>();
                 varDecl->modifiers = modifiers;
-                
-                auto *ti = arena.make<TypedIdentifier>();
+
+                auto ti = arena.make<TypedIdentifier>();
                 ti->name = name;
                 ti->type = type;
                 ti->location = SourceRange(fieldStartToken.location.start, name->location.end());
-                
+
                 varDecl->variable = ti;
                 varDecl->initializer = initializer;
                 varDecl->location = SourceRange(fieldStartToken.location.start, previous().location.end());
-                
+
                 prop->variable = varDecl;
 
                 if (consume(TokenKind::FatArrow))
                 {
-                    auto *getter = arena.make<PropertyAccessor>();
+                    auto getter = arena.make<PropertyAccessor>();
                     getter->kind = PropertyAccessor::Kind::Get;
                     getter->body = parseExpression();
                     prop->getter = getter;
                     prop->setter = nullptr;
-                    expect(TokenKind::Semicolon, "Expected ';' after arrow property");
+                    HANDLE_SEMI
                 }
                 else if (check(TokenKind::LeftBrace))
                 {
@@ -662,14 +679,14 @@ namespace Myre
             else
             {
                 // Create regular VariableDecl for fields
-                auto *field = arena.make<VariableDecl>();
+                auto field = arena.make<VariableDecl>();
                 field->modifiers = modifiers;
-                
-                auto *ti = arena.make<TypedIdentifier>();
+
+                auto ti = arena.make<TypedIdentifier>();
                 ti->name = name;
                 ti->type = type;
                 ti->location = SourceRange(fieldStartToken.location.start, name->location.end());
-                
+
                 field->variable = ti;
                 field->initializer = initializer;
                 field->location = SourceRange(fieldStartToken.location.start, previous().location.end());
@@ -680,19 +697,17 @@ namespace Myre
         // Only expect semicolon for regular fields, not properties
         if (!hasProperties)
         {
-            expect(TokenKind::Semicolon, "Expected ';' after field declaration");
+            HANDLE_SEMI
         }
-        
+
         // Set location for all declarations to span from the type to the end
-        for (auto *decl : declarations)
+        for (auto decl : declarations)
         {
             decl->location = SourceRange(startToken.location.start, previous().location.end());
         }
-        
+
         return declarations;
     }
-
-
 
     void Parser::parsePropertyAccessors(PropertyDecl *prop)
     {
@@ -704,7 +719,7 @@ namespace Myre
 
             if (consume(TokenKind::Get))
             {
-                auto *getter = arena.make<PropertyAccessor>();
+                auto getter = arena.make<PropertyAccessor>();
                 getter->kind = PropertyAccessor::Kind::Get;
                 getter->modifiers = accessorMods;
 
@@ -736,7 +751,7 @@ namespace Myre
             }
             else if (consume(TokenKind::Set))
             {
-                auto *setter = arena.make<PropertyAccessor>();
+                auto setter = arena.make<PropertyAccessor>();
                 setter->kind = PropertyAccessor::Kind::Set;
                 setter->modifiers = accessorMods;
 
@@ -785,7 +800,7 @@ namespace Myre
 
     NamespaceDecl *Parser::parseNamespaceDecl(const Token &startToken)
     {
-        auto *decl = arena.make<NamespaceDecl>();
+        auto decl = arena.make<NamespaceDecl>();
         consume(TokenKind::Namespace);
 
         // Parse the namespace name as an expression (can be qualified)
@@ -793,14 +808,14 @@ namespace Myre
         if (consume(TokenKind::Dot))
         {
             // Handle qualified names like "System.Collections"
-            auto *memberAccess = arena.make<MemberAccessExpr>();
+            auto memberAccess = arena.make<MemberAccessExpr>();
             memberAccess->object = decl->name;
             memberAccess->member = parseIdentifier();
             decl->name = memberAccess;
             // Continue parsing additional dots
             while (consume(TokenKind::Dot))
             {
-                auto *nextMember = arena.make<MemberAccessExpr>();
+                auto nextMember = arena.make<MemberAccessExpr>();
                 nextMember->object = decl->name;
                 nextMember->member = parseIdentifier();
                 decl->name = nextMember;
@@ -819,7 +834,7 @@ namespace Myre
             withContext(Context::NAMESPACE, [&]()
                         {
             while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
-                if (auto* stmt = parseTopLevelStatement()) statements.push_back(stmt);
+                if (auto stmt = parseTopLevelStatement()) statements.push_back(stmt);
             } });
             decl->body = arena.makeList(statements);
             expect(TokenKind::RightBrace, "Expected '}' after namespace body");
@@ -861,7 +876,7 @@ namespace Myre
         if (check(TokenKind::Identifier))
         {
             auto checkpoint = tokens.checkpoint();
-            auto *type = parseExpression();
+            auto type = parseTypeExpression();
             if (type && check(TokenKind::Identifier))
             {
                 // TODO: This could be a typed variable declaration with multiple comma-separated variables
@@ -878,7 +893,7 @@ namespace Myre
     Block *Parser::parseBlock()
     {
         auto startToken = tokens.current();
-        auto *block = arena.make<Block>();
+        auto block = arena.make<Block>();
         consume(TokenKind::LeftBrace);
 
         std::vector<Statement *> statements;
@@ -888,25 +903,26 @@ namespace Myre
             if (check(TokenKind::Identifier))
             {
                 auto checkpoint = tokens.checkpoint();
-                auto *type = parseExpression();
+                auto type = parseTypeExpression();
                 if (type && check(TokenKind::Identifier))
                 {
                     // Parse all comma-separated declarations with the same type
                     auto declarations = parseTypedMemberDeclarations(ModifierKindFlags::None, type, previous());
-                    for (auto* decl : declarations) {
+                    for (auto decl : declarations)
+                    {
                         statements.push_back(decl);
                     }
                 }
                 else
                 {
                     tokens.restore(checkpoint);
-                    if (auto *stmt = parseStatement())
+                    if (auto stmt = parseStatement())
                     {
                         statements.push_back(stmt);
                     }
                 }
             }
-            else if (auto *stmt = parseStatement())
+            else if (auto stmt = parseStatement())
             {
                 statements.push_back(stmt);
             }
@@ -922,15 +938,21 @@ namespace Myre
     {
         auto startToken = tokens.current();
         consume(TokenKind::If);
-        expect(TokenKind::LeftParen, "Expected '(' after 'if'");
 
-        auto *condition = parseExpression();
+        // Check if parentheses are present
+        bool hasParens = consume(TokenKind::LeftParen);
+
+        auto condition = parseExpression();
         if (!condition)
             condition = errorExpr("Expected condition");
 
-        expect(TokenKind::RightParen, "Expected ')' after condition");
+        // If we had an opening paren, expect a closing one
+        if (hasParens)
+        {
+            expect(TokenKind::RightParen, "Expected ')' after condition");
+        }
 
-        auto *thenStmt = parseStatement();
+        auto thenStmt = parseStatement();
         if (!thenStmt)
             thenStmt = errorStmt("Expected then statement");
 
@@ -942,7 +964,7 @@ namespace Myre
                 elseStmt = errorStmt("Expected else statement");
         }
 
-        auto *ifExpr = arena.make<IfExpr>();
+        auto ifExpr = arena.make<IfExpr>();
         ifExpr->condition = condition;
         ifExpr->thenBranch = thenStmt;
         ifExpr->elseBranch = elseStmt;
@@ -954,15 +976,21 @@ namespace Myre
     WhileStmt *Parser::parseWhileStatement()
     {
         auto startToken = tokens.current();
-        auto *stmt = arena.make<WhileStmt>();
+        auto stmt = arena.make<WhileStmt>();
         consume(TokenKind::While);
-        expect(TokenKind::LeftParen, "Expected '(' after 'while'");
+
+        // Check if parentheses are present
+        bool hasParens = consume(TokenKind::LeftParen);
 
         stmt->condition = parseExpression();
         if (!stmt->condition)
             stmt->condition = errorExpr("Expected condition");
 
-        expect(TokenKind::RightParen, "Expected ')' after condition");
+        // If we had an opening paren, expect a closing one
+        if (hasParens)
+        {
+            expect(TokenKind::RightParen, "Expected ')' after condition");
+        }
 
         stmt->body = withContext(Context::LOOP, [this]()
                                  { return parseStatement(); });
@@ -981,33 +1009,19 @@ namespace Myre
     ForStmt *Parser::parseTraditionalForStatement()
     {
         auto startToken = tokens.current();
-        auto *stmt = arena.make<ForStmt>();
+        auto stmt = arena.make<ForStmt>();
         consume(TokenKind::For);
-        expect(TokenKind::LeftParen, "Expected '(' after 'for'");
 
+        // Check if parentheses are present
+        bool hasParens = consume(TokenKind::LeftParen);
+
+        // Parse initializer
         if (!check(TokenKind::Semicolon))
         {
-            auto checkpoint = tokens.checkpoint();
-            auto *type = parseExpression();
-            if (type && check(TokenKind::Identifier))
-            {
-                tokens.restore(checkpoint);
-                stmt->initializer = parseDeclaration();
-            }
-            else
-            {
-                tokens.restore(checkpoint);
-                if (checkDeclarationStart() || tokens.current().is_modifier())
-                {
-                    stmt->initializer = parseDeclaration();
-                }
-                else
-                {
-                    stmt->initializer = parseExpressionStatement();
-                }
-            }
+            stmt->initializer = parseStatement();
         }
 
+        // Parse condition
         if (!check(TokenKind::Semicolon))
         {
             stmt->condition = parseExpression();
@@ -1016,21 +1030,50 @@ namespace Myre
         {
             stmt->condition = nullptr;
         }
-        expect(TokenKind::Semicolon, "Expected ';' after for condition");
+        HANDLE_SEMI
 
+        // Parse updates
         std::vector<Expression *> updates;
-        while (!check(TokenKind::RightParen) && !tokens.at_end())
+
+        // If we have parentheses, parse until we hit the closing paren
+        // Otherwise, parse a single expression (or none if we hit the loop body)
+        if (hasParens)
         {
-            if (auto *update = parseExpression())
+            while (!check(TokenKind::RightParen) && !tokens.at_end())
             {
-                updates.push_back(update);
+                if (auto update = parseExpression())
+                {
+                    updates.push_back(update);
+                }
+                if (!consume(TokenKind::Comma))
+                    break;
             }
-            if (!consume(TokenKind::Comma))
-                break;
+        }
+        else
+        {
+            // Without parens, only parse updates if we don't immediately see a statement starter
+            if (!check(TokenKind::LeftBrace) && !tokens.current().starts_statement())
+            {
+                if (auto update = parseExpression())
+                {
+                    updates.push_back(update);
+                    while (consume(TokenKind::Comma))
+                    {
+                        if (auto nextUpdate = parseExpression())
+                        {
+                            updates.push_back(nextUpdate);
+                        }
+                    }
+                }
+            }
         }
         stmt->updates = arena.makeList(updates);
 
-        expect(TokenKind::RightParen, "Expected ')' after for clauses");
+        // If we had an opening paren, expect a closing one
+        if (hasParens)
+        {
+            expect(TokenKind::RightParen, "Expected ')' after for clauses");
+        }
 
         stmt->body = withContext(Context::LOOP, [this]()
                                  { return parseStatement(); });
@@ -1044,7 +1087,7 @@ namespace Myre
     ReturnStmt *Parser::parseReturnStatement()
     {
         auto startToken = tokens.current();
-        auto *stmt = arena.make<ReturnStmt>();
+        auto stmt = arena.make<ReturnStmt>();
         consume(TokenKind::Return);
 
         if (!check(TokenKind::Semicolon))
@@ -1056,7 +1099,7 @@ namespace Myre
             stmt->value = nullptr;
         }
 
-        expect(TokenKind::Semicolon, "Expected ';' after return statement");
+        HANDLE_SEMI
         if (!inFunction() && !inGetter() && !inSetter())
         {
             warning("Return statement outside function or property");
@@ -1068,9 +1111,9 @@ namespace Myre
     BreakStmt *Parser::parseBreakStatement()
     {
         auto startToken = tokens.current();
-        auto *stmt = arena.make<BreakStmt>();
+        auto stmt = arena.make<BreakStmt>();
         consume(TokenKind::Break);
-        expect(TokenKind::Semicolon, "Expected ';' after break");
+        HANDLE_SEMI
         if (!inLoop())
         {
             warning("Break statement outside loop");
@@ -1082,9 +1125,9 @@ namespace Myre
     ContinueStmt *Parser::parseContinueStatement()
     {
         auto startToken = tokens.current();
-        auto *stmt = arena.make<ContinueStmt>();
+        auto stmt = arena.make<ContinueStmt>();
         consume(TokenKind::Continue);
-        expect(TokenKind::Semicolon, "Expected ';' after continue");
+        HANDLE_SEMI
         if (!inLoop())
         {
             warning("Continue statement outside loop");
@@ -1095,13 +1138,13 @@ namespace Myre
 
     ExpressionStmt *Parser::parseExpressionStatement()
     {
-        auto *stmt = arena.make<ExpressionStmt>();
+        auto stmt = arena.make<ExpressionStmt>();
         stmt->expression = parseExpression();
         if (!stmt->expression)
         {
             stmt->expression = errorExpr("Expected expression");
         }
-        expect(TokenKind::Semicolon, "Expected ';' after expression");
+        HANDLE_SEMI
         stmt->location = SourceRange(stmt->expression->location.start, previous().location.end());
         return stmt;
     }
@@ -1109,13 +1152,13 @@ namespace Myre
     UsingDirective *Parser::parseUsingDirective()
     {
         auto startToken = tokens.current();
-        auto *directive = arena.make<UsingDirective>();
+        auto directive = arena.make<UsingDirective>();
         consume(TokenKind::Using);
 
         auto checkpoint = tokens.checkpoint();
         if (check(TokenKind::Identifier))
         {
-            auto *firstId = parseIdentifier();
+            auto firstId = parseIdentifier();
             if (consume(TokenKind::Assign))
             {
                 directive->kind = UsingDirective::Kind::Alias;
@@ -1135,14 +1178,14 @@ namespace Myre
                 if (consume(TokenKind::Dot))
                 {
                     // Handle qualified names like "System.Collections"
-                    auto *memberAccess = arena.make<MemberAccessExpr>();
+                    auto memberAccess = arena.make<MemberAccessExpr>();
                     memberAccess->object = directive->target;
                     memberAccess->member = parseIdentifier();
                     directive->target = memberAccess;
                     // Continue parsing additional dots
                     while (consume(TokenKind::Dot))
                     {
-                        auto *nextMember = arena.make<MemberAccessExpr>();
+                        auto nextMember = arena.make<MemberAccessExpr>();
                         nextMember->object = directive->target;
                         nextMember->member = parseIdentifier();
                         directive->target = nextMember;
@@ -1153,7 +1196,7 @@ namespace Myre
             }
         }
 
-        expect(TokenKind::Semicolon, "Expected ';' after using directive");
+        HANDLE_SEMI
         directive->location = SourceRange(startToken.location.start, previous().location.end());
         return directive;
     }
@@ -1162,7 +1205,7 @@ namespace Myre
 
     Expression *Parser::parseExpression(int minPrecedence)
     {
-        auto *left = parsePrimaryExpression();
+        auto left = parsePrimaryExpression();
         if (!left)
         {
             return nullptr;
@@ -1184,7 +1227,7 @@ namespace Myre
 
                 tokens.advance();
 
-                auto *conditional = arena.make<ConditionalExpr>();
+                auto conditional = arena.make<ConditionalExpr>();
                 conditional->condition = left;
 
                 conditional->thenExpr = parseExpression(precedence + 1);
@@ -1207,7 +1250,7 @@ namespace Myre
             if (op.is_assignment_operator())
             {
                 tokens.advance();
-                auto *assign = arena.make<AssignmentExpr>();
+                auto assign = arena.make<AssignmentExpr>();
                 assign->target = left;
                 assign->op = op.to_assignment_operator_kind();
                 assign->value = parseExpression(precedence);
@@ -1221,11 +1264,11 @@ namespace Myre
             tokens.advance();
             int nextPrecedence = op.is_right_associative() ? precedence : precedence + 1;
 
-            auto *right = parseExpression(nextPrecedence);
+            auto right = parseExpression(nextPrecedence);
             if (!right)
                 right = errorExpr("Expected right operand");
 
-            auto *binary = arena.make<BinaryExpr>();
+            auto binary = arena.make<BinaryExpr>();
             binary->left = left;
             binary->op = op.to_binary_operator_kind();
             binary->right = right;
@@ -1264,7 +1307,7 @@ namespace Myre
         else if (check(TokenKind::This))
         {
             auto startToken = tokens.current();
-            auto *thisExpr = arena.make<ThisExpr>();
+            auto thisExpr = arena.make<ThisExpr>();
             tokens.advance();
             thisExpr->location = startToken.location;
             expr = thisExpr;
@@ -1305,13 +1348,13 @@ namespace Myre
             if (check(TokenKind::LeftParen))
             {
                 tokens.advance();
-                auto *call = arena.make<CallExpr>();
+                auto call = arena.make<CallExpr>();
                 call->callee = expr;
 
                 std::vector<Expression *> args;
                 while (!check(TokenKind::RightParen) && !tokens.at_end())
                 {
-                    auto *arg = parseExpression();
+                    auto arg = parseExpression();
                     if (!arg)
                         break;
                     args.push_back(arg);
@@ -1329,7 +1372,7 @@ namespace Myre
             else if (check(TokenKind::Dot))
             {
                 tokens.advance();
-                auto *member = arena.make<MemberAccessExpr>();
+                auto member = arena.make<MemberAccessExpr>();
                 member->object = expr;
                 member->member = parseIdentifier();
                 member->location = SourceRange(expr->location.start, member->member->location.end());
@@ -1338,33 +1381,21 @@ namespace Myre
             else if (check(TokenKind::LeftBracket))
             {
                 tokens.advance();
-                
-                // Check if this is an empty bracket for array type (e.g., i32[])
-                if (check(TokenKind::RightBracket))
-                {
-                    tokens.advance(); // consume ']'
-                    auto *arrayType = arena.make<ArrayTypeExpr>();
-                    arrayType->elementType = expr;
-                    arrayType->location = SourceRange(expr->location.start, previous().location.end());
-                    expr = arrayType;
-                }
-                else
-                {
-                    // Regular indexer expression (arr[index])
-                    auto *indexer = arena.make<IndexerExpr>();
-                    indexer->object = expr;
-                    indexer->index = parseExpression();
-                    if (!indexer->index)
-                        indexer->index = errorExpr("Expected index expression");
 
-                    expect(TokenKind::RightBracket, "Expected ']' after index");
-                    indexer->location = SourceRange(expr->location.start, previous().location.end());
-                    expr = indexer;
-                }
+                // Regular indexer expression (arr[index])
+                auto indexer = arena.make<IndexerExpr>();
+                indexer->object = expr;
+                indexer->index = parseExpression();
+                if (!indexer->index)
+                    indexer->index = errorExpr("Expected index expression");
+
+                expect(TokenKind::RightBracket, "Expected ']' after index");
+                indexer->location = SourceRange(expr->location.start, previous().location.end());
+                expr = indexer;
             }
             else if (checkAny({TokenKind::Increment, TokenKind::Decrement}))
             {
-                auto *unary = arena.make<UnaryExpr>();
+                auto unary = arena.make<UnaryExpr>();
                 unary->operand = expr;
                 unary->op = tokens.current().to_unary_operator_kind();
                 unary->isPostfix = true;
@@ -1383,7 +1414,7 @@ namespace Myre
     Expression *Parser::parseUnaryExpression()
     {
         auto startToken = tokens.current();
-        auto *unary = arena.make<UnaryExpr>();
+        auto unary = arena.make<UnaryExpr>();
         Token op = tokens.current();
         tokens.advance();
         unary->op = op.to_unary_operator_kind();
@@ -1397,9 +1428,9 @@ namespace Myre
         return unary;
     }
 
-    Expression *Parser::parseLiteral()
+    LiteralExpr *Parser::parseLiteral()
     {
-        auto *lit = arena.make<LiteralExpr>();
+        auto lit = arena.make<LiteralExpr>();
         Token tok = tokens.current();
         lit->location = tok.location;
         lit->value = tok.text;
@@ -1410,10 +1441,119 @@ namespace Myre
 
     Expression *Parser::parseNameExpression()
     {
-        auto *nameExpr = arena.make<NameExpr>();
+        auto nameExpr = arena.make<NameExpr>();
         nameExpr->name = parseIdentifier();
         nameExpr->location = nameExpr->name->location;
         return nameExpr;
+    }
+
+    List<Expression *> Parser::parseGenericArgs()
+    {
+        auto cp = tokens.checkpoint();
+        if (!check(TokenKind::Less))
+            return {};
+
+        consume(TokenKind::Less);
+        std::vector<Expression *> typeArgs;
+
+        while (!check(TokenKind::Greater) && !tokens.at_end())
+        {
+            auto typeArg = parseTypeExpression();
+            if (!typeArg)
+                break;
+            typeArgs.push_back(typeArg);
+
+            if (!consume(TokenKind::Comma))
+                break;
+        }
+
+        if (!(expect(TokenKind::Greater, "Expected '>' to close generic type arguments")))
+        {
+            tokens.restore(cp);
+            return {};
+        }
+
+        return arena.makeList(typeArgs);
+    }
+
+    Expression *Parser::parseTypeExpression()
+    {
+        if (!check(TokenKind::Identifier))
+        {
+            return nullptr; // Don't error, just return null
+        }
+
+        auto nameExpr = parseNameExpression();
+        List<Expression *> typeArgs = parseGenericArgs();
+        Expression *baseType = nameExpr;
+
+        if (!typeArgs.empty())
+        {
+            auto genericType = arena.make<GenericTypeExpr>();
+            genericType->baseType = baseType;
+            genericType->typeArguments = typeArgs;
+            baseType = genericType;
+        }
+
+        // Speculatively check for array type syntax
+        if (check(TokenKind::LeftBracket))
+        {
+            auto checkpoint = tokens.checkpoint();
+            tokens.advance(); // consume [
+
+            // Check if this looks like array type syntax (empty or literal)
+            bool isArrayType = false;
+            if (check(TokenKind::RightBracket))
+            {
+                isArrayType = true; // Empty brackets: Type[]
+            }
+            else if (check(TokenKind::LiteralI32) || check(TokenKind::LiteralI64) || check(TokenKind::LiteralI8))
+            {
+                tokens.advance(); // consume literal
+                if (check(TokenKind::RightBracket))
+                {
+                    isArrayType = true; // Literal size: Type[10]
+                }
+            }
+
+            if (!isArrayType)
+            {
+                // Not array type syntax, restore and return base type
+                tokens.restore(checkpoint);
+                return baseType;
+            }
+
+            // It is array type syntax, restore and parse properly
+            tokens.restore(checkpoint);
+            consume(TokenKind::LeftBracket);
+
+            auto arrayType = arena.make<ArrayTypeExpr>();
+            arrayType->baseType = baseType;
+
+            if (check(TokenKind::LiteralI32) || check(TokenKind::LiteralI64) || check(TokenKind::LiteralI8))
+            {
+                arrayType->size = parseLiteral();
+            }
+
+            if (!consume(TokenKind::RightBracket))
+            {
+                // If we determined it was array type syntax but can't parse it,
+                // return null to indicate parse failure
+                return nullptr;
+            }
+
+            arrayType->location = SourceRange(baseType->location.start, previous().location.end());
+            baseType = arrayType;
+        }
+
+        if (consume(TokenKind::Asterisk))
+        {
+            auto pointerType = arena.make<PointerTypeExpr>();
+            pointerType->baseType = baseType;
+            baseType = pointerType;
+        }
+
+        return baseType;
     }
 
     Expression *Parser::parseParenthesizedOrLambda()
@@ -1421,35 +1561,71 @@ namespace Myre
         auto checkpoint = tokens.checkpoint();
         consume(TokenKind::LeftParen);
 
+        // Check if this might be a cast expression
+        // A cast looks like (Type)expr where Type is an identifier that could be a type
+        bool isCast = false;
         bool isLambda = false;
         int parenDepth = 1;
 
-        while (!tokens.at_end() && parenDepth > 0)
+        // First, check if this could be a cast by looking for a type pattern
+        if (check(TokenKind::Identifier))
         {
-            if (check(TokenKind::LeftParen))
-                parenDepth++;
-            else if (check(TokenKind::RightParen))
+            auto typeCheckpoint = tokens.checkpoint();
+
+            // Try to parse as type expression
+            auto potentialType = parseTypeExpression();
+
+            // If we successfully parsed a type and the next token is ')', it's likely a cast
+            if (potentialType && check(TokenKind::RightParen))
             {
-                parenDepth--;
-                if (parenDepth == 0)
+                tokens.advance(); // consume the ')'
+
+                // Check what follows - if it's an expression-starting token, it's a cast
+                if (tokens.current().starts_expression() &&
+                    !check(TokenKind::Semicolon) &&
+                    !checkAny({TokenKind::Comma, TokenKind::RightParen, TokenKind::RightBracket}))
                 {
-                    tokens.advance();
-                    if (check(TokenKind::FatArrow))
-                        isLambda = true;
-                    break;
+                    isCast = true;
                 }
             }
-            else if (check(TokenKind::FatArrow) && parenDepth == 1)
+
+            tokens.restore(typeCheckpoint);
+        }
+
+        if (!isCast)
+        {
+            // Original lambda detection logic
+            while (!tokens.at_end() && parenDepth > 0)
             {
-                isLambda = true;
-                break;
+                if (check(TokenKind::LeftParen))
+                    parenDepth++;
+                else if (check(TokenKind::RightParen))
+                {
+                    parenDepth--;
+                    if (parenDepth == 0)
+                    {
+                        tokens.advance();
+                        if (check(TokenKind::FatArrow))
+                            isLambda = true;
+                        break;
+                    }
+                }
+                else if (check(TokenKind::FatArrow) && parenDepth == 1)
+                {
+                    isLambda = true;
+                    break;
+                }
+                tokens.advance();
             }
-            tokens.advance();
         }
 
         tokens.restore(checkpoint);
 
-        if (isLambda)
+        if (isCast)
+        {
+            return parseCastExpression();
+        }
+        else if (isLambda)
         {
             return parseLambdaExpression();
         }
@@ -1463,7 +1639,7 @@ namespace Myre
                 return errorExpr("Expected expression in parentheses");
             }
 
-            auto *expr = parseExpression();
+            auto expr = parseExpression();
             if (!expr)
                 return errorExpr("Expected expression in parentheses");
 
@@ -1472,16 +1648,46 @@ namespace Myre
         }
     }
 
+    Expression *Parser::parseCastExpression()
+    {
+        auto startToken = tokens.current();
+        consume(TokenKind::LeftParen);
+
+        // Parse the target type
+        auto targetType = parseTypeExpression();
+        if (!targetType)
+        {
+            error("Expected type in cast expression");
+            targetType = errorExpr("Expected cast type");
+        }
+
+        expect(TokenKind::RightParen, "Expected ')' after cast type");
+
+        // Parse the expression to cast - use higher precedence to ensure we don't
+        // accidentally grab binary operators that should apply after the cast
+        auto expr = parseExpression(14); // Use unary precedence level
+        if (!expr)
+        {
+            expr = errorExpr("Expected expression after cast");
+        }
+
+        auto cast = arena.make<CastExpr>();
+        cast->targetType = targetType;
+        cast->expression = expr;
+        cast->location = SourceRange(startToken.location.start, expr->location.end());
+        return cast;
+    }
+
     Expression *Parser::parseArrayLiteral()
     {
         auto startToken = tokens.current();
-        auto *array = arena.make<ArrayLiteralExpr>();
+        auto array = arena.make<ArrayLiteralExpr>();
         consume(TokenKind::LeftBracket);
 
         std::vector<Expression *> elements;
         while (!check(TokenKind::RightBracket) && !tokens.at_end())
         {
-            if (auto *elem = parseExpression())
+            if (auto elem = parseExpression())
             {
                 elements.push_back(elem);
             }
@@ -1498,25 +1704,16 @@ namespace Myre
     Expression *Parser::parseNewExpression()
     {
         auto startToken = tokens.current();
-        auto *newExpr = arena.make<NewExpr>();
+        auto newExpr = arena.make<NewExpr>();
         consume(TokenKind::New);
 
-        // Parse constructor type - should be a simple name or qualified name
-        // We parse this manually to avoid capturing postfix operations like ()
+        // Parse constructor type - use parseTypeExpression to handle generics properly
         if (check(TokenKind::Identifier))
         {
-            auto *nameExpr = parseNameExpression();
-            newExpr->type = nameExpr;
-
-            // Handle qualified names like System.Collections.List
-            while (check(TokenKind::Dot))
+            newExpr->type = parseTypeExpression();
+            if (!newExpr->type)
             {
-                tokens.advance();
-                auto *memberAccess = arena.make<MemberAccessExpr>();
-                memberAccess->object = newExpr->type;
-                memberAccess->member = parseIdentifier();
-                memberAccess->location = SourceRange(newExpr->type->location.start, memberAccess->member->location.end());
-                newExpr->type = memberAccess;
+                newExpr->type = errorExpr("Expected type name after 'new'");
             }
         }
         else
@@ -1530,7 +1727,7 @@ namespace Myre
             std::vector<Expression *> args;
             while (!check(TokenKind::RightParen) && !tokens.at_end())
             {
-                if (auto *arg = parseExpression())
+                if (auto arg = parseExpression())
                     args.push_back(arg);
                 if (!consume(TokenKind::Comma))
                     break;
@@ -1549,7 +1746,7 @@ namespace Myre
     Expression *Parser::parseLambdaExpression()
     {
         auto startToken = tokens.current();
-        auto *lambda = arena.make<LambdaExpr>();
+        auto lambda = arena.make<LambdaExpr>();
 
         if (check(TokenKind::LeftParen))
         {
@@ -1557,12 +1754,12 @@ namespace Myre
             std::vector<ParameterDecl *> params;
             while (!check(TokenKind::RightParen) && !tokens.at_end())
             {
-                auto *param = arena.make<ParameterDecl>();
+                auto param = arena.make<ParameterDecl>();
                 auto paramStart = tokens.current();
                 param->param = parseTypedIdentifier();
                 if (!param->param)
                 {
-                    auto *ti = arena.make<TypedIdentifier>();
+                    auto ti = arena.make<TypedIdentifier>();
                     ti->type = errorExpr("Expected parameter type");
                     ti->name = arena.makeIdentifier("");
                     param->param = ti;
@@ -1579,9 +1776,9 @@ namespace Myre
         else
         {
             std::vector<ParameterDecl *> params;
-            auto *param = arena.make<ParameterDecl>();
+            auto param = arena.make<ParameterDecl>();
             auto paramStart = tokens.current();
-            auto *ti = arena.make<TypedIdentifier>();
+            auto ti = arena.make<TypedIdentifier>();
             ti->type = nullptr;
             ti->name = parseIdentifier();
             ti->location = ti->name->location;
@@ -1600,10 +1797,10 @@ namespace Myre
         }
         else
         {
-            auto *expr = parseExpression();
+            auto expr = parseExpression();
             if (!expr)
                 expr = errorExpr("Expected lambda body");
-            auto *exprStmt = arena.make<ExpressionStmt>();
+            auto exprStmt = arena.make<ExpressionStmt>();
             exprStmt->expression = expr;
             exprStmt->location = expr->location;
             lambda->body = exprStmt;
@@ -1615,11 +1812,11 @@ namespace Myre
     Expression *Parser::parseTypeOfExpression()
     {
         auto startToken = tokens.current();
-        auto *typeOf = arena.make<TypeOfExpr>();
+        auto typeOf = arena.make<TypeOfExpr>();
         consume(TokenKind::Typeof);
         expect(TokenKind::LeftParen, "Expected '(' after 'typeof'");
 
-        typeOf->type = parseExpression();
+        typeOf->type = parseTypeExpression();
         if (!typeOf->type)
             typeOf->type = errorExpr("Expected type");
 
@@ -1631,11 +1828,11 @@ namespace Myre
     Expression *Parser::parseSizeOfExpression()
     {
         auto startToken = tokens.current();
-        auto *sizeOf = arena.make<SizeOfExpr>();
+        auto sizeOf = arena.make<SizeOfExpr>();
         consume(TokenKind::Sizeof);
         expect(TokenKind::LeftParen, "Expected '(' after 'sizeof'");
 
-        sizeOf->type = parseExpression();
+        sizeOf->type = parseTypeExpression();
         if (!sizeOf->type)
             sizeOf->type = errorExpr("Expected type");
 
@@ -1653,12 +1850,12 @@ namespace Myre
         if (!check(TokenKind::Identifier))
         {
             error("Expected identifier");
-            auto *id = arena.makeIdentifier("");
+            auto id = arena.makeIdentifier("");
             id->location = tokens.current().location;
             return id;
         }
         auto tok = tokens.current();
-        auto *id = arena.makeIdentifier(tok.text);
+        auto id = arena.makeIdentifier(tok.text);
         id->location = tok.location;
         tokens.advance();
         return id;
@@ -1667,7 +1864,7 @@ namespace Myre
     TypedIdentifier *Parser::parseTypedIdentifier()
     {
         auto startToken = tokens.current();
-        auto *ti = arena.make<TypedIdentifier>();
+        auto ti = arena.make<TypedIdentifier>();
         if (consume(TokenKind::Var))
         {
             ti->type = nullptr;
@@ -1675,7 +1872,7 @@ namespace Myre
         }
         else
         {
-            ti->type = parseExpression();
+            ti->type = parseTypeExpression();
             if (!ti->type)
             {
                 error("Expected type specification");
@@ -1695,11 +1892,11 @@ namespace Myre
         while (!check(TokenKind::RightParen) && !tokens.at_end())
         {
             auto startToken = tokens.current();
-            auto *param = arena.make<ParameterDecl>();
+            auto param = arena.make<ParameterDecl>();
             param->param = parseTypedIdentifier();
             if (!param->param)
             {
-                auto *ti = arena.make<TypedIdentifier>();
+                auto ti = arena.make<TypedIdentifier>();
                 ti->type = errorExpr("Expected parameter type");
                 ti->name = arena.makeIdentifier("");
                 param->param = ti;
@@ -1723,12 +1920,34 @@ namespace Myre
         return arena.makeList(params);
     }
 
+    List<TypeParameterDecl *> Parser::parseTypeParameterList()
+    {
+        std::vector<TypeParameterDecl *> typeParams;
+
+        expect(TokenKind::Less, "Expected '<' to start type parameter list");
+
+        while (!check(TokenKind::Greater) && !tokens.at_end())
+        {
+            auto startToken = tokens.current();
+            auto typeParam = arena.make<TypeParameterDecl>();
+            typeParam->name = parseIdentifier();
+            typeParam->location = SourceRange(startToken.location.start, previous().location.end());
+            typeParams.push_back(typeParam);
+
+            if (!consume(TokenKind::Comma))
+                break;
+        }
+
+        expect(TokenKind::Greater, "Expected '>' to close type parameter list");
+        return arena.makeList(typeParams);
+    }
+
     List<Expression *> Parser::parseBaseTypeList()
     {
         std::vector<Expression *> types;
         do
         {
-            if (auto *type = parseExpression())
+            if (auto type = parseTypeExpression())
             {
                 types.push_back(type);
             }
@@ -1748,6 +1967,43 @@ namespace Myre
     {
         return checkAny({TokenKind::FatArrow, TokenKind::Comma,
                          TokenKind::RightParen, TokenKind::RightBrace});
+    }
+
+    bool Parser::isOnSameLine(const Token &prev, const Token &curr) const
+    {
+        // Check if two tokens are on the same line
+        // Assuming SourceLocation has a line field or similar
+        return prev.location.end().line == curr.location.start.line;
+    }
+
+    bool Parser::requireSemicolonIfSameLine()
+    {
+// This replaces the HANDLE_SEMI macro logic for line-aware semicolon handling
+#ifdef REQUIRE_SEMI
+        return expect(TokenKind::Semicolon, "Expected ';' to end statement");
+#else
+        // Check if we have a semicolon
+        if (consume(TokenKind::Semicolon))
+        {
+            return true; // Semicolon was present and consumed
+        }
+
+        // No semicolon found - check if next token is on same line
+        if (!tokens.at_end())
+        {
+            Token prev = tokens.previous();
+            Token curr = tokens.current();
+
+            // If the next token is on the same line as the end of the previous statement,
+            // we require a semicolon
+            if (isOnSameLine(prev, curr))
+            {
+                error("Expected ';' between statements on the same line");
+                return false;
+            }
+        }
+        return true; // No semicolon needed - statements on different lines
+#endif
     }
 
 } // namespace Myre

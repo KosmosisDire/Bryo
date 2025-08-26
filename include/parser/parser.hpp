@@ -89,6 +89,8 @@ private:
     TokenKind peekNext();
     bool isExpressionTerminator();
     bool isPatternTerminator();
+    bool isOnSameLine(const Token& prev, const Token& curr) const;
+    bool requireSemicolonIfSameLine();
 
     // ================== Top Level Parsing ==================
     Statement* parseTopLevelStatement();
@@ -126,9 +128,12 @@ private:
     Expression* parsePrimaryExpression();
     Expression* parsePostfixExpression(Expression* expr);
     Expression* parseUnaryExpression();
-    Expression* parseLiteral();
+    LiteralExpr* parseLiteral();
     Expression* parseNameExpression();
+    List<Expression *> parseGenericArgs();
+    Expression* parseTypeExpression();
     Expression* parseParenthesizedOrLambda();
+    Expression* parseCastExpression();
     Expression* parseArrayLiteral();
     Expression* parseNewExpression();
     Expression* parseLambdaExpression();
@@ -138,6 +143,7 @@ private:
     Identifier* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();
     List<ParameterDecl*> parseParameterList();
+    List<TypeParameterDecl*> parseTypeParameterList();
     List<Expression*> parseBaseTypeList();  // Uses parseExpression() internally
 };
 

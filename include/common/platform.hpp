@@ -1,6 +1,6 @@
 #pragma once
 
-// --- NEW: Platform-specific export/import macros ---
+
 #ifdef _WIN32
 #ifdef MYCELIUM_BUILD_DLL // Not used by us, but good practice
 #define MYCELIUM_API __declspec(dllexport)
@@ -12,7 +12,7 @@
 #else // GCC, Clang
 #define MYCELIUM_API __attribute__((visibility("default")))
 #endif
-// --- END NEW ---
+
 
 #include <string>
 #include <vector>

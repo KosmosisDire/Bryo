@@ -148,6 +148,25 @@ namespace Myre
         }
     }
 
+    void TokenStream::splitRightShift()
+    {
+        ensure_valid_position();
+        if (tokens_[position_].kind == TokenKind::RightShift)
+        {
+            // Create a new '>' token with same location as the '>>' token
+            Token rightToken = tokens_[position_];
+            rightToken.kind = TokenKind::Greater;
+            rightToken.text = ">";
+            
+            // Replace the '>>' with the first '>'
+            tokens_[position_].kind = TokenKind::Greater;
+            tokens_[position_].text = ">";
+            
+            // Insert the second '>' right after the current position
+            tokens_.insert(tokens_.begin() + position_ + 1, rightToken);
+        }
+    }
+
     SourceRange TokenStream::location() const
     {
         ensure_valid_position();

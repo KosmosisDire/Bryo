@@ -14,6 +14,7 @@ class NamespaceSymbol;
 class TypeSymbol; 
 class EnumSymbol;
 class FunctionSymbol;
+class FunctionGroupSymbol;
 class PropertySymbol;
 class TypeLikeSymbol;
 class Scope;
@@ -65,6 +66,8 @@ public:
     inline Symbol* lookup_local(const std::string_view& name) {
         return lookup_local(std::string(name));
     }
+    std::vector<FunctionSymbol*> lookup_functions(const std::string& name);
+    std::vector<FunctionSymbol*> lookup_functions_local(const std::string& name);
     void add_symbol(const std::string& name, ScopeNode* symbol);
     
     // Must be implemented by classes that inherit both ScopeNode and Scope

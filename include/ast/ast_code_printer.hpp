@@ -348,7 +348,7 @@ namespace Myre
             emit("for (");
             if (node->initializer)
             {
-                if (auto *varDecl = node->initializer->as<VariableDecl>())
+                if (auto varDecl = node->initializer->as<VariableDecl>())
                 {
                     print_modifiers(varDecl->modifiers);
                     varDecl->variable->accept(this);
@@ -358,7 +358,7 @@ namespace Myre
                         varDecl->initializer->accept(this);
                     }
                 }
-                else if (auto *exprStmt = node->initializer->as<ExpressionStmt>())
+                else if (auto exprStmt = node->initializer->as<ExpressionStmt>())
                 {
                     exprStmt->expression->accept(this);
                 }
@@ -531,13 +531,13 @@ namespace Myre
             print_modifiers(node->modifiers);
             emit(node->kind == PropertyAccessor::Kind::Get ? "get" : "set");
 
-            if (auto *expr = std::get_if<Expression *>(&node->body))
+            if (auto expr = std::get_if<Expression *>(&node->body))
             {
                 emit(" => ");
                 (*expr)->accept(this);
                 emit(";");
             }
-            else if (auto *block = std::get_if<Block *>(&node->body))
+            else if (auto block = std::get_if<Block *>(&node->body))
             {
                 emit(" ");
                 (*block)->accept(this);
@@ -612,7 +612,7 @@ namespace Myre
 
             {
                 IndentGuard guard(indentLevel);
-                for (auto *member : node->members)
+                for (auto member : node->members)
                 {
                     if (member)
                         member->accept(this);
@@ -645,7 +645,7 @@ namespace Myre
                 emit_newline();
                 {
                     IndentGuard guard(indentLevel);
-                    for (auto *stmt : *node->body)
+                    for (auto stmt : *node->body)
                     {
                         if (stmt)
                             stmt->accept(this);
@@ -661,7 +661,7 @@ namespace Myre
 
         void visit(ArrayTypeExpr *node) override
         {
-            node->elementType->accept(this);
+            node->baseType->accept(this);
             emit("[");
             if (node->size)
             {
@@ -689,7 +689,7 @@ namespace Myre
 
         void visit(CompilationUnit *node) override
         {
-            for (auto *stmt : node->topLevelStatements)
+            for (auto stmt : node->topLevelStatements)
             {
                 if (stmt)
                 {

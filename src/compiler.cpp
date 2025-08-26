@@ -24,10 +24,64 @@
 namespace Myre
 {
 
+    void Compiler::add_builtin_functions(SymbolTable& global_symbols)
+    {
+        auto& type_system = global_symbols.get_type_system();
+        
+        // Add Print function
+        {
+            global_symbols.set_current_scope(global_symbols.get_global_namespace());
+            auto print_function = global_symbols.enter_function("Print", type_system.get_primitive_type("void"));
+
+            auto print_param = global_symbols.define_parameter("message", type_system.get_pointer_type(type_system.get_primitive_type("char")));
+            print_function->set_parameters({print_param});
+        }
+
+        // Add Malloc function - heap allocation
+        // Malloc(size: i32) -> *i8
+        {
+            global_symbols.set_current_scope(global_symbols.get_global_namespace());
+            auto malloc_function = global_symbols.enter_function("Malloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+
+            auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
+            malloc_function->set_parameters({size_param});
+        }
+
+        // Add Alloc function - stack allocation
+        // Alloc(size: i32) -> *i8
+        {
+            global_symbols.set_current_scope(global_symbols.get_global_namespace());
+            auto alloc_function = global_symbols.enter_function("Alloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+
+            auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
+            alloc_function->set_parameters({size_param});
+        }
+
+        // Add Free function - heap deallocation
+        // Free(ptr: *i8) -> void
+        {
+            global_symbols.set_current_scope(global_symbols.get_global_namespace());
+            auto free_function = global_symbols.enter_function("Free", type_system.get_primitive_type("void"));
+
+            auto ptr_param = global_symbols.define_parameter("ptr", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+            free_function->set_parameters({ptr_param});
+        }
+
+        // Add Input function
+        {
+            global_symbols.set_current_scope(global_symbols.get_global_namespace());
+            auto input_function = global_symbols.enter_function("Input", type_system.get_primitive_type("i32"));
+
+            auto buffer_param = global_symbols.define_parameter("buffer", type_system.get_pointer_type(type_system.get_primitive_type("char")));
+            input_function->set_parameters({buffer_param});
+        }
+
+        // Reset scope back to global namespace
+        global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    }
+
     std::unique_ptr<CompiledModule> Compiler::compile(const std::vector<SourceFile> &source_files)
     {
-        // AstTypeInfo::initialize();
-
         if (source_files.empty())
         {
             return std::make_unique<CompiledModule>();
@@ -134,6 +188,22 @@ namespace Myre
             state.symbols_complete = true;
         }
 
+        // Collect symbol building errors
+        for (const auto &state : file_states)
+        {
+            all_errors.insert(all_errors.end(), state.errors.begin(), state.errors.end());
+        }
+
+        if (!all_errors.empty())
+        {
+            LOG_HEADER("Symbol building errors encountered", LogCategory::COMPILER);
+            for (const auto &error : all_errors)
+            {
+                LOG_ERROR(error, LogCategory::COMPILER);
+            }
+            return std::make_unique<CompiledModule>();
+        }
+
         // === PHASE 3: Merge symbol tables ===
         LOG_HEADER("Phase 3: Merging symbol tables", LogCategory::COMPILER);
 
@@ -169,32 +239,34 @@ namespace Myre
             return std::make_unique<CompiledModule>();
         }
 
-        // add the Log function to the global namespace
-        auto log_function_ptr = new FunctionSymbol();
-        log_function_ptr->set_name("Print");
-        log_function_ptr->set_return_type(global_symbols->get_type_system().get_primitive("void"));
+        // Add built-in functions to global symbol table
+        add_builtin_functions(*global_symbols);
 
-        auto log_param = std::make_unique<ParameterSymbol>();
-        log_param->set_name("message");
-        log_param->set_type(global_symbols->get_type_system().get_array_type(global_symbols->get_type_system().get_primitive("i8"), -1));
-        
-        log_function_ptr->set_parameters({log_param->handle});
-
-        global_symbols->set_current_scope(global_symbols->get_global_namespace());
-        global_symbols->add_child("Print", std::unique_ptr<FunctionSymbol>(log_function_ptr));
-
-        global_symbols->set_current_scope(log_function_ptr);
-        global_symbols->add_child("message", std::move(log_param));
+        // print global symbol table
+        LOG_INFO("\nGlobal Symbol Table after Merging:\n", LogCategory::COMPILER);
+        LOG_INFO(global_symbols->to_string(), LogCategory::COMPILER);
 
         // === PHASE 4: Type resolution with global symbol table ===
         LOG_HEADER("Phase 4: Type resolution", LogCategory::COMPILER);
 
         TypeResolver resolver(*global_symbols);
+        resolver.passes_to_run = 1;
+        for (int i = 0; i < 10; ++i)
+        {
+            for (const auto &state : file_states)
+            {
+                if (state.ast)
+                {
+                    resolver.resolve(state.ast);
+                }
+            }
+        }
+
+        // run the resolver a second time to do a final pass after all files have run
         for (const auto &state : file_states)
         {
             if (state.ast)
             {
-                LOG_INFO("Resolving types in: " + state.file.filename, LogCategory::COMPILER);
                 resolver.resolve(state.ast);
 
                 if (print_ast)
@@ -203,14 +275,15 @@ namespace Myre
                     AstPrinter printer;
                     std::cout << printer.get_string(state.ast) << "\n";
                 }
+
+                for (const auto &error : resolver.get_errors())
+                {
+                    all_errors.push_back(state.file.filename + " - " + error);
+                }
             }
         }
 
-        for (const auto &error : resolver.get_errors())
-        {
-            all_errors.push_back("Type: " + error);
-        }
-
+        
         if (print_symbols)
         {
             LOG_INFO("\nGlobal Symbol Table after Type Resolution:\n", LogCategory::COMPILER);
@@ -246,7 +319,7 @@ namespace Myre
         // Quick pass: declare all functions from symbol table
         codegen.declare_all_types();
         codegen.declare_all_functions();
-        codegen.generate_print_function();
+        codegen.generate_builtin_functions();
 
         // Single AST pass: generate all bodies
         for (const auto &state : file_states)

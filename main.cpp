@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"simple.myre"};
+        filenames = {"test.myre", "secondary.myre", "runtime/print.bryo"};
     }
     
     std::vector<SourceFile> source_files;
@@ -55,7 +55,8 @@ int main(int argc, char* argv[])
     if (result->is_valid())
     {
         result->dump_ir();
-        auto ret = result->execute_jit<float>("Main").value_or(-1.0f);
+        result->write_object_file("out/output.o");
+        auto ret = result->execute_jit<float>("Main_f32_").value_or(-1.0f);
         std::cout << "JIT execution returned: " << ret << std::endl;
     }
     else

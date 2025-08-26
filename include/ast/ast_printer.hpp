@@ -45,7 +45,7 @@ namespace Myre
         std::string get_type_annotation(const Node *node)
         {
             // Try to cast the generic Node to a const Expression
-            if (const auto *expr = node->as<Expression>())
+            if (const auto expr = node->as<Expression>())
             {
                 if (expr->resolvedType)
                 {
@@ -117,7 +117,49 @@ namespace Myre
         void visit(BreakStmt *node) override { leaf(node, "BreakStmt"); }
         void visit(ContinueStmt *node) override { leaf(node, "ContinueStmt"); }
         void visit(WhileStmt *node) override { enter(node, "WhileStmt"); DefaultVisitor::visit(node); leave(); }
-        void visit(ForStmt *node) override { enter(node, "ForStmt"); DefaultVisitor::visit(node); leave(); }
+        void visit(ForStmt *node) override 
+        { 
+            enter(node, "ForStmt"); 
+            
+            if (node->initializer)
+            {
+            output << indent() << "Initializer: {\n";
+            indentLevel++;
+            node->initializer->accept(this);
+            indentLevel--;
+            output << indent() << "}\n";
+            }
+            
+            if (node->condition)
+            {
+            output << indent() << "Condition: {\n";
+            indentLevel++;
+            node->condition->accept(this);
+            indentLevel--;
+            output << indent() << "}\n";
+            }
+            
+            if (!node->updates.empty())
+            {
+            output << indent() << "Updates: {\n";
+            indentLevel++;
+            for (auto update : node->updates)
+            {
+                if (update)
+                update->accept(this);
+            }
+            indentLevel--;
+            output << indent() << "}\n";
+            }
+            
+            output << indent() << "Body: {\n";
+            indentLevel++;
+            node->body->accept(this);
+            indentLevel--;
+            output << indent() << "}\n";
+            
+            leave(); 
+        }
         void visit(UsingDirective *node) override;
 
         // --- Declarations ---
@@ -134,6 +176,9 @@ namespace Myre
         // --- Type Expressions ---
         void visit(ArrayTypeExpr *node) override { enter(node, "ArrayTypeExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(FunctionTypeExpr *node) override { enter(node, "FunctionTypeExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(GenericTypeExpr *node) override { enter(node, "GenericTypeExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(PointerTypeExpr *node) override { enter(node, "PointerTypeExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(TypeParameterDecl *node) override;
 
         // --- Root ---
         void visit(CompilationUnit *node) override { enter(node, "CompilationUnit"); DefaultVisitor::visit(node); leave(); }
@@ -286,7 +331,49 @@ namespace Myre
         case TypeDecl::Kind::Enum: kind_str = "enum"; break;
         }
         enter(node, "TypeDecl", " (" + std::string(node->name->text) + ", Kind: " + kind_str + ")" + to_string(node->modifiers));
-        DefaultVisitor::visit(node);
+        
+        // Print type parameters with label
+        if (!node->typeParameters.empty())
+        {
+            output << indent() << "TypeParameters: {\n";
+            indentLevel++;
+            for (auto typeParam : node->typeParameters)
+            {
+                if (typeParam)
+                    typeParam->accept(this);
+            }
+            indentLevel--;
+            output << indent() << "}\n";
+        }
+
+        // Print base types with label
+        if (!node->baseTypes.empty())
+        {
+            output << indent() << "BaseTypes: {\n";
+            indentLevel++;
+            for (auto baseType : node->baseTypes)
+            {
+                if (baseType)
+                    baseType->accept(this);
+            }
+            indentLevel--;
+            output << indent() << "}\n";
+        }
+
+        // Print members with label
+        if (!node->members.empty())
+        {
+            output << indent() << "Members: {\n";
+            indentLevel++;
+            for (auto member : node->members)
+            {
+                if (member)
+                    member->accept(this);
+            }
+            indentLevel--;
+            output << indent() << "}\n";
+        }
+
         leave(" " + std::string(node->name->text));
     }
 
@@ -307,13 +394,18 @@ namespace Myre
         if (node->body)
         {
             enter(node, "Body");
-            for(auto* stmt : *node->body)
+            for(auto stmt : *node->body)
             {
                 stmt->accept(this);
             }
             leave();
         }
         leave();
+    }
+
+    inline void AstPrinter::visit(TypeParameterDecl *node)
+    {
+        leaf(node, "TypeParameterDecl", " (" + std::string(node->name->text) + ")");
     }
 
 } // namespace Myre

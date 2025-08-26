@@ -10,7 +10,7 @@ namespace Myre
     // ============= Type System =============
     class TypeSystem
     {
-        // Primitive types
+        // Primitive types (now can point to any type)
         std::unordered_map<std::string, TypePtr> primitives;
 
         // All type symbols (by fully qualified name)
@@ -25,10 +25,21 @@ namespace Myre
         TypeSystem();
 
         // Primitive type access
-        TypePtr get_primitive(const std::string &name)
+        TypePtr get_primitive_type(const std::string &name)
         {
             auto it = primitives.find(name);
             return (it != primitives.end()) ? it->second : nullptr;
+        }
+
+        TypePtr get_primitive_type(PrimitiveType::Kind kind)
+        {
+            for (const auto &[name, type] : primitives)
+            {
+                auto prim = std::get_if<PrimitiveType>(&type->value);
+                if (prim && prim->kind == kind)
+                    return type;
+            }
+            return nullptr;
         }
 
         // Type symbol management
@@ -48,37 +59,72 @@ namespace Myre
         TypePtr get_function_type(std::vector<TypePtr> params, TypePtr ret);
         TypePtr get_type_reference(TypeLikeSymbol *type_symbol);
         TypePtr get_unresolved_type();
+        
+        // Generic type methods
+        TypePtr get_type_parameter(const std::string& name, int parameterId);
+        TypePtr get_generic_type(TypeLikeSymbol *genericDefinition, const std::vector<TypePtr>& typeArguments);
+
+        TypePtr get_pointer_type(TypePtr pointeeType);
+
+        // Helper method to register any type as a primitive alias
+        void register_primitive_alias(const std::string &alias, TypePtr type)
+        {
+            primitives[alias] = type;
+        }
 
         // Debug/display functions
         std::string to_string(bool include_builtins = true) const;
+
+    private:
+        // Helper to create actual primitive types
+        TypePtr create_primitive_type(PrimitiveType::Kind kind)
+        {
+            return Type::create(PrimitiveType{kind});
+        }
     };
 
     // TypeSystem constructor
     inline TypeSystem::TypeSystem()
     {
-        // Create primitive types without Symbol references
-        auto create_primitive = [&](const std::string &alias, PrimitiveType::Kind kind)
+        // Helper function to register any type under an alias
+        auto register_alias = [&](const std::string &alias, TypePtr type)
         {
-            auto primitive_type = Type::create(PrimitiveType{kind});
-            primitives[alias] = primitive_type;
+            primitives[alias] = type;
         };
 
-        // Register all primitive types
-        create_primitive("i32", PrimitiveType::I32);
-        create_primitive("i64", PrimitiveType::I64);
-        create_primitive("f32", PrimitiveType::F32);
-        create_primitive("f64", PrimitiveType::F64);
-        create_primitive("bool", PrimitiveType::Bool);
-        create_primitive("string", PrimitiveType::String);
-        create_primitive("char", PrimitiveType::I8);
-        create_primitive("u32", PrimitiveType::U32);
-        create_primitive("u64", PrimitiveType::U64);
-        create_primitive("i8", PrimitiveType::I8);
-        create_primitive("u8", PrimitiveType::U8);
-        create_primitive("i16", PrimitiveType::I16);
-        create_primitive("u16", PrimitiveType::U16);
-        create_primitive("void", PrimitiveType::Void);
-        create_primitive("Range", PrimitiveType::Range);
+        // Create basic primitive types first
+        auto char_type = create_primitive_type(PrimitiveType::Char);
+        auto i8_type = create_primitive_type(PrimitiveType::I8);
+        auto i16_type = create_primitive_type(PrimitiveType::I16);
+        auto i32_type = create_primitive_type(PrimitiveType::I32);
+        auto i64_type = create_primitive_type(PrimitiveType::I64);
+        auto u8_type = create_primitive_type(PrimitiveType::U8);
+        auto u16_type = create_primitive_type(PrimitiveType::U16);
+        auto u32_type = create_primitive_type(PrimitiveType::U32);
+        auto u64_type = create_primitive_type(PrimitiveType::U64);
+        auto f32_type = create_primitive_type(PrimitiveType::F32);
+        auto f64_type = create_primitive_type(PrimitiveType::F64);
+        auto bool_type = create_primitive_type(PrimitiveType::Bool);
+        auto void_type = create_primitive_type(PrimitiveType::Void);
+
+        // Register basic primitive types
+        register_alias("char", char_type);
+        register_alias("i8", i8_type);
+        register_alias("i16", i16_type);
+        register_alias("i32", i32_type);
+        register_alias("i64", i64_type);
+        register_alias("u8", u8_type);
+        register_alias("u16", u16_type);
+        register_alias("u32", u32_type);
+        register_alias("u64", u64_type);
+        register_alias("f32", f32_type);
+        register_alias("f64", f64_type);
+        register_alias("bool", bool_type);
+        register_alias("void", void_type);
+
+        // String as i8* (pointer to char)
+        auto string_type = get_pointer_type(char_type);
+        register_alias("string", string_type);
     }
 
     // Type creation with canonicalization
@@ -152,6 +198,60 @@ namespace Myre
         return Type::create(UnresolvedType{next_unresolved_id++});
     }
 
+    inline TypePtr TypeSystem::get_type_parameter(const std::string& name, int parameterId)
+    {
+        return Type::create(TypeParameter{name, parameterId});
+    }
+
+    inline TypePtr TypeSystem::get_generic_type(TypeLikeSymbol *genericDefinition, const std::vector<TypePtr>& typeArguments)
+    {
+        if (!genericDefinition)
+            return nullptr;
+
+        // Create cache key: "Array<i32,bool>" 
+        std::string key = genericDefinition->get_qualified_name() + "<";
+        for (size_t i = 0; i < typeArguments.size(); ++i)
+        {
+            if (i > 0)
+                key += ",";
+            key += typeArguments[i]->get_name();
+        }
+        key += ">";
+
+        // Check cache
+        auto it = canonical_types.find(key);
+        if (it != canonical_types.end())
+        {
+            return it->second;
+        }
+
+        // Create new generic type
+        auto type = Type::create(GenericType{genericDefinition, typeArguments});
+        canonical_types[key] = type;
+        return type;
+    }
+
+    inline TypePtr TypeSystem::get_pointer_type(TypePtr pointeeType)
+    {
+        if (!pointeeType)
+            return nullptr;
+
+        // Create cache key
+        std::string key = pointeeType->get_name() + "*";
+
+        // Check cache
+        auto it = canonical_types.find(key);
+        if (it != canonical_types.end())
+        {
+            return it->second;
+        }
+
+        // Create new pointer type
+        auto type = Type::create(PointerType{pointeeType});
+        canonical_types[key] = type;
+        return type;
+    }
+
     inline std::string TypeSystem::to_string(bool include_builtins) const
     {
         std::string result = "=== TYPE SYSTEM ===\n\n";
@@ -183,7 +283,7 @@ namespace Myre
             result += "    is_abstract: " + std::string(type_symbol->has_modifier(SymbolModifiers::Abstract) ? "true" : "false") + "\n";
             // Count members by checking if the type symbol is a scope
             size_t member_count = 0;
-            if (auto *scope = type_symbol->as<Scope>())
+            if (auto scope = type_symbol->as<Scope>())
             {
                 member_count = scope->symbols.size();
             }

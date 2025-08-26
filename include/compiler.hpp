@@ -40,6 +40,8 @@ namespace Myre
         bool print_ast = false;
         bool print_symbols = false;
 
+        void add_builtin_functions(SymbolTable& global_symbols);
+
     public:
         // Main compilation function
         std::unique_ptr<CompiledModule> compile(const std::vector<SourceFile> &source_files);

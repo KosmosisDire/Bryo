@@ -84,7 +84,30 @@ namespace Myre
         llvm::Value *create_constant(LiteralExpr *literal);
         void ensure_terminator();
         Scope *get_containing_scope(Node *node);
+        Symbol *CodeGenerator::get_expression_symbol(Expression *expr);
         std::string build_qualified_name(NameExpr *name_expr);
+
+        // Core expression generation helpers
+        llvm::Value* genLValue(Expression* expr);  // Returns address
+        llvm::Value* genRValue(Expression* expr);  // Returns value
+        llvm::Value* genExpression(Expression* expr, bool wantAddress = false);
+
+        // Helper method to cast between primitive types
+        llvm::Value* castPrimitive(llvm::Value* value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, Node* node);
+
+        // Storage-aware loading/storing
+        llvm::Value* loadValue(llvm::Value* ptr, TypePtr type);
+        void storeValue(llvm::Value* value, llvm::Value* ptr, TypePtr type);
+        
+        // Type-aware value extraction
+        llvm::Value* ensureValue(llvm::Value* val, TypePtr type);
+        llvm::Value* ensureAddress(llvm::Value* val, TypePtr type);
+
+        // type properties
+        bool isUnsignedType(TypePtr type);
+        bool isSignedType(TypePtr type);
+        bool isFloatingPointType(TypePtr type);
+        bool isIntegerType(TypePtr type);
 
         // --- Pre-declaration passes ---
         void declare_all_types_in_scope(Scope *scope);
@@ -105,7 +128,7 @@ namespace Myre
         std::unique_ptr<llvm::Module> generate(CompilationUnit *unit);
         void declare_all_functions();
         void declare_all_types();
-        void generate_print_function();
+        void generate_builtin_functions();
         void generate_definitions(CompilationUnit *unit);
         std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
         const std::vector<CodeGenError> &get_errors() const { return errors; }
@@ -171,8 +194,9 @@ namespace Myre
         // Type expressions (now regular expressions) - treated as regular expressions
         void visit(ArrayTypeExpr *n) override;
         void visit(FunctionTypeExpr *n) override;
-        void visit(GenericTypeExpr *n) override;  // NEW: Generic type instantiation
-        void visit(TypeParameterDecl *n) override;  // NEW: Generic type parameter
+        void visit(GenericTypeExpr *n) override;
+        void visit(PointerTypeExpr *n) override;
+        void visit(TypeParameterDecl *n) override;
     };
 
 } // namespace Myre

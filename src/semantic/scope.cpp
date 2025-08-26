@@ -18,7 +18,7 @@ namespace Myre
         {
             // Simple name - use existing logic
             // Search locally first
-            auto *result = lookup_local(name);
+            auto result = lookup_local(name);
             if (result)
                 return result;
 
@@ -29,7 +29,7 @@ namespace Myre
             while (node)
             {
                 // Check if this parent is also a Scope and do full recursive lookup
-                if (auto *parent_scope = node->as<Scope>())
+                if (auto parent_scope = node->as<Scope>())
                 {
                     result = parent_scope->lookup(name);
                     if (result)
@@ -97,6 +97,48 @@ namespace Myre
         return nullptr;
     }
 
+    std::vector<FunctionSymbol *> Scope::lookup_functions_local(const std::string &name)
+    {
+        std::vector<FunctionSymbol *> local_overloads;
+
+        // Only check this scope, don't walk up parents
+        auto it = symbols.find(name);
+        if (it != symbols.end())
+        {
+            if (auto group = it->second->as<FunctionGroupSymbol>())
+            {
+                auto overloads = group->get_overloads();
+                local_overloads.insert(local_overloads.end(), overloads.begin(), overloads.end());
+            }
+        }
+
+        return local_overloads;
+    }
+
+    std::vector<FunctionSymbol *> Scope::lookup_functions(const std::string &name)
+    {
+        std::vector<FunctionSymbol *> all_overloads;
+
+        // Check this scope using local lookup
+        auto local_overloads = lookup_functions_local(name);
+        all_overloads.insert(all_overloads.end(), local_overloads.begin(), local_overloads.end());
+
+        // Walk up parent scopes, skipping non-scope nodes
+        ScopeNode *node = as_scope_node()->parent;
+        while (node)
+        {
+            if (auto parent_scope = node->as<Scope>())
+            {
+                auto parent_overloads = parent_scope->lookup_functions(name);
+                all_overloads.insert(all_overloads.end(), parent_overloads.begin(), parent_overloads.end());
+                break; // Found a scope parent, let recursion handle the rest
+            }
+            node = node->parent;
+        }
+
+        return all_overloads;
+    }
+
     void Scope::add_symbol(const std::string &name, ScopeNode *symbol)
     {
         // Set parent relationship
@@ -112,9 +154,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *ns = sym->as<NamespaceSymbol>())
+                if (auto ns = sym->as<NamespaceSymbol>())
                 {
                     return const_cast<NamespaceSymbol *>(ns);
                 }
@@ -129,9 +171,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *type = sym->as<TypeSymbol>())
+                if (auto type = sym->as<TypeSymbol>())
                 {
                     return const_cast<TypeSymbol *>(type);
                 }
@@ -146,9 +188,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *enum_sym = sym->as<EnumSymbol>())
+                if (auto enum_sym = sym->as<EnumSymbol>())
                 {
                     return const_cast<EnumSymbol *>(enum_sym);
                 }
@@ -163,9 +205,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *func = sym->as<FunctionSymbol>())
+                if (auto func = sym->as<FunctionSymbol>())
                 {
                     return const_cast<FunctionSymbol *>(func);
                 }
@@ -180,9 +222,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *prop = sym->as<PropertySymbol>())
+                if (auto prop = sym->as<PropertySymbol>())
                 {
                     return const_cast<PropertySymbol *>(prop);
                 }
@@ -197,9 +239,9 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                if (auto *type_like = sym->as<TypeLikeSymbol>())
+                if (auto type_like = sym->as<TypeLikeSymbol>())
                 {
                     return const_cast<TypeLikeSymbol *>(type_like);
                 }
@@ -217,7 +259,7 @@ namespace Myre
         const ScopeNode *node = this;
         while (node)
         {
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
                 // Include namespaces and type-like symbols in qualified name
                 if (sym->is<NamespaceSymbol>() || sym->is<TypeLikeSymbol>())

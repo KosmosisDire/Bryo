@@ -5,6 +5,7 @@
 #include <vector>
 #include "scope.hpp"
 #include "type.hpp"
+#include "conversions.hpp"
 
 namespace Myre
 {
@@ -118,7 +119,7 @@ namespace Myre
         template <typename T>
         T *as()
         {
-            if (auto *node = as_scope_node())
+            if (auto node = as_scope_node())
             {
                 return node->as<T>();
             }
@@ -128,7 +129,7 @@ namespace Myre
         template <typename T>
         const T *as() const
         {
-            if (auto *node = as_scope_node())
+            if (auto node = as_scope_node())
             {
                 return node->as<T>();
             }
@@ -138,7 +139,7 @@ namespace Myre
         template <typename T>
         bool is() const
         {
-            if (auto *node = as_scope_node())
+            if (auto node = as_scope_node())
             {
                 return node->is<T>();
             }
@@ -152,6 +153,10 @@ namespace Myre
         // Implement TypedSymbol's virtual function
         ScopeNode *as_scope_node() override { return this; }
         const ScopeNode *as_scope_node() const override { return this; }
+
+        // Resolve ambiguity by using ScopeNode's as() functions
+        using ScopeNode::as;
+        using ScopeNode::is;
     };
 
     class UnscopedTypedSymbol : public UnscopedSymbol, public TypedSymbol
@@ -160,6 +165,10 @@ namespace Myre
         // Implement TypedSymbol's virtual function
         ScopeNode *as_scope_node() override { return this; }
         const ScopeNode *as_scope_node() const override { return this; }
+
+        // Resolve ambiguity by using ScopeNode's as() functions
+        using ScopeNode::as;
+        using ScopeNode::is;
     };
 
     // Regular type (class/struct)
@@ -191,37 +200,116 @@ namespace Myre
     {
     public:
         bool is_field = false;
-        const char *kind_name() const override { return is_field ? "field" : "variable"; }
+        const char *kind_name() const override { return is_field ? "field" : "var"; }
     };
 
     // Parameter
     class ParameterSymbol : public UnscopedTypedSymbol
     {
     public:
-        const char *kind_name() const override { return "parameter"; }
+        const char *kind_name() const override { return "param"; }
     };
 
     // Property
     class PropertySymbol : public ScopedTypedSymbol
     {
     public:
-        const char *kind_name() const override { return "property"; }
+        const char *kind_name() const override { return "prop"; }
+        bool has_getter() const { return const_cast<PropertySymbol *>(this)->lookup_local(std::string("get")) != nullptr; }
+        bool has_setter() const { return const_cast<PropertySymbol *>(this)->lookup_local(std::string("set")) != nullptr; }
     };
 
     // Function
     class FunctionSymbol : public ScopedTypedSymbol
     {
-        std::vector<SymbolHandle> parameters_;
+        std::vector<ParameterSymbol *> parameters_;
 
     public:
-        const char *kind_name() const override { return "function"; }
+        const char *kind_name() const override { return "fn"; }
 
         // Override to use the inherited type_ as return type
         void set_return_type(TypePtr type) { type_ = type; }
-        void set_parameters(std::vector<SymbolHandle> params) { parameters_ = std::move(params); }
+        void set_parameters(std::vector<ParameterSymbol *> params)
+        {
+            parameters_ = std::move(params);
+        }
 
         TypePtr return_type() const { return type_; }
-        const std::vector<SymbolHandle> &parameters() const { return parameters_; }
+        const std::vector<ParameterSymbol *> &parameters() const { return parameters_; }
+
+        std::string get_mangled_name() const
+        {
+            std::string mangled = get_qualified_name();
+            mangled += "_";
+
+            // Add return type
+            if (type_)
+            {
+                mangled += type_->get_name();
+            }
+            mangled += "_";
+
+            for (size_t i = 0; i < parameters_.size(); ++i)
+            {
+                if (i > 0)
+                    mangled += "_";
+                if (parameters_[i]->type())
+                {
+                    mangled += parameters_[i]->type()->get_name();
+                }
+            }
+            return mangled;
+        }
+
+        std::string full_signature() const
+        {
+            std::string sig = name_ + "(";
+            for (size_t i = 0; i < parameters_.size(); ++i)
+            {
+                if (i > 0)
+                    sig += ", ";
+                if (parameters_[i]->type())
+                {
+                    sig += parameters_[i]->type()->get_name();
+                }
+                else
+                {
+                    sig += "var";
+                }
+            }
+            sig += "): ";
+            if (type_)
+            {
+                sig += type_->get_name();
+            }
+            return sig;
+        }
+    };
+
+    class FunctionGroupSymbol : public Symbol
+    {
+        public:
+
+        std::vector<std::unique_ptr<FunctionSymbol>> local_overloads;
+        const char *kind_name() const override { return "fn group"; }
+
+        // Add a new overload to the group
+        // returns false if there is a conflict
+        void add_overload(std::unique_ptr<FunctionSymbol> func)
+        {
+            func->parent = this; // Set parent to the group
+            local_overloads.push_back(std::move(func));
+        }
+
+        std::vector<FunctionSymbol *> get_overloads() const
+        {
+            std::vector<FunctionSymbol *> result;
+            for (auto &func : local_overloads)
+            {
+                result.push_back(func.get());
+            }
+            return result;
+        }
     };
 
     // Enum case

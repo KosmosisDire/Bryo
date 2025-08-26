@@ -57,6 +57,7 @@ namespace Myre
     struct ArrayTypeExpr;
     struct FunctionTypeExpr;
     struct GenericTypeExpr;
+    struct PointerTypeExpr;
 
     // Statements
     struct ExpressionStmt;
@@ -131,6 +132,7 @@ namespace Myre
         virtual void visit(ArrayTypeExpr *node) = 0;
         virtual void visit(FunctionTypeExpr *node) = 0;
         virtual void visit(GenericTypeExpr *node) = 0;
+        virtual void visit(PointerTypeExpr *node) = 0;
 
         // Statements
         virtual void visit(ExpressionStmt *node) = 0;
@@ -192,8 +194,18 @@ namespace Myre
     struct Expression : Node
     {
         TypePtr resolvedType;
-        bool isTypeExpression = false;  // Flag to mark when this expression is used as a type
+        bool isLValue = false;
         ACCEPT_VISITOR
+
+        bool is_l_value() const
+        {
+            return isLValue;
+        }
+
+        bool is_r_value() const
+        {
+            return !isLValue;
+        }
     };
 
     struct Statement : Node
@@ -227,7 +239,7 @@ namespace Myre
     struct TypedIdentifier : Node
     {
         Identifier *name;
-        Expression *type; // null = inferred (var) - now Expression instead of TypeRef
+        Expression *type; // null = inferred (var)
         ACCEPT_VISITOR
     };
 
@@ -374,7 +386,7 @@ namespace Myre
     // Type expressions (expressions that represent types in type contexts)
     struct ArrayTypeExpr : Expression
     {
-        Expression *elementType; // Never null - the element type expression
+        Expression *baseType; // Never null - the element type expression
         LiteralExpr *size;       // Can be null (size not type-checked), must be an integer literal if specified in the type
         ACCEPT_VISITOR
     };
@@ -390,6 +402,12 @@ namespace Myre
     {
         Expression *baseType;               // The generic type (e.g., Array, Optional)
         List<Expression *> typeArguments;  // The type arguments (e.g., i32, String)
+        ACCEPT_VISITOR
+    };
+
+    struct PointerTypeExpr : Expression
+    {
+        Expression *baseType; // Never null
         ACCEPT_VISITOR
     };
 
@@ -554,7 +572,7 @@ namespace Myre
 
         Identifier *name; // Never null
         Kind kind;
-        List<TypeParameterDecl *> typeParameters; // NEW: Generic type parameters <T, U>
+        List<TypeParameterDecl *> typeParameters;
         List<Expression *> baseTypes; // Now Expression instead of TypeRef
         List<Declaration *> members;
         ACCEPT_VISITOR
@@ -617,7 +635,7 @@ namespace Myre
         void visit(ErrorExpression *node) override
         {
             visit(static_cast<Expression *>(node));
-            for (auto *partial : node->partialNodes)
+            for (auto partial : node->partialNodes)
             {
                 if (partial)
                     partial->accept(this);
@@ -627,7 +645,7 @@ namespace Myre
         void visit(ErrorStatement *node) override
         {
             visit(static_cast<Statement *>(node));
-            for (auto *partial : node->partialNodes)
+            for (auto partial : node->partialNodes)
             {
                 if (partial)
                     partial->accept(this);
@@ -642,7 +660,7 @@ namespace Myre
         void visit(ArrayLiteralExpr *node) override
         {
             visit(static_cast<Expression *>(node));
-            for (auto *elem : node->elements)
+            for (auto elem : node->elements)
             {
                 elem->accept(this);
             }
@@ -679,7 +697,7 @@ namespace Myre
         {
             visit(static_cast<Expression *>(node));
             node->callee->accept(this);
-            for (auto *arg : node->arguments)
+            for (auto arg : node->arguments)
             {
                 arg->accept(this);
             }
@@ -710,7 +728,7 @@ namespace Myre
         {
             visit(static_cast<Expression *>(node));
             node->type->accept(this);
-            for (auto *arg : node->arguments)
+            for (auto arg : node->arguments)
             {
                 arg->accept(this);
             }
@@ -724,7 +742,7 @@ namespace Myre
         void visit(LambdaExpr *node) override
         {
             visit(static_cast<Expression *>(node));
-            for (auto *param : node->parameters)
+            for (auto param : node->parameters)
             {
                 param->accept(this);
             }
@@ -755,7 +773,7 @@ namespace Myre
         void visit(Block *node) override
         {
             visit(static_cast<Statement *>(node));
-            for (auto *stmt : node->statements)
+            for (auto stmt : node->statements)
             {
                 stmt->accept(this);
             }
@@ -773,8 +791,8 @@ namespace Myre
         void visit(ArrayTypeExpr *node) override
         {
             visit(static_cast<Expression *>(node));
-            if (node->elementType)
-                node->elementType->accept(this);
+            if (node->baseType)
+                node->baseType->accept(this);
             if (node->size)
                 node->size->accept(this);
         }
@@ -782,7 +800,7 @@ namespace Myre
         void visit(FunctionTypeExpr *node) override
         {
             visit(static_cast<Expression *>(node));
-            for (auto *paramType : node->parameterTypes)
+            for (auto paramType : node->parameterTypes)
             {
                 if (paramType)
                     paramType->accept(this);
@@ -796,11 +814,17 @@ namespace Myre
             visit(static_cast<Expression *>(node));
             if (node->baseType)
                 node->baseType->accept(this);
-            for (auto *typeArg : node->typeArguments)
+            for (auto typeArg : node->typeArguments)
             {
                 if (typeArg)
                     typeArg->accept(this);
             }
+        }
+
+        void visit(PointerTypeExpr *node) override
+        {
+            visit(static_cast<Expression *>(node));
+            node->baseType->accept(this);
         }
 
         void visit(ExpressionStmt *node) override
@@ -840,7 +864,7 @@ namespace Myre
                 node->initializer->accept(this);
             if (node->condition)
                 node->condition->accept(this);
-            for (auto *update : node->updates)
+            for (auto update : node->updates)
             {
                 update->accept(this);
             }
@@ -888,12 +912,12 @@ namespace Myre
         {
             visit(static_cast<Declaration *>(node));
             node->name->accept(this);
-            for (auto *typeParam : node->typeParameters)
+            for (auto typeParam : node->typeParameters)
             {
                 if (typeParam)
                     typeParam->accept(this);
             }
-            for (auto *param : node->parameters)
+            for (auto param : node->parameters)
             {
                 param->accept(this);
             }
@@ -906,7 +930,7 @@ namespace Myre
         void visit(ConstructorDecl *node) override
         {
             visit(static_cast<Declaration *>(node));
-            for (auto *param : node->parameters)
+            for (auto param : node->parameters)
             {
                 param->accept(this);
             }
@@ -916,11 +940,11 @@ namespace Myre
         void visit(PropertyAccessor *node) override
         {
             visit(static_cast<Node *>(node));
-            if (auto *expr = std::get_if<Expression *>(&node->body))
+            if (auto expr = std::get_if<Expression *>(&node->body))
             {
                 (*expr)->accept(this);
             }
-            else if (auto *block = std::get_if<Block *>(&node->body))
+            else if (auto block = std::get_if<Block *>(&node->body))
             {
                 (*block)->accept(this);
             }
@@ -930,7 +954,7 @@ namespace Myre
         {
             visit(static_cast<Declaration *>(node));
             node->name->accept(this);
-            for (auto *data : node->associatedData)
+            for (auto data : node->associatedData)
             {
                 data->accept(this);
             }
@@ -940,16 +964,16 @@ namespace Myre
         {
             visit(static_cast<Declaration *>(node));
             node->name->accept(this);
-            for (auto *typeParam : node->typeParameters)
+            for (auto typeParam : node->typeParameters)
             {
                 if (typeParam)
                     typeParam->accept(this);
             }
-            for (auto *base : node->baseTypes)
+            for (auto base : node->baseTypes)
             {
                 base->accept(this);
             }
-            for (auto *member : node->members)
+            for (auto member : node->members)
             {
                 member->accept(this);
             }
@@ -969,7 +993,7 @@ namespace Myre
                 node->name->accept(this);
             if (node->body)
             {
-                for (auto *stmt : *node->body)
+                for (auto stmt : *node->body)
                 {
                     stmt->accept(this);
                 }
@@ -979,7 +1003,7 @@ namespace Myre
         void visit(CompilationUnit *node) override
         {
             visit(static_cast<Node *>(node));
-            for (auto *stmt : node->topLevelStatements)
+            for (auto stmt : node->topLevelStatements)
             {
                 stmt->accept(this);
             }

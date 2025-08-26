@@ -41,6 +41,9 @@ namespace Myre
         void skip_to_any(std::initializer_list<TokenKind> kinds);
         void skip_past(TokenKind kind);
 
+        // Generic parsing support
+        void splitRightShift(); // Split '>>' into '>' + '>'
+
         // Utility
         SourceRange location() const;
         size_t position() const { return position_; }

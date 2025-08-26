@@ -74,6 +74,9 @@ namespace Myre
 
         // === Type expressions ===
         void visit(ArrayTypeExpr *node) override;
+        void visit(GenericTypeExpr *node) override;
+        void visit(PointerTypeExpr *node) override;
+        void visit(TypeParameterDecl *node) override;
     };
 
 } // namespace Myre

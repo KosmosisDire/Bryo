@@ -1046,7 +1046,7 @@ struct constexpr_hash_t<Value, std::enable_if_t<std::is_same_v<Value, string_vie
 template <typename Hash>
 inline constexpr Hash hash_v{};
 
-template <auto* GlobValues, typename Hash>
+template <auto GlobValues, typename Hash>
 constexpr auto calculate_cases(std::size_t Page) noexcept {
   constexpr std::array values = *GlobValues;
   constexpr std::size_t size = values.size();
@@ -1102,7 +1102,7 @@ inline constexpr auto default_result_type_lambda = []() noexcept(std::is_nothrow
 template <>
 inline constexpr auto default_result_type_lambda<void> = []() noexcept {};
 
-template <auto* Arr, typename Hash>
+template <auto Arr, typename Hash>
 constexpr bool has_duplicate() noexcept {
   using value_t = std::decay_t<decltype((*Arr)[0])>;
   using hash_value_t = std::invoke_result_t<Hash, value_t>;
@@ -1147,7 +1147,7 @@ constexpr bool has_duplicate() noexcept {
       break;                                                                                                                  \
     } else [[fallthrough]];
 
-template <auto* GlobValues,
+template <auto GlobValues,
           case_call_t CallValue,
           std::size_t Page = 0,
           typename Hash = constexpr_hash_t<typename std::decay_t<decltype(*GlobValues)>::value_type>,

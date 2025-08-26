@@ -1,0 +1,36 @@
+type Point
+{
+    f32 x, y
+
+    fn Print()
+    {
+        Print("(")
+        Print(x)
+        Print(", ")
+        Print(y)
+        Print(")\n")
+    }
+
+    fn GetThis()
+    {
+        return this
+    }
+}
+
+fn Main()
+{
+    var p = new Point()
+    p.x = 1.0
+    p.y = 10.0
+    p.Print()
+    p.GetThis().Print()
+
+    Print("Name: ")
+    var input = new char[128]
+    var len = Input(input)
+    Print(input)
+    Print(" has len of ")
+    PrintLn(len)
+
+    return 0.0
+}

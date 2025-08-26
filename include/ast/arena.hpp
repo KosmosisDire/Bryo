@@ -103,14 +103,14 @@ namespace Myre
         // Helper factory methods
         Identifier *makeIdentifier(std::string text)
         {
-            auto *id = make<Identifier>();
+            auto id = make<Identifier>();
             id->text = text;
             return id;
         }
 
         ErrorExpression *makeErrorExpr(std::string message)
         {
-            auto *error = make<ErrorExpression>();
+            auto error = make<ErrorExpression>();
             error->message = message;
             error->partialNodes = {};
             return error;
@@ -118,7 +118,7 @@ namespace Myre
 
         ErrorStatement *makeErrorStmt(std::string message)
         {
-            auto *error = make<ErrorStatement>();
+            auto error = make<ErrorStatement>();
             error->message = message;
             error->partialNodes = {};
             return error;

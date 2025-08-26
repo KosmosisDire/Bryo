@@ -19,7 +19,7 @@ namespace Myre
         NamespaceSymbol *globalNamespace = nullptr; // Root namespace
         ScopeNode *current = nullptr;               // Current scope
         TypeSystem type_system;
-        std::vector<Symbol *> unresolved_symbols; // Changed from UnscopedSymbol*
+        std::vector<Symbol *> unresolved_symbols;
 
     public:
         SymbolTable();
@@ -91,7 +91,7 @@ namespace Myre
         // Returns list of any name conflicts found
         std::vector<std::string> merge(SymbolTable &other);
         void merge_namespace(NamespaceSymbol *target_ns, NamespaceSymbol *source_ns, std::unordered_map<SymbolHandle, SymbolHandle> &handle_remapping, std::vector<std::string> &conflicts);
-
+        void merge_function_group(FunctionGroupSymbol *target_group, FunctionGroupSymbol *source_group, std::unordered_map<SymbolHandle, SymbolHandle> &handle_remapping, std::vector<std::string> &conflicts);
         // Debug/display functions
         std::string to_string() const;
         

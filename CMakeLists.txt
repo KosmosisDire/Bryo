@@ -90,6 +90,7 @@ set(SOURCE_FILES
     src/semantic/symbol.cpp
     src/semantic/symbol_table.cpp
     src/semantic/symbol_table_builder.cpp
+    src/semantic/type_resolver.cpp
     
     # Code Generator
     src/codegen/codegen.cpp

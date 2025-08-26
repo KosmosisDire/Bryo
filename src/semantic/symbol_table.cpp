@@ -4,6 +4,7 @@
 #include <functional>
 #include <stdexcept>
 #include <assert.h>
+#include <iostream>
 
 namespace Myre
 {
@@ -27,7 +28,7 @@ namespace Myre
         }
 
         // Current scope must be able to contain symbols (must be a Scope)
-        auto *current_scope = current->as<Scope>();
+        auto current_scope = current->as<Scope>();
         if (!current_scope)
         {
             throw std::runtime_error("Cannot add child to non-scope node");
@@ -80,11 +81,46 @@ namespace Myre
 
     FunctionSymbol *SymbolTable::enter_function(const std::string &name, TypePtr return_type)
     {
+        // Get or create function group in current scope
+        auto current_scope = current->as<Scope>();
+        if (!current_scope)
+        {
+            //TODO: Add proper error logging
+            std::cout << "Cannot add function to non-scope" << std::endl;
+            return nullptr; // Cannot add function to non-scope
+        }
+
+        FunctionGroupSymbol *func_group = nullptr;
+        auto existing = current_scope->lookup_local(name);
+
+        if (!existing)
+        {
+            // First function with this name in this scope - create group
+            auto group = std::make_unique<FunctionGroupSymbol>();
+            group->set_name(name);
+            group->set_access(AccessLevel::Public);
+            func_group = group.get();
+            add_child(name, std::move(group)); // Add group to symbols
+        }
+        else if (auto group = existing->as<FunctionGroupSymbol>())
+        {
+            // Group already exists
+            func_group = group;
+        }
+        else
+        {
+            //TODO: Add proper error logging
+            std::cout << "Function '" << name << "' already defined as non-function" << std::endl;
+            return nullptr; // Already defined as non-function
+        }
+
+        // Create the actual function symbol
         auto sym = std::make_unique<FunctionSymbol>();
         sym->set_name(name);
         sym->set_return_type(return_type);
         sym->set_access(AccessLevel::Private);
         FunctionSymbol *ptr = sym.get();
+        symbol_map[sym->handle] = ptr; // manually add symbol to the handle map since we are not adding it to the scope directly
 
         // Check if this function has an unresolved return type and needs inference
         if (return_type && return_type->is<UnresolvedType>())
@@ -92,7 +128,10 @@ namespace Myre
             unresolved_symbols.push_back(ptr);
         }
 
-        add_child(name, std::move(sym));
+        // Add function to the group (group owns it)
+        func_group->add_overload(std::move(sym));
+
+        // Set current to the function, not the group
         current = ptr;
         return ptr;
     }
@@ -128,6 +167,10 @@ namespace Myre
 
     void SymbolTable::exit_scope()
     {
+        while (current->parent && !current->parent->as<Scope>())
+        {
+            current = current->parent;
+        }
         if (current->parent)
         {
             current = current->parent;
@@ -136,6 +179,13 @@ namespace Myre
 
     VariableSymbol *SymbolTable::define_variable(const std::string &name, TypePtr type)
     {
+        // Check for duplicate variable in current scope
+        auto current_scope = current->as<Scope>();
+        if (current_scope && current_scope->lookup_local(name))
+        {
+            return nullptr; // Duplicate found, return nullptr to indicate failure
+        }
+
         auto sym = std::make_unique<VariableSymbol>();
         sym->set_name(name);
         sym->set_type(type);
@@ -210,7 +260,7 @@ namespace Myre
     Symbol *SymbolTable::lookup(const std::string &name)
     {
         // Current scope must be able to lookup (must be a Scope)
-        auto *current_scope = current->as<Scope>();
+        auto current_scope = current->as<Scope>();
         if (!current_scope)
         {
             return nullptr; // Can't lookup from non-scope nodes
@@ -226,27 +276,27 @@ namespace Myre
     TypePtr SymbolTable::resolve_type_name(const std::string &type_name, ScopeNode *scope)
     {
         // First check if it is a built-in type
-        auto prim = type_system.get_primitive(type_name);
+        auto prim = type_system.get_primitive_type(type_name);
         if (prim)
         {
             return prim;
         }
 
         // Look up the symbol starting from the given scope
-        auto *scope_container = scope->as<Scope>();
+        auto scope_container = scope->as<Scope>();
         if (!scope_container)
         {
             return type_system.get_unresolved_type();
         }
 
-        auto *symbol = scope_container->lookup(type_name);
+        auto symbol = scope_container->lookup(type_name);
         if (!symbol)
         {
             return type_system.get_unresolved_type();
         }
 
         // Check if it's a type-like symbol (Type or Enum)
-        if (auto *type_like = symbol->as<TypeLikeSymbol>())
+        if (auto type_like = symbol->as<TypeLikeSymbol>())
         {
             return type_system.get_type_reference(type_like);
         }
@@ -333,6 +383,28 @@ namespace Myre
                                   other.unresolved_symbols.begin(),
                                   other.unresolved_symbols.end());
 
+        // Step 7: Update parameter pointers
+        for (auto& symbol : symbols)
+        {
+            if (auto func_group = symbol->as<FunctionGroupSymbol>())
+            {
+                for (auto func : func_group->get_overloads())
+                {
+                    std::vector<ParameterSymbol*> updated_params;
+                    for (auto param : func->parameters())
+                    {
+                        if (param)
+                        {
+                            // Find the parameter in the merged symbol table
+                            auto new_param = symbol_map[param->handle]->as<ParameterSymbol>();
+                            updated_params.push_back(new_param);
+                        }
+                    }
+                    func->set_parameters(updated_params);
+                }
+            }
+        }
+
         // Clear other's state
         other.symbols.clear();
         other.symbol_map.clear();
@@ -343,10 +415,7 @@ namespace Myre
         return conflicts;
     }
 
-    void SymbolTable::merge_namespace(NamespaceSymbol *target_ns,
-                                      NamespaceSymbol *source_ns,
-                                      std::unordered_map<SymbolHandle, SymbolHandle> &handle_remapping,
-                                      std::vector<std::string> &conflicts)
+    void SymbolTable::merge_namespace(NamespaceSymbol *target_ns, NamespaceSymbol *source_ns, std::unordered_map<SymbolHandle, SymbolHandle> &handle_remapping, std::vector<std::string> &conflicts)
     {
         if (!target_ns || !source_ns)
             return;
@@ -354,8 +423,8 @@ namespace Myre
         // Record that source namespace is being merged into target
         handle_remapping[source_ns->handle] = target_ns->handle;
 
-        auto *target_scope = target_ns->as<Scope>();
-        auto *source_scope = source_ns->as<Scope>();
+        auto target_scope = target_ns->as<Scope>();
+        auto source_scope = source_ns->as<Scope>();
         if (!target_scope || !source_scope)
             return;
 
@@ -367,20 +436,31 @@ namespace Myre
             if (target_it != target_scope->symbols.end())
             {
                 // Both namespaces have this symbol
-                auto *target_symbol = target_it->second;
+                auto target_symbol = target_it->second;
 
                 // If both are namespaces, merge them recursively
-                if (auto *target_child_ns = target_symbol->as<NamespaceSymbol>())
+                if (auto target_child_ns = target_symbol->as<NamespaceSymbol>())
                 {
-                    if (auto *source_child_ns = source_symbol->as<NamespaceSymbol>())
+                    if (auto source_child_ns = source_symbol->as<NamespaceSymbol>())
                     {
                         merge_namespace(target_child_ns, source_child_ns,
                                         handle_remapping, conflicts);
                         continue;
                     }
                 }
+                
+                // If both are function groups, merge them
+                if (auto target_func_group = target_symbol->as<FunctionGroupSymbol>())
+                {
+                    if (auto source_func_group = source_symbol->as<FunctionGroupSymbol>())
+                    {
+                        merge_function_group(target_func_group, source_func_group,
+                                           handle_remapping, conflicts);
+                        continue;
+                    }
+                }
 
-                // For now, just report other conflicts
+                // For other conflicts, report them
                 conflicts.push_back("Symbol conflict: " + name + " already exists");
             }
             else
@@ -392,13 +472,32 @@ namespace Myre
         }
     }
 
+    void SymbolTable::merge_function_group(FunctionGroupSymbol *target_group, FunctionGroupSymbol *source_group, std::unordered_map<SymbolHandle, SymbolHandle> &handle_remapping, std::vector<std::string> &conflicts)
+    {
+        if (!target_group || !source_group)
+            return;
+
+        // Record that source function group is being merged into target
+        handle_remapping[source_group->handle] = target_group->handle;
+
+        // Move each overload from source to target
+        for (auto &source_func : source_group->local_overloads)
+        {
+            auto name = source_func->full_signature();
+            target_group->add_overload(std::move(source_func));
+        }
+        
+        // Clear source group's overloads (they've been moved)
+        source_group->local_overloads.clear();
+    }
+
     std::string SymbolTable::to_string() const
     {
         std::stringstream ss;
         ss << "=== SYMBOL TABLE ===\n";
 
         // Print current context
-        if (auto *ns = get_current_namespace())
+        if (auto ns = get_current_namespace())
         {
             if (ns->name() != "global")
             {
@@ -406,12 +505,12 @@ namespace Myre
             }
         }
 
-        if (auto *type = get_current_type())
+        if (auto type = get_current_type())
         {
             ss << "Current Type: " << type->name() << "\n";
         }
 
-        if (auto *func = get_current_function())
+        if (auto func = get_current_function())
         {
             ss << "Current Function: " << func->name() << "\n";
         }
@@ -423,72 +522,125 @@ namespace Myre
         {
             std::string indent_str(indent * 2, ' ');
 
-            if (auto *sym = node->as<Symbol>())
+            if (auto sym = node->as<Symbol>())
             {
-                // Print symbol info
-                ss << indent_str;
-                ss << sym->kind_name() << " " << sym->name();
+                // Handle FunctionGroupSymbol specially
+                if (auto func_group = sym->as<FunctionGroupSymbol>())
+                {
+                    ss << indent_str << "function group " << func_group->name();
+                    auto overloads = func_group->get_overloads();
+                    if (!overloads.empty())
+                    {
+                        ss << " [" << overloads.size() << " overload(s)]:\n";
 
-                // Add type-specific info
-                if (auto *typed_symbol = sym->as<TypedSymbol>())
-                {
-                    if (typed_symbol->type())
-                    {
-                        if (auto *func = sym->as<FunctionSymbol>())
+                        // Print each overload
+                        for (size_t i = 0; i < overloads.size(); ++i)
                         {
-                            ss << " -> " << typed_symbol->type()->get_name();
-                        }
-                        else
-                        {
-                            ss << ": " << typed_symbol->type()->get_name();
-                        }
-                    }
-                }
-                else if (auto *type = sym->as<TypeSymbol>())
-                {
-                    if (type->is_ref_type())
-                        ss << " (ref)";
-                    if (type->is_abstract())
-                        ss << " (abstract)";
-                }
-                else if (auto *enum_sym = sym->as<EnumSymbol>())
-                {
-                    ss << " (enum)";
-                }
-                else if (auto *case_sym = sym->as<EnumCaseSymbol>())
-                {
-                    if (case_sym->is_tagged())
-                    {
-                        ss << "(";
-                        bool first = true;
-                        for (const auto &type : case_sym->params())
-                        {
-                            if (!first)
-                                ss << ", ";
-                            ss << type->get_name();
-                            first = false;
-                        }
-                        ss << ")";
-                    }
-                }
+                            auto func = overloads[i];
+                            ss << indent_str << "  [" << (i + 1) << "] ";
+                            ss << func->name() << "(";
 
-                // Add brackets if this node has symbols (is a scope)
-                if (auto *scope = node->as<Scope>())
-                {
-                    if (!scope->symbols.empty())
-                    {
-                        ss << " {\n";
-                        // Print symbols
-                        for (const auto &[key, child] : scope->symbols)
-                        {
-                            print_tree(child, indent + 1);
+                            // Print parameter types
+                            bool first = true;
+                            for (auto paramHandle : func->parameters())
+                            {
+                                if (auto param = paramHandle)
+                                {
+                                    if (!first)
+                                        ss << ", ";
+                                    ss << param->type()->get_name();
+                                    first = false;
+                                }
+                            }
+
+                            ss << ") -> " << func->return_type()->get_name();
+
+                            // Print function body scope if it has symbols
+                            if (auto func_scope = func->as<Scope>())
+                            {
+                                if (!func_scope->symbols.empty())
+                                {
+                                    ss << " {\n";
+                                    for (const auto &[key, child] : func_scope->symbols)
+                                    {
+                                        print_tree(child, indent + 2);
+                                    }
+                                    ss << indent_str << "  }";
+                                }
+                            }
+                            ss << "\n";
                         }
-                        ss << indent_str << "}";
+                    }
+                    else
+                    {
+                        ss << " [empty]\n";
                     }
                 }
-                ss << "\n";
+                // Regular symbols
+                else
+                {
+                    // Print symbol info
+                    ss << indent_str;
+                    ss << sym->kind_name() << " " << sym->name();
+
+                    // Add type-specific info
+                    if (auto typed_symbol = sym->as<TypedSymbol>())
+                    {
+                        if (typed_symbol->type())
+                        {
+                            // Skip FunctionSymbol since they're now in groups
+                            if (!sym->is<FunctionSymbol>())
+                            {
+                                ss << ": " << typed_symbol->type()->get_name();
+                            }
+                        }
+                    }
+                    else if (auto type = sym->as<TypeSymbol>())
+                    {
+                        if (type->is_ref_type())
+                            ss << " (ref)";
+                        if (type->is_abstract())
+                            ss << " (abstract)";
+                    }
+                    else if (auto enum_sym = sym->as<EnumSymbol>())
+                    {
+                        ss << " (enum)";
+                    }
+                    else if (auto case_sym = sym->as<EnumCaseSymbol>())
+                    {
+                        if (case_sym->is_tagged())
+                        {
+                            ss << "(";
+                            bool first = true;
+                            for (const auto &type : case_sym->params())
+                            {
+                                if (!first)
+                                    ss << ", ";
+                                ss << type->get_name();
+                                first = false;
+                            }
+                            ss << ")";
+                        }
+                    }
+
+                    // Add brackets if this node has symbols (is a scope)
+                    if (auto scope = node->as<Scope>())
+                    {
+                        if (!scope->symbols.empty())
+                        {
+                            ss << " {\n";
+                            // Print symbols
+                            for (const auto &[key, child] : scope->symbols)
+                            {
+                                print_tree(child, indent + 1);
+                            }
+                            ss << indent_str << "}";
+                        }
+                    }
+                    ss << "\n";
+                }
             }
-            else if (auto *block = node->as<BlockScope>())
+            else if (auto block = node->as<BlockScope>())
             {
                 ss << indent_str << "block (" << block->debug_name << ")";
 
@@ -513,7 +665,7 @@ namespace Myre
         if (!unresolved_symbols.empty())
         {
             ss << "\nUnresolved Symbols:\n";
-            for (const auto *sym : unresolved_symbols)
+            for (const auto sym : unresolved_symbols)
             {
                 ss << " - " << sym->name() << "\n";
             }
