@@ -1,36 +1,849 @@
-type Point
+fn PrintLn(char* str)
 {
-    f32 x, y
+    Print(str);
+    Print("\n");
+}
 
-    fn Print()
+fn PrintLn(i32 i)
+{
+    Print(i);
+    Print("\n");
+}
+
+fn PrintLn(f32 f)
+{
+    Print(f);
+    Print("\n");
+}
+
+fn Print(i32 value)
+{
+    var buffer = new char[12];
+    IntToString(value, buffer);
+    Print(buffer);
+}
+
+fn IntToString(i32 num, char[] buffer) {
+    if (num == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return 1;
+    }
+    
+    bool isNegative = num < 0;
+    if (isNegative)
     {
-        Print("(")
-        Print(x)
-        Print(", ")
-        Print(y)
-        Print(")\n")
+        num = -num;
+    }
+    
+    i32 index = 0;
+    
+    while (num > 0) {
+        buffer[index++] = (char)((num % 10)) + '0';
+        num /= 10;
+    }
+    
+    if (isNegative)
+    {
+        buffer[index++] = '-';
+    }
+    
+    buffer[index] = '\0';
+    
+    i32 start = 0;
+    i32 end = index - 1;
+    while (start < end) {
+        char temp = buffer[start];
+        buffer[start] = buffer[end];
+        buffer[end] = temp;
+        start++;
+        end--;
+    }
+    
+    return index;
+}
+
+fn Print(f32 value, i32 places)
+{
+    var buffer = new char[32];
+    FloatToString(value, buffer, places);
+    Print(buffer);
+}
+
+fn Print(f32 value)
+{
+    Print(value, 2);
+}
+
+fn FloatToString(f32 num, char[] buffer, i32 places) {
+    if (num == 0.0) {
+        buffer[0] = '0';
+        if (places > 0) {
+            buffer[1] = '.';
+            i32 index = 2;
+            for (i32 i = 0; i < places; i++) {
+                buffer[index++] = '0';
+            }
+            buffer[index] = '\0';
+            return index;
+        } else {
+            buffer[1] = '\0';
+            return 1;
+        }
     }
 
-    fn GetThis()
+    bool isNegative = num < 0.0;
+    if (isNegative) {
+        num = -num;
+    }
+
+    i32 integerPart = (i32)num;
+    f32 fractionalPart = num - (f32)integerPart;
+
+    i32 index = 0;
+    
+    if (integerPart == 0) {
+        buffer[index++] = '0';
+    } else {
+        while (integerPart > 0) {
+            buffer[index++] = (char)((integerPart % 10)) + '0';
+            integerPart /= 10;
+        }
+    }
+
+    if (isNegative) {
+        buffer[index++] = '-';
+    }
+
+    buffer[index] = '\0';
+
+    i32 start = 0;
+    i32 end = index - 1;
+    while (start < end) {
+        char temp = buffer[start];
+        buffer[start] = buffer[end];
+        buffer[end] = temp;
+        start++;
+        end--;
+    }
+
+    if (places > 0) {
+        buffer[index++] = '.';
+        for (i32 i = 0; i < places; i++) {
+            fractionalPart *= 10.0;
+            i32 digit = (i32)fractionalPart;
+            buffer[index++] = ((char)digit) + '0';
+            fractionalPart -= (f32)digit;
+        }
+    }
+
+    buffer[index] = '\0';
+    return index;
+}
+
+// String utility functions
+fn StringEquals(char* str1, char* str2)
+{
+    i32 i = 0;
+    while (str1[i] != '\0' && str2[i] != '\0') {
+        if (str1[i] != str2[i]) {
+            return false;
+        }
+        i++;
+    }
+    return str1[i] == str2[i]; // Both should be '\0'
+}
+
+fn ToLower(char c)
+{
+    if (c >= 'A' && c <= 'Z') {
+        return c + (char)32; // Convert to lowercase
+    }
+    return c;
+}
+
+fn StringEqualsIgnoreCase(char* str1, char* str2)
+{
+    i32 i = 0;
+    while (str1[i] != '\0' && str2[i] != '\0') {
+        if (ToLower(str1[i]) != ToLower(str2[i])) {
+            return false;
+        }
+        i++;
+    }
+    return str1[i] == str2[i];
+}
+
+// Game State
+type GameState
+{
+    i32 currentRoom;
+    i32 health;
+    i32 mana;
+    bool hasRustySword;
+    bool hasTorch;
+    bool hasGoldenKey;
+    bool hasSilverKey;
+    bool hasCrystalOrb;
+    bool hasSpellScroll;
+    bool hasMasterKey;
+    bool dragonDefeated;
+    bool wizardMet;
+    bool puzzleSolved;
+    bool gameOver;
+    bool goodEnding;
+    
+    fn Init()
     {
-        return this
+        currentRoom = 1;
+        health = 100;
+        mana = 50;
+        hasRustySword = false;
+        hasTorch = false;
+        hasGoldenKey = false;
+        hasSilverKey = false;
+        hasCrystalOrb = false;
+        hasSpellScroll = false;
+        hasMasterKey = false;
+        dragonDefeated = false;
+        wizardMet = false;
+        puzzleSolved = false;
+        gameOver = false;
+        goodEnding = false;
+    }
+    
+    fn PrintStatus()
+    {
+        Print("Health: ");
+        Print(health);
+        Print(" | Mana: ");
+        PrintLn(mana);
+        Print("Items: ");
+        
+        bool hasAnyItem = false;
+        if (hasRustySword) {
+            Print("Rusty Sword");
+            hasAnyItem = true;
+        }
+        if (hasTorch) {
+            if (hasAnyItem) Print(", ");
+            Print("Torch");
+            hasAnyItem = true;
+        }
+        if (hasGoldenKey) {
+            if (hasAnyItem) Print(", ");
+            Print("Golden Key");
+            hasAnyItem = true;
+        }
+        if (hasSilverKey) {
+            if (hasAnyItem) Print(", ");
+            Print("Silver Key");
+            hasAnyItem = true;
+        }
+        if (hasCrystalOrb) {
+            if (hasAnyItem) Print(", ");
+            Print("Crystal Orb");
+            hasAnyItem = true;
+        }
+        if (hasSpellScroll) {
+            if (hasAnyItem) Print(", ");
+            Print("Spell Scroll");
+            hasAnyItem = true;
+        }
+        if (hasMasterKey) {
+            if (hasAnyItem) Print(", ");
+            Print("Master Key");
+            hasAnyItem = true;
+        }
+        
+        if (!hasAnyItem) {
+            Print("None");
+        }
+        PrintLn("");
+        PrintLn("");
+    }
+}
+
+// Helper function for item pickup with standard messaging
+fn TakeItem(bool* hasItem, char* itemName, char* description, bool* returnValue)
+{
+    if (!*hasItem) {
+        *hasItem = true;
+        Print("You take the ");
+        Print(itemName);
+        Print(". ");
+        PrintLn(description);
+        *returnValue = false;
+    } else {
+        Print("You already have the ");
+        Print(itemName);
+        PrintLn(".");
+        *returnValue = false;
+    }
+}
+
+// Helper function for simple room transitions
+fn MoveToRoom(GameState* game, i32 newRoom)
+{
+    game[0].currentRoom = newRoom;
+}
+
+// Helper function for checking if player has required items
+fn HasAllItems(GameState* game, bool needsSword, bool needsKey, bool needsTorch)
+{
+    bool hasAll = true;
+    if (needsSword && !game[0].hasRustySword) hasAll = false;
+    if (needsKey && !game[0].hasGoldenKey) hasAll = false;  
+    if (needsTorch && !game[0].hasTorch) hasAll = false;
+    return hasAll;
+}
+
+// Helper function for combat with damage calculation
+fn CombatEncounter(GameState* game, char* enemyName, i32 damageWithWeapon, i32 damageWithoutWeapon, bool* enemyDefeated)
+{
+    Print("You engage the ");
+    Print(enemyName);
+    PrintLn("!");
+    
+    if (game[0].hasRustySword) {
+        Print("Your rusty sword strikes true! The ");
+        Print(enemyName);
+        PrintLn(" is defeated!");
+        *enemyDefeated = true;
+        game[0].health -= damageWithWeapon;
+    } else {
+        Print("Without a weapon, you take heavy damage from the ");
+        Print(enemyName);
+        PrintLn("!");
+        game[0].health -= damageWithoutWeapon;
+        if (game[0].health <= 0) {
+            PrintLn("You collapse from your injuries. Game Over!");
+            game[0].gameOver = true;
+        }
+    }
+}
+
+// Helper function for locked door interactions
+fn HandleLockedDoor(GameState* game, bool hasRequiredKey, char* keyName, char* successMessage)
+{
+    if (hasRequiredKey) {
+        Print("You use the ");
+        Print(keyName);
+        Print(" to unlock the door! ");
+        PrintLn(successMessage);
+        return true;
+    } else {
+        Print("The door is locked and requires a ");
+        Print(keyName);
+        PrintLn(".");
+        return false;
+    }
+}
+
+// Helper function for spell casting validation
+fn CanCastTransmutationSpell(GameState* game)
+{
+    return (game[0].hasSpellScroll && 
+            game[0].hasGoldenKey && 
+            game[0].hasSilverKey && 
+            game[0].hasCrystalOrb && 
+            !game[0].hasMasterKey);
+}
+
+// Helper function for item requirements feedback
+fn PrintMissingItems(GameState* game, bool needsGolden, bool needsSilver, bool needsOrb, bool needsScroll)
+{
+    PrintLn("You need: ");
+    bool first = true;
+    
+    if (needsGolden && !game[0].hasGoldenKey) {
+        if (!first) Print(", ");
+        Print("Golden Key");
+        first = false;
+    }
+    if (needsSilver && !game[0].hasSilverKey) {
+        if (!first) Print(", ");
+        Print("Silver Key");  
+        first = false;
+    }
+    if (needsOrb && !game[0].hasCrystalOrb) {
+        if (!first) Print(", ");
+        Print("Crystal Orb");
+        first = false;
+    }
+    if (needsScroll && !game[0].hasSpellScroll) {
+        if (!first) Print(", ");
+        Print("Spell Scroll");
+        first = false;
+    }
+    PrintLn("");
+}
+
+// Updated spell casting with helper functions
+fn HandleSpellCasting(GameState* game)
+{
+    if (CanCastTransmutationSpell(game)) {
+        PrintLn("You read from the spell scroll and focus your energy...");
+        PrintLn("The golden key, silver key, and crystal orb begin to glow!");
+        PrintLn("They merge together in a brilliant flash, forming the Master Key!");
+        game[0].hasMasterKey = true;
+        game[0].hasGoldenKey = false;
+        game[0].hasSilverKey = false;
+        game[0].hasCrystalOrb = false;
+        game[0].mana -= 30;
+    } else if (!game[0].hasSpellScroll) {
+        PrintLn("You don't have a spell scroll.");
+    } else if (game[0].hasMasterKey) {
+        PrintLn("You already have the Master Key.");
+    } else {
+        PrintMissingItems(game, true, true, true, false);
+    }
+}
+
+// Fixed Room 1 with consistent spatial layout
+fn ShowRoom1()
+{
+    PrintLn("=== THE GRAND ENTRANCE HALL ===");
+    PrintLn("You stand in the grand entrance hall of Castle Shadowmere.");
+    PrintLn("Dust particles dance in shafts of light from cracked windows.");
+    PrintLn("Available exits:");
+    PrintLn("- NORTH: A dark corridor");
+    PrintLn("- NORTHEAST: A passage to an ornate throne room");
+    PrintLn("- EAST: An ornate door (requires golden key)");
+    PrintLn("- WEST: Stairs descending into darkness");
+    PrintLn("- SOUTH: A narrow passage to the servant quarters");
+    PrintLn("");
+}
+
+fn ShowRoom2()
+{
+    PrintLn("=== DARK CORRIDOR ===");
+    PrintLn("You're in a narrow, damp corridor. Ancient runes are carved");
+    PrintLn("into the stone walls, glowing faintly in the darkness.");
+    PrintLn("A rusty SWORD lies abandoned on the floor, and a flickering");
+    PrintLn("TORCH is mounted on the wall.");
+    PrintLn("Available exits:");
+    PrintLn("- SOUTH: Back to the entrance hall");
+    PrintLn("");
+}
+
+fn ShowRoom3()
+{
+    PrintLn("=== THRONE ROOM ===");
+    PrintLn("You enter a magnificent throne room with a golden throne.");
+    PrintLn("A skeleton king sits upon it, wearing a crown. In his grasp");
+    PrintLn("is a beautiful GOLDEN KEY that glows with magical energy.");
+    PrintLn("Ancient tapestries depicting great battles line the walls.");
+    PrintLn("Available exits:");
+    PrintLn("- SOUTHWEST: Back to the entrance hall");
+    PrintLn("");
+}
+
+fn ShowRoom4(GameState* game)
+{
+    PrintLn("=== THE DUNGEON ===");
+    if (!game[0].dragonDefeated) {
+        PrintLn("You descend into a cold, dank dungeon. In the shadows,");
+        PrintLn("you see glowing red eyes watching you. A massive DRAGON");
+        PrintLn("blocks the path deeper into the dungeon!");
+        PrintLn("Available exits:");
+        PrintLn("- EAST: Back up the stairs to the entrance hall");
+    } else {
+        PrintLn("The defeated dragon lies motionless in the corner.");
+        PrintLn("Beyond where it once stood, a passage leads deeper");
+        PrintLn("into the castle's depths.");
+        PrintLn("Available exits:");
+        PrintLn("- NORTH: Deeper into the castle");
+        PrintLn("- EAST: Back up the stairs to the entrance hall");
+    }
+    PrintLn("");
+}
+
+fn ShowRoom5()
+{
+    PrintLn("=== SERVANT QUARTERS ===");
+    PrintLn("You enter what were once the servant quarters. Dust-covered");
+    PrintLn("beds line the walls, and old belongings are scattered about.");
+    PrintLn("On a wooden table, you notice a strange SILVER KEY and what");
+    PrintLn("appears to be a rolled up SPELL SCROLL.");
+    PrintLn("Available exits:");
+    PrintLn("- NORTH: Back to the entrance hall");
+    PrintLn("");
+}
+
+fn ShowRoom6()
+{
+    PrintLn("=== THE LIBRARY ===");
+    PrintLn("You unlock the ornate door and enter a vast library.");
+    PrintLn("Towering bookshelves reach toward a vaulted ceiling.");
+    PrintLn("In the center of the room stands an ancient WIZARD,");
+    PrintLn("his eyes glowing with mystical energy. He holds a");
+    PrintLn("pulsing CRYSTAL ORB in his hands.");
+    PrintLn("Available exits:");
+    PrintLn("- WEST: Back to the entrance hall");
+    PrintLn("");
+}
+
+fn ShowRoom7()
+{
+    PrintLn("=== DEEP CHAMBER ===");
+    PrintLn("You venture deeper into the castle's underground chambers.");
+    PrintLn("The walls are covered with intricate puzzles and riddles.");
+    PrintLn("In the center of the room stands a pedestal with three");
+    PrintLn("keyholes: one shaped like a GOLDEN key, one like a SILVER (command: solve puzzle)");
+    PrintLn("key, and one that seems to require a special MASTER key (command: use master key).");
+    PrintLn("Available exits:");
+    PrintLn("- SOUTH: Back toward the dungeon");
+    PrintLn("");
+}
+
+fn ShowRoom8(GameState* game)
+{
+    PrintLn("=== THE VAULT OF SECRETS ===");
+    if (game[0].goodEnding) {
+        PrintLn("The vault door swings open to reveal the true treasure:");
+        PrintLn("Ancient knowledge, magical artifacts, and the secret to");
+        PrintLn("breaking the curse that has plagued this castle for");
+        PrintLn("centuries! You have not only found treasure, but saved");
+        PrintLn("the souls trapped within these walls!");
+        PrintLn("");
+        PrintLn("=== VICTORY! ===");
+        PrintLn("You have achieved the best possible ending!");
+    } else {
+        PrintLn("The vault contains glittering gold and jewels, but");
+        PrintLn("something feels incomplete. You sense that there was");
+        PrintLn("a greater purpose to this quest that remains unfulfilled.");
+        PrintLn("");
+        PrintLn("=== VICTORY (but was there more?) ===");
+    }
+}
+
+// Fixed Room 1 commands with consistent directions
+fn HandleRoom1Commands(char[] command, GameState* game)
+{
+    if (StringEqualsIgnoreCase(command, "north"))
+    {
+        MoveToRoom(game, 2);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "northeast")) {
+        MoveToRoom(game, 3);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "east")) {
+        if (game[0].hasGoldenKey) {
+            MoveToRoom(game, 6);
+            return true;
+        } else {
+            PrintLn("The ornate door to the east is locked and requires a golden key.");
+            return false;
+        }
+    } else if (StringEqualsIgnoreCase(command, "west")) {
+        MoveToRoom(game, 4);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "south")) {
+        MoveToRoom(game, 5);
+        return true;
+    }
+    return false;
+}
+
+fn HandleRoom2Commands(char[] command, GameState* game)
+{
+    bool returnValue = false;
+    
+    if (StringEqualsIgnoreCase(command, "south")) {
+        MoveToRoom(game, 1);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "take sword") || StringEqualsIgnoreCase(command, "get sword")) {
+        TakeItem(&game[0].hasRustySword, "rusty sword", 
+                "Despite its appearance, it feels surprisingly well-balanced and sharp.", 
+                &returnValue);
+        return returnValue;
+    } else if (StringEqualsIgnoreCase(command, "take torch") || StringEqualsIgnoreCase(command, "get torch")) {
+        TakeItem(&game[0].hasTorch, "torch", 
+                "Its flame dances with an otherworldly blue light that seems to reveal hidden secrets.", 
+                &returnValue);
+        return returnValue;
+    }
+    return false;
+}
+
+fn HandleRoom3Commands(char[] command, GameState* game)
+{
+    if (StringEqualsIgnoreCase(command, "southwest")) {
+        MoveToRoom(game, 1);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "take key") || StringEqualsIgnoreCase(command, "get key") || StringEqualsIgnoreCase(command, "take golden key")) {
+        if (!game[0].hasGoldenKey) {
+            game[0].hasGoldenKey = true;
+            PrintLn("You carefully take the golden key from the skeleton king.");
+            PrintLn("As you do, his jaw drops open and he speaks in a hollow voice:");
+            PrintLn("'The library... holds the secret... to breaking the curse...'");
+            PrintLn("The skeleton then crumbles to dust, leaving only the crown.");
+            return false;
+        } else {
+            PrintLn("You already have the golden key.");
+            return false;
+        }
+    }
+    return false;
+}
+
+fn HandleRoom4Commands(char[] command, GameState* game)
+{
+    if (StringEqualsIgnoreCase(command, "east")) {
+        MoveToRoom(game, 1);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "north")) {
+        if (game[0].dragonDefeated) {
+            MoveToRoom(game, 7);
+            return true;
+        } else {
+            PrintLn("The dragon blocks your path north.");
+            return false;
+        }
+    } else if (StringEqualsIgnoreCase(command, "fight dragon") || StringEqualsIgnoreCase(command, "attack dragon")) {
+        CombatEncounter(game, "dragon", 20, 40, &game[0].dragonDefeated);
+        if (game[0].dragonDefeated) {
+            PrintLn("You notice the path deeper into the castle is now clear.");
+        }
+        return false;
+    }
+    return false;
+}
+
+fn HandleRoom5Commands(char[] command, GameState* game)
+{
+    bool returnValue = false;
+    
+    if (StringEqualsIgnoreCase(command, "north")) {
+        MoveToRoom(game, 1);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "take silver key") || StringEqualsIgnoreCase(command, "get silver key")) {
+        TakeItem(&game[0].hasSilverKey, "ornate silver key", 
+                "It's warm to the touch and seems to hum with magical energy.", 
+                &returnValue);
+        return returnValue;
+    } else if (StringEqualsIgnoreCase(command, "take scroll") || StringEqualsIgnoreCase(command, "get scroll")) {
+        if (!game[0].hasSpellScroll) {
+            game[0].hasSpellScroll = true;
+            PrintLn("You unroll the scroll and see it contains a spell:");
+            PrintLn("'Transmutation of Keys' - Combine Golden and Silver keys");
+            PrintLn("with a Crystal Orb to create the Master Key.");
+            return false;
+        } else {
+            PrintLn("You already have the spell scroll.");
+            return false;
+        }
+    }
+    return false;
+}
+fn HandleRoom6Commands(char[] command, GameState* game)
+{
+    if (StringEqualsIgnoreCase(command, "west")) {
+        MoveToRoom(game, 1);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "talk wizard") || StringEqualsIgnoreCase(command, "speak wizard")) {
+        if (!game[0].wizardMet) {
+            game[0].wizardMet = true;
+            PrintLn("The wizard looks up from his ancient tome and speaks:");
+            PrintLn("'Ah, another seeker of the castle's secrets! I have been");
+            PrintLn("trapped here for centuries, bound by the same curse that");
+            PrintLn("plagues this place. If you can break the curse by solving");
+            PrintLn("the final puzzle, I can grant you this Crystal Orb.'");
+            return false;
+        } else if (game[0].puzzleSolved && !game[0].hasCrystalOrb) {
+            game[0].hasCrystalOrb = true;
+            PrintLn("The wizard's eyes light up as he senses the curse has been broken!");
+            PrintLn("'You did it! The ancient curse is lifted! The spirits are free!");
+            PrintLn("As promised, please accept this Crystal Orb. You have earned it");
+            PrintLn("through your courage and wisdom.' He hands you the glowing orb.");
+            return false;
+        } else if (game[0].hasCrystalOrb) {
+            PrintLn("The wizard smiles warmly. 'You have freed us all, brave adventurer.");
+            PrintLn("Use the Crystal Orb wisely - it contains great power!'");
+            return false;
+        } else {
+            PrintLn("The wizard nods knowingly. 'The Deep Chamber holds the");
+            PrintLn("final puzzle. Solve it to break the curse!'");
+            return false;
+        }
+    } else if (StringEqualsIgnoreCase(command, "take orb") || StringEqualsIgnoreCase(command, "get orb")) {
+        if (game[0].puzzleSolved && !game[0].hasCrystalOrb) {
+            PrintLn("Try talking to the wizard first - he promised to give you the orb!");
+            return false;
+        } else if (game[0].hasCrystalOrb) {
+            PrintLn("You already have the crystal orb.");
+            return false;
+        } else if (!game[0].puzzleSolved) {
+            PrintLn("'Solve the puzzle in the Deep Chamber first,' the wizard says.");
+            return false;
+        } else {
+            PrintLn("The wizard is holding the orb. Try talking to him.");
+            return false;
+        }
+    }
+    return false;
+}
+
+fn HandleRoom7Commands(char[] command, GameState* game)
+{
+    if (StringEqualsIgnoreCase(command, "south")) {
+        MoveToRoom(game, 4);
+        return true;
+    } else if (StringEqualsIgnoreCase(command, "solve puzzle") || StringEqualsIgnoreCase(command, "use keys")) {
+        if (game[0].hasGoldenKey && game[0].hasSilverKey && !game[0].puzzleSolved) {
+            PrintLn("You insert both the golden and silver keys into their slots.");
+            PrintLn("The room fills with brilliant light and you hear ancient");
+            PrintLn("voices whispering 'Thank you...' as spirits are freed.");
+            PrintLn("The curse is broken! You feel magical energy flowing through you.");
+            game[0].puzzleSolved = true;
+            game[0].mana = 100;
+            PrintLn("You can now return to the wizard to claim the Crystal Orb!");
+            return false;
+        } else if (!game[0].hasGoldenKey || !game[0].hasSilverKey) {
+            PrintLn("You need both the golden key and silver key to solve this puzzle.");
+            return false;
+        } else {
+            PrintLn("You have already solved this puzzle.");
+            return false;
+        }
+    } else if (StringEqualsIgnoreCase(command, "use master key") || StringEqualsIgnoreCase(command, "insert master key")) {
+        if (game[0].hasMasterKey) {
+            PrintLn("You insert the Master Key into the final slot!");
+            PrintLn("The pedestal descends into the floor, revealing a passage");
+            PrintLn("to the true treasure vault!");
+            MoveToRoom(game, 8);
+            game[0].gameOver = true;
+            if (game[0].puzzleSolved) {
+                game[0].goodEnding = true;
+            }
+            return true;
+        } else {
+            PrintLn("You need the Master Key to unlock the final chamber.");
+            return false;
+        }
+    }
+    return false;
+}
+
+fn ProcessCommand(char[] command, GameState* game)
+{
+    bool moved = false;
+    
+    if (game[0].currentRoom == 1) {
+        moved = HandleRoom1Commands(command, game);
+    } else if (game[0].currentRoom == 2) {
+        moved = HandleRoom2Commands(command, game);
+    } else if (game[0].currentRoom == 3) {
+        moved = HandleRoom3Commands(command, game);
+    } else if (game[0].currentRoom == 4) {
+        moved = HandleRoom4Commands(command, game);
+    } else if (game[0].currentRoom == 5) {
+        moved = HandleRoom5Commands(command, game);
+    } else if (game[0].currentRoom == 6) {
+        moved = HandleRoom6Commands(command, game);
+    } else if (game[0].currentRoom == 7) {
+        moved = HandleRoom7Commands(command, game);
+    }
+    
+    // Special commands using helper functions
+    if (StringEqualsIgnoreCase(command, "cast spell") || StringEqualsIgnoreCase(command, "use scroll")) {
+        HandleSpellCasting(game);
+        return;
+    }
+    
+    if (!moved) {
+        if (StringEqualsIgnoreCase(command, "help")) {
+            PrintLn("Available commands:");
+            PrintLn("- Movement: north, south, east, west, northeast, southwest");
+            PrintLn("- Actions: take [item], get [item], fight [enemy]");
+            PrintLn("- Special: talk [person], solve puzzle, cast spell");
+            PrintLn("- Info: look, status, help, quit");
+        } else if (StringEqualsIgnoreCase(command, "status")) {
+            game[0].PrintStatus();
+        } else if (StringEqualsIgnoreCase(command, "quit")) {
+            game[0].gameOver = true;
+            PrintLn("Thanks for playing Castle Shadowmere!");
+        } else if (StringEqualsIgnoreCase(command, "look")) {
+            // Will redraw room in main loop
+        } else {
+            PrintLn("I don't understand that command. Type 'help' for available commands.");
+        }
     }
 }
 
 fn Main()
 {
-    var p = new Point()
-    p.x = 1.0
-    p.y = 10.0
-    p.Print()
-    p.GetThis().Print()
-
-    Print("Name: ")
-    var input = new char[128]
-    var len = Input(input)
-    Print(input)
-    Print(" has len of ")
-    PrintLn(len)
-
-    return 0.0
+    var game = new GameState();
+    game.Init();
+    
+    PrintLn("===========================================");
+    PrintLn("    WELCOME TO CASTLE SHADOWMERE");
+    PrintLn("          - EXPANDED EDITION -");
+    PrintLn("===========================================");
+    PrintLn("");
+    PrintLn("You are a brave adventurer seeking to break the ancient");
+    PrintLn("curse that binds Castle Shadowmere and discover its secrets.");
+    PrintLn("Legend speaks of multiple treasures and a choice between");
+    PrintLn("mere wealth... or something far greater.");
+    PrintLn("");
+    PrintLn("Type 'help' for available commands.");
+    PrintLn("");
+    
+    var input = new char[128];
+    
+    while (!game.gameOver)
+    {
+        // Show current room
+        if (game.currentRoom == 1) {
+            ShowRoom1();
+        } else if (game.currentRoom == 2) {
+            ShowRoom2();
+        } else if (game.currentRoom == 3) {
+            ShowRoom3();
+        } else if (game.currentRoom == 4) {
+            ShowRoom4(&game);
+        } else if (game.currentRoom == 5) {
+            ShowRoom5();
+        } else if (game.currentRoom == 6) {
+            ShowRoom6();
+        } else if (game.currentRoom == 7) {
+            ShowRoom7();
+        } else if (game.currentRoom == 8) {
+            ShowRoom8(&game);
+            game.gameOver = true;
+            break;
+        }
+        
+        game.PrintStatus();
+        Print("> ");
+        var len = Input(input);
+        
+        if (len > 0) {
+            ProcessCommand(input, &game);
+        }
+        
+        PrintLn("");
+        
+        // Check for death
+        if (game.health <= 0 && !game.gameOver) {
+            PrintLn("Your health has reached zero. You collapse and the");
+            PrintLn("adventure ends here. Game Over!");
+            game.gameOver = true;
+        }
+    }
+    
+    if (game.currentRoom == 8) {
+        if (game.goodEnding) {
+            PrintLn("You have achieved the ultimate victory! Not only did you");
+            PrintLn("find treasure, but you broke an ancient curse and saved");
+            PrintLn("countless souls. You are a true hero!");
+        } else {
+            PrintLn("You found treasure, but there's a nagging feeling that");
+            PrintLn("you missed something important. Perhaps there was more");
+            PrintLn("to discover in this ancient castle...");
+        }
+    }
+    
+    return 0.0;
 }
