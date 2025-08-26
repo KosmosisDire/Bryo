@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include "type.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     // ============= Type System =============
@@ -301,4 +301,4 @@ namespace Myre
         return result;
     }
 
-} // namespace Myre
+} // namespace Bryo

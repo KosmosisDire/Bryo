@@ -2,7 +2,7 @@
 #include "semantic/symbol_table.hpp"
 #include <assert.h>
 
-namespace Myre
+namespace Bryo
 {
 
     std::string Symbol::get_qualified_name() const
@@ -20,4 +20,4 @@ namespace Myre
         return name_;
     }
 
-} // namespace Myre
+} // namespace Bryo

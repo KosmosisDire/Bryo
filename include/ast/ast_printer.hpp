@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace Myre
+namespace Bryo
 {
     /**
      * @brief A visitor that traverses an AST and produces a human-readable string representation,
@@ -408,4 +408,4 @@ namespace Myre
         leaf(node, "TypeParameterDecl", " (" + std::string(node->name->text) + ")");
     }
 
-} // namespace Myre
+} // namespace Bryo

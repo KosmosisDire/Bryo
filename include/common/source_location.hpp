@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Myre
+namespace Bryo
 {
     // Source range with absolute positioning
     struct SourceLocation
@@ -56,4 +56,4 @@ namespace Myre
             return SourceLocation(start.offset + width, start.line, start.column + width);
         }
     };
-} // namespace Myre
+} // namespace Bryo

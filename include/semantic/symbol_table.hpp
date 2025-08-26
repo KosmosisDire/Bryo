@@ -8,7 +8,7 @@
 #include "symbol.hpp"
 #include "type_system.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     class SymbolTable
@@ -100,4 +100,4 @@ namespace Myre
     private:
     };
 
-} // namespace Myre
+} // namespace Bryo

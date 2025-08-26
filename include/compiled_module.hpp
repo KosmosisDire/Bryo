@@ -13,7 +13,7 @@
 #include "jit.hpp"
 #include "common/logger.hpp"
 
-namespace Myre
+namespace Bryo
 {
     // Forward declaration
     class JIT;
@@ -201,4 +201,4 @@ namespace Myre
         }
     }
 
-} // namespace Myre
+} // namespace Bryo

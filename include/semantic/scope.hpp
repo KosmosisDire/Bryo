@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include "common/symbol_handle.hpp"
 
-namespace Myre {
+namespace Bryo {
 
 // Forward declarations
 class Symbol;
@@ -106,4 +106,4 @@ public:
         : debug_name(debug_name) {}
 };
 
-} // namespace Myre
+} // namespace Bryo

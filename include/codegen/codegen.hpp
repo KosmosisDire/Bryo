@@ -16,7 +16,7 @@
 #include <string>
 #include <memory>
 
-namespace Myre
+namespace Bryo
 {
 
     /**
@@ -199,4 +199,4 @@ namespace Myre
         void visit(TypeParameterDecl *n) override;
     };
 
-} // namespace Myre
+} // namespace Bryo

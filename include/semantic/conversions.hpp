@@ -6,7 +6,7 @@
 
 // inspired by https://github.com/dotnet/roslyn/blob/main/src/Compilers/CSharp/Portable/Binder/Semantics/Conversions/ConversionEasyOut.cs
 // from the roslyn project, licensed under the MIT license.
-namespace Myre
+namespace Bryo
 {
     /**
      * @enum ConversionKind
@@ -208,4 +208,4 @@ namespace Myre
         }
     };
 
-} // namespace Myre
+} // namespace Bryo

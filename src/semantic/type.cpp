@@ -1,7 +1,7 @@
 #include "semantic/type.hpp"
 #include "semantic/symbol.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     std::string Type::get_name() const
@@ -130,4 +130,4 @@ namespace Myre
         value);
     }
 
-} // namespace Myre
+} // namespace Bryo

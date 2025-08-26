@@ -1,6 +1,6 @@
 #include "semantic/type_resolver.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     // ============================================================================

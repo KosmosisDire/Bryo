@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-using namespace Myre; 
+using namespace Bryo; 
 
 
 std::string read_file(const std::string& filename) {
@@ -33,14 +33,14 @@ int main(int argc, char* argv[])
     compiler.set_print_ast(true);
     compiler.set_print_symbols(true);
 
-    // Use command line arguments if provided, otherwise default to simple.myre
+    // Use command line arguments if provided, otherwise default to simple.bryo
     std::vector<std::string> filenames;
     if (argc > 1) {
         for (int i = 1; i < argc; i++) {
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"test.myre", "secondary.myre", "runtime/print.bryo"};
+        filenames = {"test.bryo", "secondary.bryo", "runtime/print.bryo"};
     }
     
     std::vector<SourceFile> source_files;

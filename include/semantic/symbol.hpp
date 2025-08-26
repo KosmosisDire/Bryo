@@ -7,7 +7,7 @@
 #include "type.hpp"
 #include "conversions.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     // Forward declarations
@@ -327,4 +327,4 @@ namespace Myre
         bool is_tagged() const { return !parameters_.empty(); }
     };
 
-} // namespace Myre
+} // namespace Bryo

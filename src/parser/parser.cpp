@@ -9,7 +9,7 @@
     requireSemicolonIfSameLine();
 #endif
 
-namespace Myre
+namespace Bryo
 {
     Parser::Parser(TokenStream &tokens) : tokens(tokens)
     {
@@ -2006,4 +2006,4 @@ namespace Myre
 #endif
     }
 
-} // namespace Myre
+} // namespace Bryo

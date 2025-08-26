@@ -6,7 +6,7 @@
 #include <variant>
 #include "common/symbol_handle.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     // Forward declarations
@@ -162,4 +162,4 @@ namespace Myre
         return prim && prim->kind == PrimitiveType::Void;
     }
 
-} // namespace Myre
+} // namespace Bryo

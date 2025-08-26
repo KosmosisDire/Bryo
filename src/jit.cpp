@@ -4,7 +4,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <iostream>
 
-namespace Myre
+namespace Bryo
 {
 
     JIT::JIT()
@@ -60,4 +60,4 @@ namespace Myre
         return jit->lookup(name);
     }
 
-} // namespace Myre
+} // namespace Bryo

@@ -8,7 +8,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/TargetParser/Host.h>
 
-namespace Myre
+namespace Bryo
 {
     static void initializeCommonTargets()
     {
@@ -188,4 +188,4 @@ namespace Myre
         return true;
     }
 
-} // namespace Myre
+} // namespace Bryo

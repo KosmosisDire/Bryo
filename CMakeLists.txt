@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Myre C CXX)
+project(Bryo C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -110,10 +110,10 @@ set(RUNTIME_FILES
 
 
 # Main executable
-add_executable(Myre ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
+add_executable(Bryo ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
 
 if(LLVM_AVAILABLE)
-    target_link_libraries(Myre PRIVATE ${LLVM_LIBS})
+    target_link_libraries(Bryo PRIVATE ${LLVM_LIBS})
 endif()
 
-target_include_directories(Myre PRIVATE "include" "lib")
+target_include_directories(Bryo PRIVATE "include" "lib")

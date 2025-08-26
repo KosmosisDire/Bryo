@@ -4,7 +4,7 @@
 #include <vector>
 #include <algorithm>
 
-namespace Myre
+namespace Bryo
 {
 
     // ============= Scope Lookup Methods =============
@@ -293,4 +293,4 @@ namespace Myre
         return result;
     }
 
-} // namespace Myre
+} // namespace Bryo

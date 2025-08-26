@@ -11,7 +11,7 @@
 #include <vector>
 #include "type.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     /**
@@ -117,4 +117,4 @@ namespace Myre
         int count_conversions(const std::vector<ConversionKind> &conversions, ConversionKind kind);
     };
 
-} // namespace Myre
+} // namespace Bryo

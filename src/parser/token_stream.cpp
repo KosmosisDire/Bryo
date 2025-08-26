@@ -4,7 +4,7 @@
 #include <sstream>
 #include <iomanip>
 
-namespace Myre
+namespace Bryo
 {
     const Token &TokenStream::current() const
     {
@@ -230,4 +230,4 @@ namespace Myre
         return oss.str();
     }
 
-} // namespace Myre
+} // namespace Bryo

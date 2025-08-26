@@ -7,7 +7,7 @@
 #include <string>
 #include <memory>
 
-namespace Myre
+namespace Bryo
 {
 
     class Parser;
@@ -56,4 +56,4 @@ namespace Myre
         void set_print_symbols(bool p) { print_symbols = p; }
     };
 
-} // namespace Myre
+} // namespace Bryo

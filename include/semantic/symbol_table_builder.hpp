@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-namespace Myre
+namespace Bryo
 {
 
     // Forward declarations
@@ -79,4 +79,4 @@ namespace Myre
         void visit(TypeParameterDecl *node) override;
     };
 
-} // namespace Myre
+} // namespace Bryo

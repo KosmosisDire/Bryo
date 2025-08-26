@@ -21,7 +21,7 @@
 #include <llvm/TargetParser/Host.h>
 #include <optional>
 
-namespace Myre
+namespace Bryo
 {
 
     void Compiler::add_builtin_functions(SymbolTable& global_symbols)
@@ -314,7 +314,7 @@ namespace Myre
         LOG_HEADER("Phase 5: Code generation", LogCategory::COMPILER);
 
         auto llvm_context = std::make_unique<llvm::LLVMContext>();
-        CodeGenerator codegen(*global_symbols, "MyreProgram", llvm_context.get());
+        CodeGenerator codegen(*global_symbols, "BryoProgram", llvm_context.get());
 
         // Quick pass: declare all functions from symbol table
         codegen.declare_all_types();
@@ -339,8 +339,8 @@ namespace Myre
         return std::make_unique<CompiledModule>(
             std::move(llvm_context),
             std::move(llvm_module),
-            "MyreProgram",
+            "BryoProgram",
             all_errors);
     }
 
-} // namespace Myre
+} // namespace Bryo

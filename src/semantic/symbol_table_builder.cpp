@@ -1,6 +1,6 @@
 #include "semantic/symbol_table_builder.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     SymbolTableBuilder::SymbolTableBuilder(SymbolTable &st)
@@ -538,4 +538,4 @@ namespace Myre
         // They are handled later during generic type definition processing
     }
 
-} // namespace Myre
+} // namespace Bryo

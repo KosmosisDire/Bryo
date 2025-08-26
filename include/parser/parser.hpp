@@ -10,7 +10,7 @@
 #include <initializer_list>
 #include <functional> // For std::invoke_result_t
 
-namespace Myre {
+namespace Bryo {
 
 class Parser {
 public:
@@ -147,4 +147,4 @@ private:
     List<Expression*> parseBaseTypeList();  // Uses parseExpression() internally
 };
 
-} // namespace Myre
+} // namespace Bryo

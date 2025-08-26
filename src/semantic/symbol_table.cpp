@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <iostream>
 
-namespace Myre
+namespace Bryo
 {
 
     SymbolTable::SymbolTable()
@@ -674,4 +674,4 @@ namespace Myre
         return ss.str();
     }
 
-} // namespace Myre
+} // namespace Bryo

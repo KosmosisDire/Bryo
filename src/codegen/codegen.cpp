@@ -11,7 +11,7 @@
 #include "semantic/type.hpp"
 #include <iostream>
 
-namespace Myre
+namespace Bryo
 {
 
     // === Main API ===
@@ -3575,4 +3575,4 @@ namespace Myre
     void CodeGenerator::visit(PointerTypeExpr *n) { /* Pointer type expressions are not executed */ }
     void CodeGenerator::visit(TypeParameterDecl *n) { /* Type parameter declarations don't generate code - handled during monomorphization */ }
 
-} // namespace Myre
+} // namespace Bryo

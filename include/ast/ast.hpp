@@ -12,7 +12,7 @@
 #include "common/token.hpp"
 #include "semantic/type.hpp"
 
-namespace Myre
+namespace Bryo
 {
 
     // ============================================================================
@@ -1037,4 +1037,4 @@ namespace Myre
         visit(static_cast<Statement *>(node));
     }
 
-} // namespace Myre
+} // namespace Bryo
