@@ -6,3 +6,5 @@ CLAUDE.md
 .claude
 .dumpappend
 .dumpignore
+*.o
+out
