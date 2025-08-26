@@ -3397,8 +3397,53 @@ namespace Bryo
         builder->SetInsertPoint(merge_bb);
     }
 
-    void CodeGenerator::visit(BreakStmt *n) { report_error(n, "'break' not yet supported."); }
-    void CodeGenerator::visit(ContinueStmt *n) { report_error(n, "'continue' not yet supported."); }
+    void CodeGenerator::visit(BreakStmt *node)
+    {
+        if (!node)
+            return;
+
+        // Check if we're inside a loop
+        if (loop_stack.empty())
+        {
+            report_error(node, "'break' statement used outside of a loop");
+            return;
+        }
+
+        // Get the current loop's break target
+        auto loop_context = loop_stack.top();
+
+        // Jump to the loop's exit block
+        builder->CreateBr(loop_context.breakTarget);
+
+        // Create a new unreachable block for any code that might follow
+        // (though there shouldn't be any reachable code after break)
+        auto unreachable_bb = llvm::BasicBlock::Create(*context, "after.break", current_function);
+        builder->SetInsertPoint(unreachable_bb);
+    }
+
+    void CodeGenerator::visit(ContinueStmt *node)
+    {
+        if (!node)
+            return;
+
+        // Check if we're inside a loop
+        if (loop_stack.empty())
+        {
+            report_error(node, "'continue' statement used outside of a loop");
+            return;
+        }
+
+        // Get the current loop's continue target
+        auto loop_context = loop_stack.top();
+
+        // Jump to the loop's continue target (increment block for 'for', condition for 'while')
+        builder->CreateBr(loop_context.continueTarget);
+
+        // Create a new unreachable block for any code that might follow
+        // (though there shouldn't be any reachable code after continue)
+        auto unreachable_bb = llvm::BasicBlock::Create(*context, "after.continue", current_function);
+        builder->SetInsertPoint(unreachable_bb);
+    }
 
     void CodeGenerator::visit(WhileStmt *node)
     {
@@ -3410,6 +3455,9 @@ namespace Bryo
         auto loop_body = llvm::BasicBlock::Create(*context, "while.body", current_function);
         auto loop_exit = llvm::BasicBlock::Create(*context, "while.exit", current_function);
 
+        // Push loop context for break/continue
+        loop_stack.push({loop_exit, loop_cond});
+
         // Jump to condition check
         builder->CreateBr(loop_cond);
 
@@ -3419,7 +3467,10 @@ namespace Bryo
         // Evaluate condition - need value not address
         auto cond_value = genRValue(node->condition);
         if (!cond_value)
+        {
+            loop_stack.pop();
             return;
+        }
 
         // Ensure condition is a boolean (i1)
         if (!cond_value->getType()->isIntegerTy(1))
@@ -3435,6 +3486,7 @@ namespace Bryo
             else
             {
                 report_error(node->condition, "While condition must be a boolean expression");
+                loop_stack.pop();
                 return;
             }
         }
@@ -3452,6 +3504,9 @@ namespace Bryo
             builder->CreateBr(loop_cond);
         }
 
+        // Pop loop context
+        loop_stack.pop();
+
         // Continue with exit block
         builder->SetInsertPoint(loop_exit);
     }
@@ -3461,16 +3516,16 @@ namespace Bryo
         if (!node || !node->body)
             return;
 
-        // For loop structure:
-        // init -> cond -> body -> increment -> cond -> ...
-        //              \-> exit
-
         // Create basic blocks for the for loop
         auto init_bb = llvm::BasicBlock::Create(*context, "for.init", current_function);
         auto cond_bb = llvm::BasicBlock::Create(*context, "for.cond", current_function);
         auto body_bb = llvm::BasicBlock::Create(*context, "for.body", current_function);
         auto increment_bb = llvm::BasicBlock::Create(*context, "for.inc", current_function);
         auto exit_bb = llvm::BasicBlock::Create(*context, "for.exit", current_function);
+
+        // Push loop context for break/continue
+        // For 'for' loops, continue goes to the increment block
+        loop_stack.push({exit_bb, increment_bb});
 
         // Jump to initialization
         builder->CreateBr(init_bb);
@@ -3497,6 +3552,7 @@ namespace Bryo
             if (!cond_value)
             {
                 // Error in condition - exit loop
+                loop_stack.pop();
                 builder->CreateBr(exit_bb);
                 builder->SetInsertPoint(exit_bb);
                 return;
@@ -3516,6 +3572,7 @@ namespace Bryo
                 else
                 {
                     report_error(node->condition, "For condition must be a boolean expression");
+                    loop_stack.pop();
                     builder->CreateBr(exit_bb);
                     builder->SetInsertPoint(exit_bb);
                     return;
@@ -3560,6 +3617,9 @@ namespace Bryo
         }
         // Loop back to condition
         builder->CreateBr(cond_bb);
+
+        // Pop loop context
+        loop_stack.pop();
 
         // Continue with exit block
         builder->SetInsertPoint(exit_bb);

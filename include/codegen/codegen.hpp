@@ -68,6 +68,12 @@ namespace Bryo
         // Stack for expression evaluation
         std::stack<llvm::Value *> value_stack;
 
+        struct LoopContext {
+            llvm::BasicBlock* breakTarget;    // Where 'break' jumps to
+            llvm::BasicBlock* continueTarget; // Where 'continue' jumps to
+        };
+        std::stack<LoopContext> loop_stack;
+
         // Track which functions have been declared
         std::unordered_set<std::string> declared_functions;
 
@@ -84,7 +90,7 @@ namespace Bryo
         llvm::Value *create_constant(LiteralExpr *literal);
         void ensure_terminator();
         Scope *get_containing_scope(Node *node);
-        Symbol *CodeGenerator::get_expression_symbol(Expression *expr);
+        Symbol *get_expression_symbol(Expression *expr);
         std::string build_qualified_name(NameExpr *name_expr);
 
         // Core expression generation helpers
