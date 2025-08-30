@@ -116,4 +116,4 @@ if(LLVM_AVAILABLE)
     target_link_libraries(Bryo PRIVATE ${LLVM_LIBS})
 endif()
 
-target_include_directories(Bryo PRIVATE "include" "lib")
+target_include_directories(Bryo PRIVATE "src" "lib")
