@@ -64,7 +64,7 @@ namespace Bryo
         return !pendingConstraints.empty();
     }
 
-    void TypeResolver::unify(TypePtr t1, TypePtr t2, Node *error_node, const std::string &context)
+    void TypeResolver::unify(TypePtr t1, TypePtr t2, BaseSyntax *error_node, const std::string &context)
     {
         if (!t1 || !t2)
             return;
@@ -103,7 +103,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::report_error(Node *error_node, const std::string &message)
+    void TypeResolver::report_error(BaseSyntax *error_node, const std::string &message)
     {
         if (error_node)
         {
@@ -124,7 +124,7 @@ namespace Bryo
         public:
             TypeUpdateVisitor(TypeResolver *res) : resolver(res) {}
 
-            void visit(Expression *node) override
+            void visit(BaseExprSyntax *node) override
             {
                 if (node && node->resolvedType)
                 {
@@ -140,13 +140,13 @@ namespace Bryo
         unit->accept(&updater);
     }
 
-    TypePtr TypeResolver::get_node_type(Node *node)
+    TypePtr TypeResolver::get_node_type(BaseSyntax *node)
     {
         auto it = nodeTypes.find(node);
         return (it != nodeTypes.end()) ? it->second : nullptr;
     }
 
-    void TypeResolver::set_node_type(Node *node, TypePtr type)
+    void TypeResolver::set_node_type(BaseSyntax *node, TypePtr type)
     {
         if (node && type)
         {
@@ -154,7 +154,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::annotate_expression(Expression *expr, TypePtr type, Symbol *symbol)
+    void TypeResolver::annotate_expression(BaseExprSyntax *expr, TypePtr type, Symbol *symbol)
     {
         if (!expr || !type)
             return;
@@ -184,7 +184,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::set_expression_symbol(Expression *expr, Symbol *symbol)
+    void TypeResolver::set_expression_symbol(BaseExprSyntax *expr, Symbol *symbol)
     {
         if (!expr || !symbol)
             return;
@@ -194,9 +194,9 @@ namespace Bryo
         {
             expr->as<NameExpr>()->resolvedSymbol = symbol->handle;
         }
-        else if (expr->is<MemberAccessExpr>())
+        else if (expr->is<QualifiedNameSyntax>())
         {
-            expr->as<MemberAccessExpr>()->resolvedMember = symbol->handle;
+            expr->as<QualifiedNameSyntax>()->resolvedMember = symbol->handle;
         }
         else if (expr->is<CallExpr>())
         {
@@ -205,7 +205,7 @@ namespace Bryo
         // Other expression types don't have symbol fields
     }
 
-    Scope *TypeResolver::get_containing_scope(Node *node)
+    Scope *TypeResolver::get_containing_scope(BaseSyntax *node)
     {
         if (!node || node->containingScope.id == 0)
             return nullptr;
@@ -214,14 +214,14 @@ namespace Bryo
         if (!sym)
         {
             report_error(node, "Internal Error: Expression has no containing scope.");
-            if (auto exp = node->as<Expression>())
+            if (auto exp = node->as<BaseExprSyntax>())
                 annotate_expression(exp, typeSystem.get_unresolved_type());
         }
 
         return sym;
     }
 
-    bool TypeResolver::compute_lvalue_status(Expression *expr, Symbol *symbol)
+    bool TypeResolver::compute_lvalue_status(BaseExprSyntax *expr, Symbol *symbol)
     {
         if (!expr)
             return false;
@@ -269,7 +269,7 @@ namespace Bryo
         return false;
     }
 
-    TypePtr TypeResolver::resolve_expr_type(Expression *type_expr, Scope *scope)
+    TypePtr TypeResolver::resolve_expr_type(BaseExprSyntax *type_expr, Scope *scope)
     {
         if (!type_expr || !scope)
             return typeSystem.get_unresolved_type();
@@ -297,7 +297,7 @@ namespace Bryo
             return symbolTable.resolve_type_name(typeName, scope->as_scope_node());
         }
         // Qualified name (like "System.String")
-        else if (auto member = type_expr->as<MemberAccessExpr>())
+        else if (auto member = type_expr->as<QualifiedNameSyntax>())
         {
             // Build qualified name from MemberAccessExpr chain inline to avoid linking issues
             std::string qualifiedName;
@@ -311,7 +311,7 @@ namespace Bryo
                 {
                     parts.insert(parts.begin(), std::string(currentMember->member->text));
                 }
-                if (auto nestedMember = currentMember->object->as<MemberAccessExpr>())
+                if (auto nestedMember = currentMember->object->as<QualifiedNameSyntax>())
                 {
                     currentMember = nestedMember;
                 }
@@ -416,7 +416,7 @@ namespace Bryo
             TypeResolver *resolver;
             bool hasVoidReturn = false;
             bool hasInvalidVoidReturn = false;
-            Node *invalidVoidReturnNode = nullptr;
+            BaseSyntax *invalidVoidReturnNode = nullptr;
 
             ReturnTypeFinder(TypeResolver *res) : resolver(res) {}
 
@@ -520,7 +520,7 @@ namespace Bryo
         return Conversions::ClassifyConversion(canonicalFrom, canonicalTo);
     }
 
-    bool TypeResolver::check_implicit_conversion(TypePtr from, TypePtr to, Node *error_node, const std::string &context)
+    bool TypeResolver::check_implicit_conversion(TypePtr from, TypePtr to, BaseSyntax *error_node, const std::string &context)
     {
         ConversionKind kind = check_conversion(from, to);
 
@@ -542,7 +542,7 @@ namespace Bryo
         }
     }
 
-    bool TypeResolver::check_explicit_conversion(TypePtr from, TypePtr to, Node *error_node, const std::string &context)
+    bool TypeResolver::check_explicit_conversion(TypePtr from, TypePtr to, BaseSyntax *error_node, const std::string &context)
     {
         ConversionKind kind = check_conversion(from, to);
 
@@ -1040,7 +1040,7 @@ namespace Bryo
         }
 
         // Handle member access function calls (e.g., obj.method())
-        else if (auto memberAccess = node->callee->as<MemberAccessExpr>())
+        else if (auto memberAccess = node->callee->as<QualifiedNameSyntax>())
         {
             TypePtr objectType = get_node_type(memberAccess->object);
             if (objectType)
@@ -1161,7 +1161,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(MemberAccessExpr *node)
+    void TypeResolver::visit(QualifiedNameSyntax *node)
     {
         // Visit children
         if (node->object)
@@ -1381,7 +1381,7 @@ namespace Bryo
         // No symbol for conditionals
     }
 
-    void TypeResolver::visit(IfExpr *node)
+    void TypeResolver::visit(IfStmt *node)
     {
         // Visit children manually
         if (node->condition)
@@ -1811,7 +1811,7 @@ namespace Bryo
             {
                 // Get the type of the getter expression
                 TypePtr getterType = nullptr;
-                if (auto expr = std::get_if<Expression *>(&node->getter->body))
+                if (auto expr = std::get_if<BaseExprSyntax *>(&node->getter->body))
                 {
                     if (*expr)
                     {
@@ -1845,7 +1845,7 @@ namespace Bryo
     void TypeResolver::visit(PropertyAccessor *node)
     {
         // Visit the accessor body to resolve types in expressions
-        if (auto expr = std::get_if<Expression *>(&node->body))
+        if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
         {
             if (*expr)
                 (*expr)->accept(this);

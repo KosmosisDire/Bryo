@@ -20,19 +20,23 @@ namespace Bryo
     // ============================================================================
     struct Token;
 
-    struct Node;
-    struct Expression;
-    struct Statement;
-    struct Declaration;
-    struct PropertyAccessor;
-    struct ParameterDecl;
+    struct BaseSyntax;
+    struct BaseExprSyntax;
+    struct BaseStmtSyntax;
+    struct BaseDeclSyntax;
     class Visitor;
-
+    
     // Add all concrete node forward declarations
-    struct Identifier;
+    struct NameSyntax;
+    struct IdentifierNameSyntax;
+    struct QualifiedNameSyntax;
+    struct GenericNameSyntax;
+    struct PredefinedTypeSyntax;
+    
     struct TypedIdentifier;
     struct ErrorExpression;
     struct ErrorStatement;
+
     // Expressions
     struct LiteralExpr;
     struct ArrayLiteralExpr;
@@ -41,7 +45,6 @@ namespace Bryo
     struct BinaryExpr;
     struct AssignmentExpr;
     struct CallExpr;
-    struct MemberAccessExpr;
     struct IndexerExpr;
     struct CastExpr;
     struct NewExpr;
@@ -51,14 +54,14 @@ namespace Bryo
     struct TypeOfExpr;
     struct SizeOfExpr;
     struct Block;
-    struct IfExpr;
-
+    struct IfStmt;
+    
     // Type expressions (expressions that represent types)
     struct ArrayTypeExpr;
     struct FunctionTypeExpr;
     struct GenericTypeExpr;
     struct PointerTypeExpr;
-
+    
     // Statements
     struct ExpressionStmt;
     struct ReturnStmt;
@@ -67,11 +70,13 @@ namespace Bryo
     struct WhileStmt;
     struct ForStmt;
     struct UsingDirective;
-
+    
     // Declarations
     struct VariableDecl;
     struct PropertyDecl;
+    struct PropertyAccessor;
     struct FunctionDecl;
+    struct ParameterDecl;
     struct ConstructorDecl;
     struct EnumCaseDecl;
     struct TypeDecl;
@@ -99,13 +104,13 @@ namespace Bryo
         virtual ~Visitor() = default;
 
         // Base type visits - can be overridden for uniform handling
-        virtual void visit(Node *node);
-        virtual void visit(Expression *node);
-        virtual void visit(Statement *node);
-        virtual void visit(Declaration *node);
+        virtual void visit(BaseSyntax *node);
+        virtual void visit(BaseExprSyntax *node);
+        virtual void visit(BaseStmtSyntax *node);
+        virtual void visit(BaseDeclSyntax *node);
 
         // All concrete node types
-        virtual void visit(Identifier *node) = 0;
+        virtual void visit(IdentifierNameSyntax *node) = 0;
         virtual void visit(TypedIdentifier *node) = 0;
         virtual void visit(ErrorExpression *node) = 0;
         virtual void visit(ErrorStatement *node) = 0;
@@ -118,7 +123,7 @@ namespace Bryo
         virtual void visit(BinaryExpr *node) = 0;
         virtual void visit(AssignmentExpr *node) = 0;
         virtual void visit(CallExpr *node) = 0;
-        virtual void visit(MemberAccessExpr *node) = 0;
+        virtual void visit(QualifiedNameSyntax *node) = 0;
         virtual void visit(IndexerExpr *node) = 0;
         virtual void visit(CastExpr *node) = 0;
         virtual void visit(NewExpr *node) = 0;
@@ -128,7 +133,7 @@ namespace Bryo
         virtual void visit(TypeOfExpr *node) = 0;
         virtual void visit(SizeOfExpr *node) = 0;
         virtual void visit(Block *node) = 0;
-        virtual void visit(IfExpr *node) = 0;
+        virtual void visit(IfStmt *node) = 0;
         virtual void visit(ArrayTypeExpr *node) = 0;
         virtual void visit(FunctionTypeExpr *node) = 0;
         virtual void visit(GenericTypeExpr *node) = 0;
@@ -163,12 +168,12 @@ namespace Bryo
     // --- Core Node Hierarchy ---
     // ============================================================================
 
-    struct Node
+    struct BaseSyntax
     {
         SourceRange location;
         SymbolHandle containingScope = {0};
 
-        virtual ~Node() = default;
+        virtual ~BaseSyntax() = default;
         virtual void accept(Visitor *visitor);
 
         // Clean API using dynamic_cast
@@ -191,7 +196,7 @@ namespace Bryo
         }
     };
 
-    struct Expression : Node
+    struct BaseExprSyntax : BaseSyntax
     {
         TypePtr resolvedType;
         bool isLValue = false;
@@ -208,19 +213,19 @@ namespace Bryo
         }
     };
 
-    struct Statement : Node
+    struct BaseStmtSyntax : BaseSyntax
     {
         ACCEPT_VISITOR
     };
 
     // Base for declarations - no name field!
-    struct Declaration : Statement
+    struct BaseDeclSyntax : BaseStmtSyntax
     {
         ModifierKindFlags modifiers;
         ACCEPT_VISITOR
     };
 
-    struct Pattern : Node
+    struct Pattern : BaseSyntax
     {
         ACCEPT_VISITOR
     };
@@ -229,17 +234,17 @@ namespace Bryo
     // --- Basic Building Blocks ---
     // ============================================================================
 
-    struct Identifier : Node
+    struct IdentifierNameSyntax : BaseSyntax
     {
         std::string text;
         ACCEPT_VISITOR
     };
 
     // Reusable component for name + optional type
-    struct TypedIdentifier : Node
+    struct TypedIdentifier : BaseSyntax
     {
-        Identifier *name;
-        Expression *type; // null = inferred (var)
+        IdentifierNameSyntax *name;
+        BaseExprSyntax *type; // null = inferred (var)
         ACCEPT_VISITOR
     };
 
@@ -247,17 +252,17 @@ namespace Bryo
     // --- Error Nodes (for robust error recovery) ---
     // ============================================================================
 
-    struct ErrorExpression : Expression
+    struct ErrorExpression : BaseExprSyntax
     {
         std::string message;
-        List<Node *> partialNodes;
+        List<BaseSyntax *> partialNodes;
         ACCEPT_VISITOR
     };
 
-    struct ErrorStatement : Statement
+    struct ErrorStatement : BaseStmtSyntax
     {
         std::string message;
-        List<Node *> partialNodes;
+        List<BaseSyntax *> partialNodes;
         ACCEPT_VISITOR
     };
 
@@ -265,23 +270,23 @@ namespace Bryo
     // --- Expressions ---
     // ============================================================================
 
-    struct LiteralExpr : Expression
+    struct LiteralExpr : BaseExprSyntax
     {
         LiteralKind kind;
         std::string value; // Raw text from source
         ACCEPT_VISITOR
     };
 
-    struct ArrayLiteralExpr : Expression
+    struct ArrayLiteralExpr : BaseExprSyntax
     {
-        List<Expression *> elements;
+        List<BaseExprSyntax *> elements;
         ACCEPT_VISITOR
     };
 
-    struct NameExpr : Expression
+    struct NameExpr : BaseExprSyntax
     {
         SymbolHandle resolvedSymbol = {0};
-        Identifier *name; // Single identifier only - no multi-part names
+        IdentifierNameSyntax *name; // Single identifier only - no multi-part names
         ACCEPT_VISITOR
 
         std::string get_name() const
@@ -290,139 +295,139 @@ namespace Bryo
         }
     };
 
-    struct UnaryExpr : Expression
+    struct UnaryExpr : BaseExprSyntax
     {
         UnaryOperatorKind op;
-        Expression *operand; // Never null (ErrorExpression if parse fails)
+        BaseExprSyntax *operand; // Never null (ErrorExpression if parse fails)
         bool isPostfix;
         ACCEPT_VISITOR
     };
 
-    struct BinaryExpr : Expression
+    struct BinaryExpr : BaseExprSyntax
     {
-        Expression *left; // Never null
+        BaseExprSyntax *left; // Never null
         BinaryOperatorKind op;
-        Expression *right; // Never null
+        BaseExprSyntax *right; // Never null
         ACCEPT_VISITOR
     };
 
-    struct AssignmentExpr : Expression
+    struct AssignmentExpr : BaseExprSyntax
     {
-        Expression *target; // Never null, must be lvalue
+        BaseExprSyntax *target; // Never null, must be lvalue
         AssignmentOperatorKind op;
-        Expression *value; // Never null
+        BaseExprSyntax *value; // Never null
         ACCEPT_VISITOR
     };
 
-    struct CallExpr : Expression
+    struct CallExpr : BaseExprSyntax
     {
         SymbolHandle resolvedCallee = {0};
-        Expression *callee; // Never null
-        List<Expression *> arguments;
+        BaseExprSyntax *callee; // Never null
+        List<BaseExprSyntax *> arguments;
         ACCEPT_VISITOR
     };
 
-    struct MemberAccessExpr : Expression
+    struct QualifiedNameSyntax : BaseExprSyntax
     {
         SymbolHandle resolvedMember = {0};
-        Expression *object; // Never null
-        Identifier *member; // Never null
+        BaseExprSyntax *object; // Never null
+        IdentifierNameSyntax *member; // Never null
         ACCEPT_VISITOR
     };
 
-    struct IndexerExpr : Expression
+    struct IndexerExpr : BaseExprSyntax
     {
-        Expression *object; // Never null
-        Expression *index;  // Never null
+        BaseExprSyntax *object; // Never null
+        BaseExprSyntax *index;  // Never null
         ACCEPT_VISITOR
     };
 
-    struct CastExpr : Expression
+    struct CastExpr : BaseExprSyntax
     {
-        Expression *targetType; // Never null
-        Expression *expression; // Never null
+        BaseExprSyntax *targetType; // Never null
+        BaseExprSyntax *expression; // Never null
         ACCEPT_VISITOR
     };
 
-    struct NewExpr : Expression
+    struct NewExpr : BaseExprSyntax
     {
-        Expression *type; // Never null
-        List<Expression *> arguments;
+        BaseExprSyntax *type; // Never null
+        List<BaseExprSyntax *> arguments;
         ACCEPT_VISITOR
     };
 
-    struct ThisExpr : Expression
+    struct ThisExpr : BaseExprSyntax
     {
         ACCEPT_VISITOR
     };
 
-    struct LambdaExpr : Expression
+    struct LambdaExpr : BaseExprSyntax
     {
         List<ParameterDecl *> parameters;
-        Statement *body; // Block or ExpressionStmt
+        BaseStmtSyntax *body; // Block or ExpressionStmt
         ACCEPT_VISITOR
     };
 
-    struct ConditionalExpr : Expression
+    struct ConditionalExpr : BaseExprSyntax
     {
-        Expression *condition; // Never null
-        Expression *thenExpr;  // Never null
-        Expression *elseExpr;  // Never null
+        BaseExprSyntax *condition; // Never null
+        BaseExprSyntax *thenExpr;  // Never null
+        BaseExprSyntax *elseExpr;  // Never null
         ACCEPT_VISITOR
     };
 
-    struct TypeOfExpr : Expression
+    struct TypeOfExpr : BaseExprSyntax
     {
-        Expression *type; // Never null - now Expression instead of TypeRef
+        BaseExprSyntax *type; // Never null - now Expression instead of TypeRef
         ACCEPT_VISITOR
     };
 
-    struct SizeOfExpr : Expression
+    struct SizeOfExpr : BaseExprSyntax
     {
-        Expression *type; // Never null - now Expression instead of TypeRef
+        BaseExprSyntax *type; // Never null - now Expression instead of TypeRef
         ACCEPT_VISITOR
     };
 
     // Type expressions (expressions that represent types in type contexts)
-    struct ArrayTypeExpr : Expression
+    struct ArrayTypeExpr : BaseExprSyntax
     {
-        Expression *baseType; // Never null - the element type expression
+        BaseExprSyntax *baseType; // Never null - the element type expression
         LiteralExpr *size;       // Can be null (size not type-checked), must be an integer literal if specified in the type
         ACCEPT_VISITOR
     };
 
-    struct FunctionTypeExpr : Expression
+    struct FunctionTypeExpr : BaseExprSyntax
     {
-        List<Expression *> parameterTypes; // Parameter type expressions
-        Expression *returnType;            // null = void - return type expression
+        List<BaseExprSyntax *> parameterTypes; // Parameter type expressions
+        BaseExprSyntax *returnType;            // null = void - return type expression
         ACCEPT_VISITOR
     };
 
-    struct GenericTypeExpr : Expression
+    struct GenericTypeExpr : BaseExprSyntax
     {
-        Expression *baseType;               // The generic type (e.g., Array, Optional)
-        List<Expression *> typeArguments;  // The type arguments (e.g., i32, String)
+        BaseExprSyntax *baseType;               // The generic type (e.g., Array, Optional)
+        List<BaseExprSyntax *> typeArguments;  // The type arguments (e.g., i32, String)
         ACCEPT_VISITOR
     };
 
-    struct PointerTypeExpr : Expression
+    struct PointerTypeExpr : BaseExprSyntax
     {
-        Expression *baseType; // Never null
+        BaseExprSyntax *baseType; // Never null
         ACCEPT_VISITOR
     };
 
     // Single block type for both statements and expressions
-    struct Block : Statement
+    struct Block : BaseStmtSyntax
     {
-        List<Statement *> statements;
+        List<BaseStmtSyntax *> statements;
         ACCEPT_VISITOR
     };
 
-    struct IfExpr : Statement
+    struct IfStmt : BaseStmtSyntax
     {
-        Expression *condition; // Never null
-        Statement *thenBranch; // Never null (usually Block)
-        Statement *elseBranch; // Can be null
+        BaseExprSyntax *condition; // Never null
+        BaseStmtSyntax *thenBranch; // Never null (usually Block)
+        BaseStmtSyntax *elseBranch; // Can be null
         ACCEPT_VISITOR
     };
 
@@ -430,45 +435,45 @@ namespace Bryo
     // --- Statements ---
     // ============================================================================
 
-    struct ExpressionStmt : Statement
+    struct ExpressionStmt : BaseStmtSyntax
     {
-        Expression *expression; // Never null
+        BaseExprSyntax *expression; // Never null
         ACCEPT_VISITOR
     };
 
-    struct ReturnStmt : Statement
+    struct ReturnStmt : BaseStmtSyntax
     {
-        Expression *value; // Can be null (void return)
+        BaseExprSyntax *value; // Can be null (void return)
         ACCEPT_VISITOR
     };
 
-    struct BreakStmt : Statement
-    {
-        ACCEPT_VISITOR
-    };
-
-    struct ContinueStmt : Statement
+    struct BreakStmt : BaseStmtSyntax
     {
         ACCEPT_VISITOR
     };
 
-    struct WhileStmt : Statement
+    struct ContinueStmt : BaseStmtSyntax
     {
-        Expression *condition; // Never null
-        Statement *body;       // Never null (usually Block)
         ACCEPT_VISITOR
     };
 
-    struct ForStmt : Statement
+    struct WhileStmt : BaseStmtSyntax
     {
-        Statement *initializer; // Can be null
-        Expression *condition;  // Can be null (infinite loop)
-        List<Expression *> updates;
-        Statement *body; // Never null
+        BaseExprSyntax *condition; // Never null
+        BaseStmtSyntax *body;       // Never null (usually Block)
         ACCEPT_VISITOR
     };
 
-    struct UsingDirective : Statement
+    struct ForStmt : BaseStmtSyntax
+    {
+        BaseStmtSyntax *initializer; // Can be null
+        BaseExprSyntax *condition;  // Can be null (infinite loop)
+        List<BaseExprSyntax *> updates;
+        BaseStmtSyntax *body; // Never null
+        ACCEPT_VISITOR
+    };
+
+    struct UsingDirective : BaseStmtSyntax
     {
         enum class Kind
         {
@@ -477,11 +482,11 @@ namespace Bryo
         };
 
         Kind kind;
-        Expression *target; // The imported name (was path) - now uniform Expression
+        BaseExprSyntax *target; // The imported name (was path) - now uniform Expression
 
         // For alias only
-        Identifier *alias = nullptr;
-        Expression *aliasedType = nullptr; // Now Expression instead of TypeRef
+        IdentifierNameSyntax *alias = nullptr;
+        BaseExprSyntax *aliasedType = nullptr; // Now Expression instead of TypeRef
         ACCEPT_VISITOR
     };
 
@@ -490,15 +495,15 @@ namespace Bryo
     // ============================================================================
 
     // Regular local variable: var x = 5;
-    struct VariableDecl : Declaration
+    struct VariableDecl : BaseDeclSyntax
     {
         TypedIdentifier *variable; // Never null
-        Expression *initializer;   // Can be null
+        BaseExprSyntax *initializer;   // Can be null
         ACCEPT_VISITOR
     };
 
     // Property declaration: combines a variable with accessors
-    struct PropertyDecl : Declaration
+    struct PropertyDecl : BaseDeclSyntax
     {
         VariableDecl *variable;        // Never null - the underlying variable
         PropertyAccessor *getter;      // null = auto-generated get accessor
@@ -506,25 +511,25 @@ namespace Bryo
         ACCEPT_VISITOR
     };
 
-    struct ParameterDecl : Declaration
+    struct ParameterDecl : BaseDeclSyntax
     {
         TypedIdentifier *param;   // Never null
-        Expression *defaultValue; // Can be null
+        BaseExprSyntax *defaultValue; // Can be null
         ACCEPT_VISITOR
     };
 
-    struct FunctionDecl : Declaration
+    struct FunctionDecl : BaseDeclSyntax
     {
-        Identifier *name; // Never null
+        IdentifierNameSyntax *name; // Never null
         List<TypeParameterDecl *> typeParameters;
         List<ParameterDecl *> parameters;
-        Expression *returnType;      // null = void - now Expression instead of TypeRef
+        BaseExprSyntax *returnType;      // null = void - now Expression instead of TypeRef
         Block *body;                 // Can be null (abstract)
         SymbolHandle functionSymbol; // Unique ID for this function scope
         ACCEPT_VISITOR
     };
 
-    struct ConstructorDecl : Declaration
+    struct ConstructorDecl : BaseDeclSyntax
     {
         // No name field - constructors are always "new"
         List<ParameterDecl *> parameters;
@@ -532,7 +537,7 @@ namespace Bryo
         ACCEPT_VISITOR
     };
 
-    struct PropertyAccessor : Node
+    struct PropertyAccessor : BaseSyntax
     {
         enum class Kind
         {
@@ -545,51 +550,50 @@ namespace Bryo
         // Body representation
         std::variant<
             std::monostate, // Default/auto-implemented
-            Expression *,   // Expression-bodied: => expr
+            BaseExprSyntax *,   // Expression-bodied: => expr
             Block *         // Block-bodied: { ... }
             >
             body;
         ACCEPT_VISITOR
     };
 
-    struct EnumCaseDecl : Declaration
+    struct EnumCaseDecl : BaseDeclSyntax
     {
-        Identifier *name;                     // Never null
+        IdentifierNameSyntax *name;                     // Never null
         List<ParameterDecl *> associatedData; // Can be empty
         ACCEPT_VISITOR
     };
 
-    struct TypeDecl : Declaration
+    struct TypeDecl : BaseDeclSyntax
     {
         enum class Kind
         {
             Type,       // type
-            ValueType,  // value type
             RefType,    // ref type
             StaticType, // static type (all members implicitly static)
             Enum        // enum
         };
 
-        Identifier *name; // Never null
+        IdentifierNameSyntax *name; // Never null
         Kind kind;
         List<TypeParameterDecl *> typeParameters;
-        List<Expression *> baseTypes; // Now Expression instead of TypeRef
-        List<Declaration *> members;
+        List<BaseExprSyntax *> baseTypes; // Now Expression instead of TypeRef
+        List<BaseDeclSyntax *> members;
         ACCEPT_VISITOR
     };
 
-    struct TypeParameterDecl : Declaration
+    struct TypeParameterDecl : BaseDeclSyntax
     {
-        Identifier *name; // Never null - the type parameter name (T, U, etc.)
+        IdentifierNameSyntax *name; // Never null - the type parameter name (T, U, etc.)
         // Future: constraints can be added here
         ACCEPT_VISITOR
     };
 
-    struct NamespaceDecl : Declaration
+    struct NamespaceDecl : BaseDeclSyntax
     {
-        Expression *name; // Never null - now uniform Expression instead of path
+        BaseExprSyntax *name; // Never null - now uniform Expression instead of path
         bool isFileScoped;
-        std::optional<List<Statement *>> body; // nullopt for file-scoped
+        std::optional<List<BaseStmtSyntax *>> body; // nullopt for file-scoped
         ACCEPT_VISITOR
     };
 
@@ -601,9 +605,9 @@ namespace Bryo
     // --- Root Node ---
     // ============================================================================
 
-    struct CompilationUnit : Node
+    struct CompilationUnit : BaseSyntax
     {
-        List<Statement *> topLevelStatements;
+        List<BaseStmtSyntax *> topLevelStatements;
         ACCEPT_VISITOR
     };
 
@@ -615,17 +619,17 @@ namespace Bryo
     {
     public:
         // Base type visit implementations - override these for uniform handling
-        void visit(Node *node) override { /* default: do nothing */ }
-        void visit(Expression *node) override { visit(static_cast<Node *>(node)); }
-        void visit(Statement *node) override { visit(static_cast<Node *>(node)); }
-        void visit(Declaration *node) override { visit(static_cast<Statement *>(node)); }
+        void visit(BaseSyntax *node) override { /* default: do nothing */ }
+        void visit(BaseExprSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
+        void visit(BaseStmtSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
+        void visit(BaseDeclSyntax *node) override { visit(static_cast<BaseStmtSyntax *>(node)); }
 
         // Default implementations that traverse children
-        void visit(Identifier *node) override { visit(static_cast<Node *>(node)); }
+        void visit(IdentifierNameSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
 
         void visit(TypedIdentifier *node) override
         {
-            visit(static_cast<Node *>(node));
+            visit(static_cast<BaseSyntax *>(node));
             if (node->name)
                 node->name->accept(this);
             if (node->type)
@@ -634,7 +638,7 @@ namespace Bryo
 
         void visit(ErrorExpression *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             for (auto partial : node->partialNodes)
             {
                 if (partial)
@@ -644,7 +648,7 @@ namespace Bryo
 
         void visit(ErrorStatement *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             for (auto partial : node->partialNodes)
             {
                 if (partial)
@@ -654,12 +658,12 @@ namespace Bryo
 
         void visit(LiteralExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
         }
 
         void visit(ArrayLiteralExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             for (auto elem : node->elements)
             {
                 elem->accept(this);
@@ -668,34 +672,34 @@ namespace Bryo
 
         void visit(NameExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             if (node->name)
                 node->name->accept(this);
         }
 
         void visit(UnaryExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->operand->accept(this);
         }
 
         void visit(BinaryExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->left->accept(this);
             node->right->accept(this);
         }
 
         void visit(AssignmentExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->target->accept(this);
             node->value->accept(this);
         }
 
         void visit(CallExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->callee->accept(this);
             for (auto arg : node->arguments)
             {
@@ -703,30 +707,30 @@ namespace Bryo
             }
         }
 
-        void visit(MemberAccessExpr *node) override
+        void visit(QualifiedNameSyntax *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->object->accept(this);
             node->member->accept(this);
         }
 
         void visit(IndexerExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->object->accept(this);
             node->index->accept(this);
         }
 
         void visit(CastExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->targetType->accept(this);
             node->expression->accept(this);
         }
 
         void visit(NewExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->type->accept(this);
             for (auto arg : node->arguments)
             {
@@ -736,12 +740,12 @@ namespace Bryo
 
         void visit(ThisExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
         }
 
         void visit(LambdaExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             for (auto param : node->parameters)
             {
                 param->accept(this);
@@ -752,7 +756,7 @@ namespace Bryo
 
         void visit(ConditionalExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->condition->accept(this);
             node->thenExpr->accept(this);
             node->elseExpr->accept(this);
@@ -760,28 +764,28 @@ namespace Bryo
 
         void visit(TypeOfExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->type->accept(this);
         }
 
         void visit(SizeOfExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->type->accept(this);
         }
 
         void visit(Block *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             for (auto stmt : node->statements)
             {
                 stmt->accept(this);
             }
         }
 
-        void visit(IfExpr *node) override
+        void visit(IfStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             node->condition->accept(this);
             node->thenBranch->accept(this);
             if (node->elseBranch)
@@ -790,7 +794,7 @@ namespace Bryo
 
         void visit(ArrayTypeExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             if (node->baseType)
                 node->baseType->accept(this);
             if (node->size)
@@ -799,7 +803,7 @@ namespace Bryo
 
         void visit(FunctionTypeExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             for (auto paramType : node->parameterTypes)
             {
                 if (paramType)
@@ -811,7 +815,7 @@ namespace Bryo
 
         void visit(GenericTypeExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             if (node->baseType)
                 node->baseType->accept(this);
             for (auto typeArg : node->typeArguments)
@@ -823,43 +827,43 @@ namespace Bryo
 
         void visit(PointerTypeExpr *node) override
         {
-            visit(static_cast<Expression *>(node));
+            visit(static_cast<BaseExprSyntax *>(node));
             node->baseType->accept(this);
         }
 
         void visit(ExpressionStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             node->expression->accept(this);
         }
 
         void visit(ReturnStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             if (node->value)
                 node->value->accept(this);
         }
 
         void visit(BreakStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
         }
 
         void visit(ContinueStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
         }
 
         void visit(WhileStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             node->condition->accept(this);
             node->body->accept(this);
         }
 
         void visit(ForStmt *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             if (node->initializer)
                 node->initializer->accept(this);
             if (node->condition)
@@ -873,7 +877,7 @@ namespace Bryo
 
         void visit(UsingDirective *node) override
         {
-            visit(static_cast<Statement *>(node));
+            visit(static_cast<BaseStmtSyntax *>(node));
             if (node->target)
                 node->target->accept(this);
             if (node->alias)
@@ -884,7 +888,7 @@ namespace Bryo
 
         void visit(VariableDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->variable->accept(this);
             if (node->initializer)
                 node->initializer->accept(this);
@@ -892,7 +896,7 @@ namespace Bryo
 
         void visit(PropertyDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->variable->accept(this);
             if (node->getter)
                 node->getter->accept(this);
@@ -902,7 +906,7 @@ namespace Bryo
 
         void visit(ParameterDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->param->accept(this);
             if (node->defaultValue)
                 node->defaultValue->accept(this);
@@ -910,7 +914,7 @@ namespace Bryo
 
         void visit(FunctionDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->name->accept(this);
             for (auto typeParam : node->typeParameters)
             {
@@ -929,7 +933,7 @@ namespace Bryo
 
         void visit(ConstructorDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             for (auto param : node->parameters)
             {
                 param->accept(this);
@@ -939,8 +943,8 @@ namespace Bryo
 
         void visit(PropertyAccessor *node) override
         {
-            visit(static_cast<Node *>(node));
-            if (auto expr = std::get_if<Expression *>(&node->body))
+            visit(static_cast<BaseSyntax *>(node));
+            if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
             {
                 (*expr)->accept(this);
             }
@@ -952,7 +956,7 @@ namespace Bryo
 
         void visit(EnumCaseDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->name->accept(this);
             for (auto data : node->associatedData)
             {
@@ -962,7 +966,7 @@ namespace Bryo
 
         void visit(TypeDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             node->name->accept(this);
             for (auto typeParam : node->typeParameters)
             {
@@ -981,14 +985,14 @@ namespace Bryo
 
         void visit(TypeParameterDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             if (node->name)
                 node->name->accept(this);
         }
 
         void visit(NamespaceDecl *node) override
         {
-            visit(static_cast<Declaration *>(node));
+            visit(static_cast<BaseDeclSyntax *>(node));
             if (node->name)
                 node->name->accept(this);
             if (node->body)
@@ -1002,7 +1006,7 @@ namespace Bryo
 
         void visit(CompilationUnit *node) override
         {
-            visit(static_cast<Node *>(node));
+            visit(static_cast<BaseSyntax *>(node));
             for (auto stmt : node->topLevelStatements)
             {
                 stmt->accept(this);
@@ -1011,30 +1015,30 @@ namespace Bryo
     };
 
     // Implementation of Node::accept (needed for base case)
-    inline void Node::accept(Visitor *visitor)
+    inline void BaseSyntax::accept(Visitor *visitor)
     {
         visitor->visit(this);
     }
 
     // Default implementations for base type visits
-    inline void Visitor::visit(Node *node)
+    inline void Visitor::visit(BaseSyntax *node)
     {
         // Default: do nothing - override in derived visitors for uniform handling
     }
 
-    inline void Visitor::visit(Expression *node)
+    inline void Visitor::visit(BaseExprSyntax *node)
     {
-        visit(static_cast<Node *>(node));
+        visit(static_cast<BaseSyntax *>(node));
     }
 
-    inline void Visitor::visit(Statement *node)
+    inline void Visitor::visit(BaseStmtSyntax *node)
     {
-        visit(static_cast<Node *>(node));
+        visit(static_cast<BaseSyntax *>(node));
     }
 
-    inline void Visitor::visit(Declaration *node)
+    inline void Visitor::visit(BaseDeclSyntax *node)
     {
-        visit(static_cast<Statement *>(node));
+        visit(static_cast<BaseStmtSyntax *>(node));
     }
 
 } // namespace Bryo

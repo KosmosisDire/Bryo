@@ -13,7 +13,7 @@ namespace Bryo
         return h;
     }
 
-    void SymbolTableBuilder::annotate_scope(Node *node)
+    void SymbolTableBuilder::annotate_scope(BaseSyntax *node)
     {
         if (node)
         {
@@ -32,7 +32,7 @@ namespace Bryo
         }
     }
 
-    std::string SymbolTableBuilder::build_qualified_name(MemberAccessExpr *memberAccess)
+    std::string SymbolTableBuilder::build_qualified_name(QualifiedNameSyntax *memberAccess)
     {
         if (!memberAccess)
             return "";
@@ -40,7 +40,7 @@ namespace Bryo
         std::string result;
 
         // Recursively build from nested member access
-        if (auto nestedMember = memberAccess->object->as<MemberAccessExpr>())
+        if (auto nestedMember = memberAccess->object->as<QualifiedNameSyntax>())
         {
             result = build_qualified_name(nestedMember) + ".";
         }
@@ -59,7 +59,7 @@ namespace Bryo
         return result;
     }
 
-    TypePtr SymbolTableBuilder::create_unresolved_type(Expression *typeExpr)
+    TypePtr SymbolTableBuilder::create_unresolved_type(BaseExprSyntax *typeExpr)
     {
         if (typeExpr)
         {
@@ -78,7 +78,7 @@ namespace Bryo
         }
     }
 
-    void SymbolTableBuilder::visit(Node *node)
+    void SymbolTableBuilder::visit(BaseSyntax *node)
     {
         annotate_scope(node);
     }
@@ -110,7 +110,7 @@ namespace Bryo
         {
             ns_name = name->get_name();
         }
-        else if (auto member = node->name->as<MemberAccessExpr>())
+        else if (auto member = node->name->as<QualifiedNameSyntax>())
         {
             ns_name = build_qualified_name(member);
         }
@@ -322,7 +322,7 @@ namespace Bryo
         }
 
         // Visit accessor body
-        if (auto expr = std::get_if<Expression *>(&accessor->body))
+        if (auto expr = std::get_if<BaseExprSyntax *>(&accessor->body))
         {
             (*expr)->accept(this);
         }
@@ -441,7 +441,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(IfExpr *node)
+    void SymbolTableBuilder::visit(IfStmt *node)
     {
         annotate_scope(node);
 
@@ -478,7 +478,7 @@ namespace Bryo
     void SymbolTableBuilder::visit(ArrayTypeExpr *node)
     {
         // Call base visitor to annotate scope
-        visit(static_cast<Expression *>(node));
+        visit(static_cast<BaseExprSyntax *>(node));
 
         // Mark element type as a type expression and visit it
         if (node->baseType)
@@ -491,7 +491,7 @@ namespace Bryo
     void SymbolTableBuilder::visit(GenericTypeExpr *node)
     {
         // Call base visitor to annotate scope
-        visit(static_cast<Expression *>(node));
+        visit(static_cast<BaseExprSyntax *>(node));
 
         // Mark base type as a type expression and visit it
         if (node->baseType)
@@ -514,7 +514,7 @@ namespace Bryo
     void SymbolTableBuilder::visit(PointerTypeExpr *node)
     {
         // Call base visitor to annotate scope
-        visit(static_cast<Expression *>(node));
+        visit(static_cast<BaseExprSyntax *>(node));
 
         // Mark base type as a type expression and visit it
         if (node->baseType)

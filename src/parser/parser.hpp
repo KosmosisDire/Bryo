@@ -93,28 +93,28 @@ private:
     bool requireSemicolonIfSameLine();
 
     // ================== Top Level Parsing ==================
-    Statement* parseTopLevelStatement();
+    BaseStmtSyntax* parseTopLevelStatement();
 
     // ================== Declarations ==================
     bool checkDeclarationStart();
-    Declaration* parseDeclaration();
+    BaseDeclSyntax* parseDeclaration();
     ModifierKindFlags parseModifiers();
     TypeDecl* parseTypeDecl(ModifierKindFlags modifiers, const Token& startToken);
     EnumCaseDecl* parseEnumCase();
     FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
     ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
-    Declaration* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
-    Expression* convertToArrayTypeIfNeeded(Expression* expr);
-    std::vector<Declaration*> parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression* type, const Token& startToken);
+    BaseDeclSyntax* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
+    BaseExprSyntax* convertToArrayTypeIfNeeded(BaseExprSyntax* expr);
+    std::vector<BaseDeclSyntax*> parseTypedMemberDeclarations(ModifierKindFlags modifiers, BaseExprSyntax* type, const Token& startToken);
     void parsePropertyAccessors(PropertyDecl* prop);
     NamespaceDecl* parseNamespaceDecl(const Token& startToken);
 
     // ================== Statements ==================
-    Statement* parseStatement();
+    BaseStmtSyntax* parseStatement();
     Block* parseBlock();
-    Statement* parseIfStatement();
+    BaseStmtSyntax* parseIfStatement();
     WhileStmt* parseWhileStatement();
-    Statement* parseForStatement();
+    BaseStmtSyntax* parseForStatement();
     ForStmt* parseTraditionalForStatement();
     ReturnStmt* parseReturnStatement();
     BreakStmt* parseBreakStatement();
@@ -123,28 +123,28 @@ private:
     UsingDirective* parseUsingDirective();
 
     // ================== Expressions (Precedence Climbing) ==================
-    Expression* parseExpression(int minPrecedence = 0);
-    Expression* parseBinaryExpression(Expression* left, int minPrecedence);
-    Expression* parsePrimaryExpression();
-    Expression* parsePostfixExpression(Expression* expr);
-    Expression* parseUnaryExpression();
+    BaseExprSyntax* parseExpression(int minPrecedence = 0);
+    BaseExprSyntax* parseBinaryExpression(BaseExprSyntax* left, int minPrecedence);
+    BaseExprSyntax* parsePrimaryExpression();
+    BaseExprSyntax* parsePostfixExpression(BaseExprSyntax* expr);
+    BaseExprSyntax* parseUnaryExpression();
     LiteralExpr* parseLiteral();
-    Expression* parseNameExpression();
-    List<Expression *> parseGenericArgs();
-    Expression* parseTypeExpression();
-    Expression* parseParenthesizedOrLambda();
-    Expression* parseCastExpression();
-    Expression* parseArrayLiteral();
-    Expression* parseNewExpression();
-    Expression* parseLambdaExpression();
-    Expression* parseTypeOfExpression();
-    Expression* parseSizeOfExpression();
+    BaseExprSyntax* parseNameExpression();
+    List<BaseExprSyntax *> parseGenericArgs();
+    BaseExprSyntax* parseTypeExpression();
+    BaseExprSyntax* parseParenthesizedOrLambda();
+    BaseExprSyntax* parseCastExpression();
+    BaseExprSyntax* parseArrayLiteral();
+    BaseExprSyntax* parseNewExpression();
+    BaseExprSyntax* parseLambdaExpression();
+    BaseExprSyntax* parseTypeOfExpression();
+    BaseExprSyntax* parseSizeOfExpression();
     
-    Identifier* parseIdentifier();
+    IdentifierNameSyntax* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();
     List<ParameterDecl*> parseParameterList();
     List<TypeParameterDecl*> parseTypeParameterList();
-    List<Expression*> parseBaseTypeList();  // Uses parseExpression() internally
+    List<BaseExprSyntax*> parseBaseTypeList();  // Uses parseExpression() internally
 };
 
 } // namespace Bryo

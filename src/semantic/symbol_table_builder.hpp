@@ -25,16 +25,16 @@ namespace Bryo
         SymbolHandle get_current_handle();
 
         // Annotate node with current scope
-        void annotate_scope(Node *node);
+        void annotate_scope(BaseSyntax *node);
 
         // Visit block contents without creating a new scope
         void visit_block_contents(Block *block);
 
         // Build qualified name from MemberAccessExpr chain
-        std::string build_qualified_name(MemberAccessExpr *memberAccess);
+        std::string build_qualified_name(QualifiedNameSyntax *memberAccess);
 
         // Create unresolved type from type expression (does not actually resolve)
-        TypePtr create_unresolved_type(Expression *typeExpr);
+        TypePtr create_unresolved_type(BaseExprSyntax *typeExpr);
 
         // Helper for property accessors
         void visit_property_accessor(PropertyAccessor *accessor, TypePtr propType);
@@ -53,7 +53,7 @@ namespace Bryo
         // === Visitor Overrides ===
 
         // Base node - annotates all nodes with scope
-        void visit(Node *node) override;
+        void visit(BaseSyntax *node) override;
 
         // Root
         void visit(CompilationUnit *node) override;
@@ -70,7 +70,7 @@ namespace Bryo
         void visit(Block *node) override;
         void visit(WhileStmt *node) override;
         void visit(ForStmt *node) override;
-        void visit(IfExpr *node) override;
+        void visit(IfStmt *node) override;
 
         // === Type expressions ===
         void visit(ArrayTypeExpr *node) override;

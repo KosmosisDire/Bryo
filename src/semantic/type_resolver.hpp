@@ -36,7 +36,7 @@ namespace Bryo
 
         // --- Intermediate State ---
         // Maps each AST node to its resolved semantic type during analysis.
-        std::unordered_map<Node *, TypePtr> nodeTypes;
+        std::unordered_map<BaseSyntax *, TypePtr> nodeTypes;
 
         // --- Generic Context Tracking ---
         // Maps type parameter names to their TypeParameter types in current generic context
@@ -54,26 +54,26 @@ namespace Bryo
     private:
         // --- Core Unification Logic ---
         TypePtr apply_substitution(TypePtr type);
-        void unify(TypePtr t1, TypePtr t2, Node *error_node, const std::string &context);
+        void unify(TypePtr t1, TypePtr t2, BaseSyntax *error_node, const std::string &context);
         bool has_pending_constraints();
         void report_final_errors();
-        void report_error(Node *error_node, const std::string &message);
+        void report_error(BaseSyntax *error_node, const std::string &message);
         void update_ast_with_final_types(CompilationUnit *unit);
 
         // Single method that handles ALL expression annotations
         // Symbol is optional - many expressions don't have associated symbols
-        void annotate_expression(Expression *expr, TypePtr type, Symbol *symbol = nullptr);
+        void annotate_expression(BaseExprSyntax *expr, TypePtr type, Symbol *symbol = nullptr);
 
-        Scope *get_containing_scope(Node *node);
+        Scope *get_containing_scope(BaseSyntax *node);
 
         // Computes lvalue status by inspecting expression and symbol
-        bool compute_lvalue_status(Expression *expr, Symbol *symbol);
+        bool compute_lvalue_status(BaseExprSyntax *expr, Symbol *symbol);
 
         // Sets the appropriate symbol field based on expression type
-        void set_expression_symbol(Expression *expr, Symbol *symbol);
+        void set_expression_symbol(BaseExprSyntax *expr, Symbol *symbol);
 
         // Gets symbol from expression if it has one
-        Symbol *get_expression_symbol(Expression *expr);
+        Symbol *get_expression_symbol(BaseExprSyntax *expr);
 
         // --- Visitor Overrides ---
         // [Keep all existing visitor declarations unchanged]
@@ -83,11 +83,11 @@ namespace Bryo
         void visit(BinaryExpr *node) override;
         void visit(AssignmentExpr *node) override;
         void visit(CallExpr *node) override;
-        void visit(MemberAccessExpr *node) override;
+        void visit(QualifiedNameSyntax *node) override;
         void visit(UnaryExpr *node) override;
         void visit(IndexerExpr *node) override;
         void visit(ConditionalExpr *node) override;
-        void visit(IfExpr *node) override;
+        void visit(IfStmt *node) override;
         void visit(CastExpr *node) override;
         void visit(ThisExpr *node) override;
         void visit(NewExpr *node) override;
@@ -106,13 +106,13 @@ namespace Bryo
         void visit(TypeParameterDecl *node) override;
 
         // --- Helper Methods ---
-        TypePtr get_node_type(Node *node);
-        void set_node_type(Node *node, TypePtr type);
-        TypePtr resolve_expr_type(Expression *type_expr, Scope *scope);
+        TypePtr get_node_type(BaseSyntax *node);
+        void set_node_type(BaseSyntax *node, TypePtr type);
+        TypePtr resolve_expr_type(BaseExprSyntax *type_expr, Scope *scope);
         TypePtr infer_function_return_type(Block *body);
         ConversionKind check_conversion(TypePtr from, TypePtr to);
-        bool check_implicit_conversion(TypePtr from, TypePtr to, Node* error_node, const std::string& context);
-        bool check_explicit_conversion(TypePtr from, TypePtr to, Node* error_node, const std::string& context);
+        bool check_implicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);
+        bool check_explicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);
         FunctionSymbol* resolve_overload(const std::vector<FunctionSymbol*>& overloads, const std::vector<TypePtr>& argTypes);
         int count_conversions(const std::vector<ConversionKind> &conversions, ConversionKind kind);
     };

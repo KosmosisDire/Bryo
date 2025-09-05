@@ -82,24 +82,24 @@ namespace Bryo
 
         // === Helper Methods ===
         void debug_print_module_state(const std::string& phase);
-        void report_error(const Node *node, const std::string &message);
+        void report_error(const BaseSyntax *node, const std::string &message);
         void report_general_error(const std::string &message);
         llvm::Type *get_llvm_type(TypePtr type);
         void push_value(llvm::Value *val);
         llvm::Value *pop_value();
         llvm::Value *create_constant(LiteralExpr *literal);
         void ensure_terminator();
-        Scope *get_containing_scope(Node *node);
-        Symbol *get_expression_symbol(Expression *expr);
+        Scope *get_containing_scope(BaseSyntax *node);
+        Symbol *get_expression_symbol(BaseExprSyntax *expr);
         std::string build_qualified_name(NameExpr *name_expr);
 
         // Core expression generation helpers
-        llvm::Value* genLValue(Expression* expr);  // Returns address
-        llvm::Value* genRValue(Expression* expr);  // Returns value
-        llvm::Value* genExpression(Expression* expr, bool wantAddress = false);
+        llvm::Value* genLValue(BaseExprSyntax* expr);  // Returns address
+        llvm::Value* genRValue(BaseExprSyntax* expr);  // Returns value
+        llvm::Value* genExpression(BaseExprSyntax* expr, bool wantAddress = false);
 
         // Helper method to cast between primitive types
-        llvm::Value* castPrimitive(llvm::Value* value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, Node* node);
+        llvm::Value* castPrimitive(llvm::Value* value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, BaseSyntax* node);
 
         // Storage-aware loading/storing
         llvm::Value* loadValue(llvm::Value* ptr, TypePtr type);
@@ -141,10 +141,10 @@ namespace Bryo
 
         // === Visitor Method Overrides ===
 
-        void visit(Node *node) override;
-        void visit(Expression *node) override;
-        void visit(Statement *node) override;
-        void visit(Declaration *node) override;
+        void visit(BaseSyntax *node) override;
+        void visit(BaseExprSyntax *node) override;
+        void visit(BaseStmtSyntax *node) override;
+        void visit(BaseDeclSyntax *node) override;
 
         // Root
         void visit(CompilationUnit *node) override;
@@ -170,7 +170,7 @@ namespace Bryo
         void visit(NameExpr *node) override;
         void visit(LiteralExpr *node) override;
         void visit(NewExpr *node) override;
-        void visit(Identifier *node) override;
+        void visit(IdentifierNameSyntax *node) override;
 
         // Errors
         void visit(ErrorExpression *node) override;
@@ -179,7 +179,7 @@ namespace Bryo
         // --- Unimplemented visitors will be caught by the base overrides ---
         void visit(TypedIdentifier *n) override {}
         void visit(ArrayLiteralExpr *n) override;
-        void visit(MemberAccessExpr *n) override;
+        void visit(QualifiedNameSyntax *n) override;
         void visit(IndexerExpr *n) override;
         void visit(CastExpr *n) override;
         void visit(ThisExpr *n) override;
@@ -187,7 +187,7 @@ namespace Bryo
         void visit(ConditionalExpr *n) override;
         void visit(TypeOfExpr *n) override;
         void visit(SizeOfExpr *n) override;
-        void visit(IfExpr *n) override;
+        void visit(IfStmt *n) override;
         void visit(BreakStmt *n) override;
         void visit(ContinueStmt *n) override;
         void visit(WhileStmt *n) override;

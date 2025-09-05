@@ -26,12 +26,12 @@ namespace Bryo
         if (tokens.at_end())
         {
             unit->location = {{0, 1, 1}, 0};
-            unit->topLevelStatements = arena.emptyList<Statement *>();
+            unit->topLevelStatements = arena.emptyList<BaseStmtSyntax *>();
             return unit;
         }
 
         auto startToken = tokens.current();
-        std::vector<Statement *> statements;
+        std::vector<BaseStmtSyntax *> statements;
 
         while (!tokens.at_end())
         {
@@ -204,7 +204,7 @@ namespace Bryo
 
     // ================== Top Level Parsing ==================
 
-    Statement *Parser::parseTopLevelStatement()
+    BaseStmtSyntax *Parser::parseTopLevelStatement()
     {
         if (check(TokenKind::Using))
         {
@@ -241,7 +241,7 @@ namespace Bryo
                          TokenKind::Var, TokenKind::Ref, TokenKind::Namespace});
     }
 
-    Declaration *Parser::parseDeclaration()
+    BaseDeclSyntax *Parser::parseDeclaration()
     {
         auto startToken = tokens.current();
         ModifierKindFlags modifiers = parseModifiers();
@@ -352,12 +352,12 @@ namespace Bryo
         }
         else
         {
-            decl->baseTypes = arena.emptyList<Expression *>();
+            decl->baseTypes = arena.emptyList<BaseExprSyntax *>();
         }
 
         expect(TokenKind::LeftBrace, "Expected '{' after type declaration");
 
-        std::vector<Declaration *> members;
+        std::vector<BaseDeclSyntax *> members;
         withContext(Context::TYPE_BODY, [&]()
                     {
         while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
@@ -475,7 +475,7 @@ namespace Bryo
         {
             auto block = arena.make<Block>();
             block->location = previous().location;
-            block->statements = arena.emptyList<Statement *>();
+            block->statements = arena.emptyList<BaseStmtSyntax *>();
             decl->body = block;
         }
 
@@ -483,7 +483,7 @@ namespace Bryo
         return decl;
     }
 
-    Declaration *Parser::parseVarDeclaration(ModifierKindFlags modifiers, const Token &startToken)
+    BaseDeclSyntax *Parser::parseVarDeclaration(ModifierKindFlags modifiers, const Token &startToken)
     {
         auto checkpoint = tokens.checkpoint();
         consume(TokenKind::Var);
@@ -498,7 +498,7 @@ namespace Bryo
 
         // Check if this is a property (has arrow syntax or braces after optional initializer)
         bool isProperty = false;
-        Expression *initializer = nullptr;
+        BaseExprSyntax *initializer = nullptr;
 
         if (checkAny({TokenKind::FatArrow, TokenKind::LeftBrace}))
         {
@@ -592,7 +592,7 @@ namespace Bryo
         return decl;
     }
 
-    Expression *Parser::convertToArrayTypeIfNeeded(Expression *expr)
+    BaseExprSyntax *Parser::convertToArrayTypeIfNeeded(BaseExprSyntax *expr)
     {
         if (auto indexer = expr->as<IndexerExpr>())
         {
@@ -621,17 +621,17 @@ namespace Bryo
         return expr;
     }
 
-    std::vector<Declaration *> Parser::parseTypedMemberDeclarations(ModifierKindFlags modifiers, Expression *type, const Token &startToken)
+    std::vector<BaseDeclSyntax *> Parser::parseTypedMemberDeclarations(ModifierKindFlags modifiers, BaseExprSyntax *type, const Token &startToken)
     {
         type = convertToArrayTypeIfNeeded(type);
-        std::vector<Declaration *> declarations;
+        std::vector<BaseDeclSyntax *> declarations;
         bool hasProperties = false;
 
         do
         {
             auto fieldStartToken = tokens.current();
             auto name = parseIdentifier();
-            Expression *initializer = nullptr;
+            BaseExprSyntax *initializer = nullptr;
 
             if (consume(TokenKind::Assign))
             {
@@ -808,14 +808,14 @@ namespace Bryo
         if (consume(TokenKind::Dot))
         {
             // Handle qualified names like "System.Collections"
-            auto memberAccess = arena.make<MemberAccessExpr>();
+            auto memberAccess = arena.make<QualifiedNameSyntax>();
             memberAccess->object = decl->name;
             memberAccess->member = parseIdentifier();
             decl->name = memberAccess;
             // Continue parsing additional dots
             while (consume(TokenKind::Dot))
             {
-                auto nextMember = arena.make<MemberAccessExpr>();
+                auto nextMember = arena.make<QualifiedNameSyntax>();
                 nextMember->object = decl->name;
                 nextMember->member = parseIdentifier();
                 decl->name = nextMember;
@@ -830,7 +830,7 @@ namespace Bryo
         else if (consume(TokenKind::LeftBrace))
         {
             decl->isFileScoped = false;
-            std::vector<Statement *> statements;
+            std::vector<BaseStmtSyntax *> statements;
             withContext(Context::NAMESPACE, [&]()
                         {
             while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
@@ -851,7 +851,7 @@ namespace Bryo
 
     // ================== Statements ==================
 
-    Statement *Parser::parseStatement()
+    BaseStmtSyntax *Parser::parseStatement()
     {
         auto startToken = tokens.current();
         if (check(TokenKind::If))
@@ -896,7 +896,7 @@ namespace Bryo
         auto block = arena.make<Block>();
         consume(TokenKind::LeftBrace);
 
-        std::vector<Statement *> statements;
+        std::vector<BaseStmtSyntax *> statements;
         while (!check(TokenKind::RightBrace) && !tokens.at_end())
         {
             // Check for typed declarations that might have multiple comma-separated variables
@@ -934,7 +934,7 @@ namespace Bryo
         return block;
     }
 
-    Statement *Parser::parseIfStatement()
+    BaseStmtSyntax *Parser::parseIfStatement()
     {
         auto startToken = tokens.current();
         consume(TokenKind::If);
@@ -956,7 +956,7 @@ namespace Bryo
         if (!thenStmt)
             thenStmt = errorStmt("Expected then statement");
 
-        Statement *elseStmt = nullptr;
+        BaseStmtSyntax *elseStmt = nullptr;
         if (consume(TokenKind::Else))
         {
             elseStmt = parseStatement();
@@ -964,7 +964,7 @@ namespace Bryo
                 elseStmt = errorStmt("Expected else statement");
         }
 
-        auto ifExpr = arena.make<IfExpr>();
+        auto ifExpr = arena.make<IfStmt>();
         ifExpr->condition = condition;
         ifExpr->thenBranch = thenStmt;
         ifExpr->elseBranch = elseStmt;
@@ -1001,7 +1001,7 @@ namespace Bryo
         return stmt;
     }
 
-    Statement *Parser::parseForStatement()
+    BaseStmtSyntax *Parser::parseForStatement()
     {
         return parseTraditionalForStatement();
     }
@@ -1033,7 +1033,7 @@ namespace Bryo
         HANDLE_SEMI
 
         // Parse updates
-        std::vector<Expression *> updates;
+        std::vector<BaseExprSyntax *> updates;
 
         // If we have parentheses, parse until we hit the closing paren
         // Otherwise, parse a single expression (or none if we hit the loop body)
@@ -1178,14 +1178,14 @@ namespace Bryo
                 if (consume(TokenKind::Dot))
                 {
                     // Handle qualified names like "System.Collections"
-                    auto memberAccess = arena.make<MemberAccessExpr>();
+                    auto memberAccess = arena.make<QualifiedNameSyntax>();
                     memberAccess->object = directive->target;
                     memberAccess->member = parseIdentifier();
                     directive->target = memberAccess;
                     // Continue parsing additional dots
                     while (consume(TokenKind::Dot))
                     {
-                        auto nextMember = arena.make<MemberAccessExpr>();
+                        auto nextMember = arena.make<QualifiedNameSyntax>();
                         nextMember->object = directive->target;
                         nextMember->member = parseIdentifier();
                         directive->target = nextMember;
@@ -1203,7 +1203,7 @@ namespace Bryo
 
     // ================== Expressions ==================
 
-    Expression *Parser::parseExpression(int minPrecedence)
+    BaseExprSyntax *Parser::parseExpression(int minPrecedence)
     {
         auto left = parsePrimaryExpression();
         if (!left)
@@ -1213,7 +1213,7 @@ namespace Bryo
         return parseBinaryExpression(left, minPrecedence);
     }
 
-    Expression *Parser::parseBinaryExpression(Expression *left, int minPrecedence)
+    BaseExprSyntax *Parser::parseBinaryExpression(BaseExprSyntax *left, int minPrecedence)
     {
         while (!tokens.at_end())
         {
@@ -1278,9 +1278,9 @@ namespace Bryo
         return left;
     }
 
-    Expression *Parser::parsePrimaryExpression()
+    BaseExprSyntax *Parser::parsePrimaryExpression()
     {
-        Expression *expr = nullptr;
+        BaseExprSyntax *expr = nullptr;
         if (tokens.current().is_unary_operator())
         {
             expr = parseUnaryExpression();
@@ -1341,7 +1341,7 @@ namespace Bryo
         return parsePostfixExpression(expr);
     }
 
-    Expression *Parser::parsePostfixExpression(Expression *expr)
+    BaseExprSyntax *Parser::parsePostfixExpression(BaseExprSyntax *expr)
     {
         while (true)
         {
@@ -1351,7 +1351,7 @@ namespace Bryo
                 auto call = arena.make<CallExpr>();
                 call->callee = expr;
 
-                std::vector<Expression *> args;
+                std::vector<BaseExprSyntax *> args;
                 while (!check(TokenKind::RightParen) && !tokens.at_end())
                 {
                     auto arg = parseExpression();
@@ -1372,7 +1372,7 @@ namespace Bryo
             else if (check(TokenKind::Dot))
             {
                 tokens.advance();
-                auto member = arena.make<MemberAccessExpr>();
+                auto member = arena.make<QualifiedNameSyntax>();
                 member->object = expr;
                 member->member = parseIdentifier();
                 member->location = SourceRange(expr->location.start, member->member->location.end());
@@ -1411,7 +1411,7 @@ namespace Bryo
         return expr;
     }
 
-    Expression *Parser::parseUnaryExpression()
+    BaseExprSyntax *Parser::parseUnaryExpression()
     {
         auto startToken = tokens.current();
         auto unary = arena.make<UnaryExpr>();
@@ -1439,7 +1439,7 @@ namespace Bryo
         return lit;
     }
 
-    Expression *Parser::parseNameExpression()
+    BaseExprSyntax *Parser::parseNameExpression()
     {
         auto nameExpr = arena.make<NameExpr>();
         nameExpr->name = parseIdentifier();
@@ -1447,14 +1447,14 @@ namespace Bryo
         return nameExpr;
     }
 
-    List<Expression *> Parser::parseGenericArgs()
+    List<BaseExprSyntax *> Parser::parseGenericArgs()
     {
         auto cp = tokens.checkpoint();
         if (!check(TokenKind::Less))
             return {};
 
         consume(TokenKind::Less);
-        std::vector<Expression *> typeArgs;
+        std::vector<BaseExprSyntax *> typeArgs;
 
         while (!check(TokenKind::Greater) && !tokens.at_end())
         {
@@ -1476,7 +1476,7 @@ namespace Bryo
         return arena.makeList(typeArgs);
     }
 
-    Expression *Parser::parseTypeExpression()
+    BaseExprSyntax *Parser::parseTypeExpression()
     {
         if (!check(TokenKind::Identifier))
         {
@@ -1484,8 +1484,8 @@ namespace Bryo
         }
 
         auto nameExpr = parseNameExpression();
-        List<Expression *> typeArgs = parseGenericArgs();
-        Expression *baseType = nameExpr;
+        List<BaseExprSyntax *> typeArgs = parseGenericArgs();
+        BaseExprSyntax *baseType = nameExpr;
 
         if (!typeArgs.empty())
         {
@@ -1556,7 +1556,7 @@ namespace Bryo
         return baseType;
     }
 
-    Expression *Parser::parseParenthesizedOrLambda()
+    BaseExprSyntax *Parser::parseParenthesizedOrLambda()
     {
         auto checkpoint = tokens.checkpoint();
         consume(TokenKind::LeftParen);
@@ -1648,7 +1648,7 @@ namespace Bryo
         }
     }
 
-    Expression *Parser::parseCastExpression()
+    BaseExprSyntax *Parser::parseCastExpression()
     {
         auto startToken = tokens.current();
         consume(TokenKind::LeftParen);
@@ -1678,13 +1678,13 @@ namespace Bryo
         return cast;
     }
 
-    Expression *Parser::parseArrayLiteral()
+    BaseExprSyntax *Parser::parseArrayLiteral()
     {
         auto startToken = tokens.current();
         auto array = arena.make<ArrayLiteralExpr>();
         consume(TokenKind::LeftBracket);
 
-        std::vector<Expression *> elements;
+        std::vector<BaseExprSyntax *> elements;
         while (!check(TokenKind::RightBracket) && !tokens.at_end())
         {
             if (auto elem = parseExpression())
@@ -1701,7 +1701,7 @@ namespace Bryo
         return array;
     }
 
-    Expression *Parser::parseNewExpression()
+    BaseExprSyntax *Parser::parseNewExpression()
     {
         auto startToken = tokens.current();
         auto newExpr = arena.make<NewExpr>();
@@ -1724,7 +1724,7 @@ namespace Bryo
         if (check(TokenKind::LeftParen))
         {
             consume(TokenKind::LeftParen);
-            std::vector<Expression *> args;
+            std::vector<BaseExprSyntax *> args;
             while (!check(TokenKind::RightParen) && !tokens.at_end())
             {
                 if (auto arg = parseExpression())
@@ -1737,13 +1737,13 @@ namespace Bryo
         }
         else
         {
-            newExpr->arguments = arena.emptyList<Expression *>();
+            newExpr->arguments = arena.emptyList<BaseExprSyntax *>();
         }
         newExpr->location = SourceRange(startToken.location.start, previous().location.end());
         return newExpr;
     }
 
-    Expression *Parser::parseLambdaExpression()
+    BaseExprSyntax *Parser::parseLambdaExpression()
     {
         auto startToken = tokens.current();
         auto lambda = arena.make<LambdaExpr>();
@@ -1809,7 +1809,7 @@ namespace Bryo
         return lambda;
     }
 
-    Expression *Parser::parseTypeOfExpression()
+    BaseExprSyntax *Parser::parseTypeOfExpression()
     {
         auto startToken = tokens.current();
         auto typeOf = arena.make<TypeOfExpr>();
@@ -1825,7 +1825,7 @@ namespace Bryo
         return typeOf;
     }
 
-    Expression *Parser::parseSizeOfExpression()
+    BaseExprSyntax *Parser::parseSizeOfExpression()
     {
         auto startToken = tokens.current();
         auto sizeOf = arena.make<SizeOfExpr>();
@@ -1845,7 +1845,7 @@ namespace Bryo
 
     // ================== Helper Functions ==================
 
-    Identifier *Parser::parseIdentifier()
+    IdentifierNameSyntax *Parser::parseIdentifier()
     {
         if (!check(TokenKind::Identifier))
         {
@@ -1942,9 +1942,9 @@ namespace Bryo
         return arena.makeList(typeParams);
     }
 
-    List<Expression *> Parser::parseBaseTypeList()
+    List<BaseExprSyntax *> Parser::parseBaseTypeList()
     {
-        std::vector<Expression *> types;
+        std::vector<BaseExprSyntax *> types;
         do
         {
             if (auto type = parseTypeExpression())

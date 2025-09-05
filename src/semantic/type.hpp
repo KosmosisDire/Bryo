@@ -13,7 +13,7 @@ namespace Bryo
     struct Type;
     class TypeLikeSymbol;
     class ScopeNode;
-    struct Expression;
+    struct BaseExprSyntax;
     struct Block;
     using TypePtr = std::shared_ptr<Type>;
 

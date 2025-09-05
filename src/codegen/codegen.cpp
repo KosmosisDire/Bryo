@@ -77,7 +77,7 @@ namespace Bryo
                     continue;
 
                 // Create an "opaque" struct type first. This is crucial for handling
-                // recursive types (e.g., struct Node { Node* next; }).
+                // recursive types (e.g., struct BaseSyntax { BaseSyntax* next; }).
                 llvm::StructType *struct_type = llvm::StructType::create(*context, type_sym->get_qualified_name());
                 defined_types[type_sym] = struct_type;
             }
@@ -274,7 +274,7 @@ namespace Bryo
 
     // === Helper Methods ===
 
-    llvm::Value *CodeGenerator::castPrimitive(llvm::Value *value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, Node *node)
+    llvm::Value *CodeGenerator::castPrimitive(llvm::Value *value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, BaseSyntax *node)
     {
         // Get the conversion kind
         auto convKind = Conversions::ClassifyConversion(sourceKind, targetKind);
@@ -444,7 +444,7 @@ namespace Bryo
         return result;
     }
 
-    llvm::Value *CodeGenerator::genExpression(Expression *expr, bool wantAddress)
+    llvm::Value *CodeGenerator::genExpression(BaseExprSyntax *expr, bool wantAddress)
     {
         if (!expr)
             return nullptr;
@@ -464,7 +464,7 @@ namespace Bryo
         }
     }
 
-    llvm::Value *CodeGenerator::genLValue(Expression *expr)
+    llvm::Value *CodeGenerator::genLValue(BaseExprSyntax *expr)
     {
         if (!expr || !expr->is_l_value())
         {
@@ -477,7 +477,7 @@ namespace Bryo
         return pop_value();
     }
 
-    llvm::Value *CodeGenerator::genRValue(Expression *expr)
+    llvm::Value *CodeGenerator::genRValue(BaseExprSyntax *expr)
     {
         if (!expr)
             return nullptr;
@@ -1046,7 +1046,7 @@ namespace Bryo
         }
 
         // Generate the getter body
-        if (auto expr = std::get_if<Expression *>(&prop_decl->getter->body))
+        if (auto expr = std::get_if<BaseExprSyntax *>(&prop_decl->getter->body))
         {
             (*expr)->accept(this);
             auto result = pop_value();
@@ -1073,14 +1073,14 @@ namespace Bryo
         local_types = saved_local_types;
     }
 
-    Scope *CodeGenerator::get_containing_scope(Node *node)
+    Scope *CodeGenerator::get_containing_scope(BaseSyntax *node)
     {
         if (!node || node->containingScope.id == 0)
             return nullptr;
         return symbol_table.lookup_handle(node->containingScope)->as<Scope>();
     }
 
-    Symbol *CodeGenerator::get_expression_symbol(Expression *expr)
+    Symbol *CodeGenerator::get_expression_symbol(BaseExprSyntax *expr)
     {
         if (!expr)
             return nullptr;
@@ -1093,9 +1093,9 @@ namespace Bryo
                        ? symbol_table.lookup_handle(nameExpr->resolvedSymbol)->as<Symbol>()
                        : nullptr;
         }
-        else if (expr->is<MemberAccessExpr>())
+        else if (expr->is<QualifiedNameSyntax>())
         {
-            auto memberExpr = expr->as<MemberAccessExpr>();
+            auto memberExpr = expr->as<QualifiedNameSyntax>();
             return memberExpr->resolvedMember.id != 0
                        ? symbol_table.lookup_handle(memberExpr->resolvedMember)->as<Symbol>()
                        : nullptr;
@@ -1418,7 +1418,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::report_error(const Node *node, const std::string &message)
+    void CodeGenerator::report_error(const BaseSyntax *node, const std::string &message)
     {
         errors.push_back({message, node ? node->location : SourceRange{}});
     }
@@ -2395,7 +2395,7 @@ namespace Bryo
         llvm::Value *this_ptr = nullptr;
 
         // Handle method calls (callee is MemberAccessExpr)
-        if (auto member_expr = node->callee->as<MemberAccessExpr>())
+        if (auto member_expr = node->callee->as<QualifiedNameSyntax>())
         {
             // Get the object (this pointer)
             // For method calls, we need the address of the object
@@ -2716,7 +2716,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(Identifier *node)
+    void CodeGenerator::visit(IdentifierNameSyntax *node)
     {
         // Identifiers are typically handled by NameExpr which contains identifier parts.
         // Individual identifier nodes usually don't generate code directly.
@@ -2926,10 +2926,10 @@ namespace Bryo
 
     // --- Base/Error/Unimplemented Visitors ---
 
-    void CodeGenerator::visit(Node *node) {}
-    void CodeGenerator::visit(Expression *node) { report_error(node, "Codegen for this expression type is not yet implemented."); }
-    void CodeGenerator::visit(Statement *node) { report_error(node, "Codegen for this statement type is not yet implemented."); }
-    void CodeGenerator::visit(Declaration *node) { report_error(node, "Codegen for this declaration type is not yet implemented."); }
+    void CodeGenerator::visit(BaseSyntax *node) {}
+    void CodeGenerator::visit(BaseExprSyntax *node) { report_error(node, "Codegen for this expression type is not yet implemented."); }
+    void CodeGenerator::visit(BaseStmtSyntax *node) { report_error(node, "Codegen for this statement type is not yet implemented."); }
+    void CodeGenerator::visit(BaseDeclSyntax *node) { report_error(node, "Codegen for this declaration type is not yet implemented."); }
     void CodeGenerator::visit(ErrorExpression *node)
     {
         if (node)
@@ -2998,7 +2998,7 @@ namespace Bryo
         push_value(array_ptr);
     }
 
-    void CodeGenerator::visit(MemberAccessExpr *node)
+    void CodeGenerator::visit(QualifiedNameSyntax *node)
     {
         if (!node || !node->object || !node->member)
             return;
@@ -3321,7 +3321,7 @@ namespace Bryo
     void CodeGenerator::visit(ConditionalExpr *n) { report_error(n, "Conditional (ternary) expressions not yet supported."); }
     void CodeGenerator::visit(TypeOfExpr *n) { report_error(n, "'typeof' not yet supported."); }
     void CodeGenerator::visit(SizeOfExpr *n) { report_error(n, "'sizeof' not yet supported."); }
-    void CodeGenerator::visit(IfExpr *node)
+    void CodeGenerator::visit(IfStmt *node)
     {
         if (!node || !node->condition || !node->thenBranch)
             return;

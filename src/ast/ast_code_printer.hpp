@@ -51,7 +51,7 @@ namespace Bryo
             emit(to_string(modifiers) + " ");
         }
 
-        void print_body(Statement *body)
+        void print_body(BaseStmtSyntax *body)
         {
             if (!body)
             {
@@ -85,15 +85,15 @@ namespace Bryo
         }
 
         // --- Base Node Types (unchanged) ---
-        void visit(Node *node) override { emit("[AbstractNode]"); }
-        void visit(Expression *node) override { emit("[AbstractExpression]"); }
-        void visit(Statement *node) override
+        void visit(BaseSyntax *node) override { emit("[AbstractNode]"); }
+        void visit(BaseExprSyntax *node) override { emit("[AbstractExpression]"); }
+        void visit(BaseStmtSyntax *node) override
         {
             emit_indent();
             emit("[AbstractStatement]");
             emit_newline();
         }
-        void visit(Declaration *node) override
+        void visit(BaseDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -102,7 +102,7 @@ namespace Bryo
         }
 
         // --- Basic Building Blocks & Errors (unchanged) ---
-        void visit(Identifier *node) override { emit(std::string(node->text)); }
+        void visit(IdentifierNameSyntax *node) override { emit(std::string(node->text)); }
         void visit(TypedIdentifier *node) override
         {
             if (node->type)
@@ -183,7 +183,7 @@ namespace Bryo
             }
             emit(")");
         }
-        void visit(MemberAccessExpr *node) override
+        void visit(QualifiedNameSyntax *node) override
         {
             node->object->accept(this);
             emit(".");
@@ -274,7 +274,7 @@ namespace Bryo
             emit("}");     // The caller adds the final newline if needed.
         }
 
-        void visit(IfExpr *node) override
+        void visit(IfStmt *node) override
         {
             emit("if (");
             node->condition->accept(this);
@@ -287,7 +287,7 @@ namespace Bryo
                 output.seekp(-1, std::ios_base::end);
                 emit(" else");
 
-                if (node->elseBranch->is<IfExpr>())
+                if (node->elseBranch->is<IfStmt>())
                 {
                     emit(" ");
                     node->elseBranch->accept(this);
@@ -304,7 +304,7 @@ namespace Bryo
         {
             emit_indent();
             node->expression->accept(this);
-            if (!node->expression->is<IfExpr>() && !node->expression->is<Block>())
+            if (!node->expression->is<IfStmt>() && !node->expression->is<Block>())
             {
                 emit(";");
             }
@@ -531,7 +531,7 @@ namespace Bryo
             print_modifiers(node->modifiers);
             emit(node->kind == PropertyAccessor::Kind::Get ? "get" : "set");
 
-            if (auto expr = std::get_if<Expression *>(&node->body))
+            if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
             {
                 emit(" => ");
                 (*expr)->accept(this);
@@ -578,9 +578,6 @@ namespace Bryo
             {
             case TypeDecl::Kind::Type:
                 emit("type ");
-                break;
-            case TypeDecl::Kind::ValueType:
-                emit("value type ");
                 break;
             case TypeDecl::Kind::RefType:
                 emit("ref type ");

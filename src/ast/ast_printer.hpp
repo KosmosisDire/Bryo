@@ -20,7 +20,7 @@ namespace Bryo
          * @param root The root node of the tree to print.
          * @return A string containing the formatted AST.
          */
-        std::string get_string(Node *root)
+        std::string get_string(BaseSyntax *root)
         {
             if (!root)
             {
@@ -42,10 +42,10 @@ namespace Bryo
         }
 
         // Helper to get the semantic type annotation string for an expression.
-        std::string get_type_annotation(const Node *node)
+        std::string get_type_annotation(const BaseSyntax *node)
         {
             // Try to cast the generic Node to a const Expression
-            if (const auto expr = node->as<Expression>())
+            if (const auto expr = node->as<BaseExprSyntax>())
             {
                 if (expr->resolvedType)
                 {
@@ -63,13 +63,13 @@ namespace Bryo
         }
 
         // Prints a single line for a leaf node, automatically adding type info.
-        void leaf(const Node *node, const std::string &name, const std::string &details = "")
+        void leaf(const BaseSyntax *node, const std::string &name, const std::string &details = "")
         {
             output << indent() << name << details << get_type_annotation(node) << "\n";
         }
 
         // Enters a new indentation level for a branch node, automatically adding type info.
-        void enter(const Node *node, const std::string &name, const std::string &details = "")
+        void enter(const BaseSyntax *node, const std::string &name, const std::string &details = "")
         {
             output << indent() << name << details << get_type_annotation(node) << " {\n";
             indentLevel++;
@@ -86,7 +86,7 @@ namespace Bryo
         // --- Override Visitor Methods ---
 
         // --- Building Blocks & Errors ---
-        void visit(Identifier *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
+        void visit(IdentifierNameSyntax *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
         void visit(ErrorExpression *node) override { leaf(node, "ErrorExpression", " (\"" + std::string(node->message) + "\")"); }
         void visit(ErrorStatement *node) override { leaf(node, "ErrorStatement", " (\"" + std::string(node->message) + "\")"); }
         void visit(TypedIdentifier *node) override;
@@ -98,7 +98,7 @@ namespace Bryo
         void visit(BinaryExpr *node) override;
         void visit(AssignmentExpr *node) override;
         void visit(ThisExpr *node) override { leaf(node, "ThisExpr"); }
-        void visit(MemberAccessExpr *node) override;
+        void visit(QualifiedNameSyntax *node) override;
         void visit(ArrayLiteralExpr *node) override { enter(node, "ArrayLiteralExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(CallExpr *node) override { enter(node, "CallExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(IndexerExpr *node) override { enter(node, "IndexerExpr"); DefaultVisitor::visit(node); leave(); }
@@ -108,7 +108,7 @@ namespace Bryo
         void visit(ConditionalExpr *node) override { enter(node, "ConditionalExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(TypeOfExpr *node) override { enter(node, "TypeOfExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(SizeOfExpr *node) override { enter(node, "SizeOfExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(IfExpr *node) override { enter(node, "IfExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(IfStmt *node) override { enter(node, "IfStmt"); DefaultVisitor::visit(node); leave(); }
 
         // --- Statements ---
         void visit(Block *node) override { enter(node, "Block"); DefaultVisitor::visit(node); leave(); }
@@ -238,7 +238,7 @@ namespace Bryo
         leave();
     }
     
-    inline void AstPrinter::visit(MemberAccessExpr *node)
+    inline void AstPrinter::visit(QualifiedNameSyntax *node)
     {
         std::string memberName = node->member ? std::string(node->member->text) : "<unknown>";
         enter(node, "MemberAccessExpr", " (Member: " + memberName + ")");
@@ -325,7 +325,6 @@ namespace Bryo
         switch (node->kind)
         {
         case TypeDecl::Kind::Type: kind_str = "type"; break;
-        case TypeDecl::Kind::ValueType: kind_str = "value type"; break;
         case TypeDecl::Kind::RefType: kind_str = "ref type"; break;
         case TypeDecl::Kind::StaticType: kind_str = "static type"; break;
         case TypeDecl::Kind::Enum: kind_str = "enum"; break;
