@@ -14,94 +14,103 @@
 
 namespace Bryo
 {
-
-    // ============================================================================
-    // --- Forward Declarations ---
-    // ============================================================================
-    struct Token;
-
-    struct BaseSyntax;
-    struct BaseExprSyntax;
-    struct BaseStmtSyntax;
-    struct BaseDeclSyntax;
+    #pragma region Forward Declarations
     class Visitor;
     
-    // Add all concrete node forward declarations
-    struct NameSyntax;
-    struct IdentifierNameSyntax;
-    struct QualifiedNameSyntax;
-    struct GenericNameSyntax;
-    struct PredefinedTypeSyntax;
-    
-    struct TypedIdentifier;
-    struct ErrorExpression;
-    struct ErrorStatement;
-
-    // Expressions
-    struct LiteralExpr;
-    struct ArrayLiteralExpr;
-    struct NameExpr;
-    struct UnaryExpr;
-    struct BinaryExpr;
-    struct AssignmentExpr;
-    struct CallExpr;
-    struct IndexerExpr;
-    struct CastExpr;
-    struct NewExpr;
-    struct ThisExpr;
-    struct LambdaExpr;
-    struct ConditionalExpr;
-    struct TypeOfExpr;
-    struct SizeOfExpr;
-    struct Block;
-    struct IfStmt;
-    
-    // Type expressions (expressions that represent types)
-    struct ArrayTypeExpr;
-    struct FunctionTypeExpr;
-    struct GenericTypeExpr;
-    struct PointerTypeExpr;
-    
-    // Statements
-    struct ExpressionStmt;
-    struct ReturnStmt;
-    struct BreakStmt;
-    struct ContinueStmt;
-    struct WhileStmt;
-    struct ForStmt;
-    struct UsingDirective;
-    
-    // Declarations
-    struct VariableDecl;
-    struct PropertyDecl;
-    struct PropertyAccessor;
-    struct FunctionDecl;
-    struct ParameterDecl;
-    struct ConstructorDecl;
-    struct EnumCaseDecl;
-    struct TypeDecl;
-    struct TypeParameterDecl;
-    struct NamespaceDecl;
-
     // Root
-    struct CompilationUnit;
+    struct BaseSyntax;
+        // Expressions
+        struct BaseExprSyntax;
+            // Names (used in type/namespace contexts)
+            struct NameSyntax;
+                struct IdentifierNameSyntax;
+                struct QualifiedNameSyntax;
+                struct GenericNameSyntax;
+            
+            // Literals
+            struct LiteralExprSyntax;
+            struct ArrayLiteralExprSyntax;
+            
+            // Primary expressions
+            struct NameExprSyntax;
+            struct ThisExprSyntax;
+            struct ParenthesizedExprSyntax;
+            
+            // Operators
+            struct UnaryExprSyntax;
+            struct BinaryExprSyntax;
+            struct AssignmentExprSyntax;
+            struct ConditionalExprSyntax;
+            
+            // Member/element access
+            struct MemberAccessExprSyntax;
+            struct IndexerExprSyntax;
+            
+            // Invocations
+            struct CallExprSyntax;
+            struct NewExprSyntax;
+            struct CastExprSyntax;
+            
+            // Special expressions
+            struct LambdaExprSyntax;
+            struct TypeOfExprSyntax;
+            struct SizeOfExprSyntax;
+            
+            // Type expressions
+            struct ArrayTypeSyntax;
+            struct FunctionTypeSyntax;
+            struct GenericTypeSyntax;
+            struct PointerTypeSyntax;
+        
+        // Statements
+        struct BaseStmtSyntax;
+            // Control flow
+            struct BlockSyntax;
+            struct IfStmtSyntax;
+            struct WhileStmtSyntax;
+            struct ForStmtSyntax;
+            struct ReturnStmtSyntax;
+            struct BreakStmtSyntax;
+            struct ContinueStmtSyntax;
+            
+            // Simple statements
+            struct ExpressionStmtSyntax;
+            struct UsingDirectiveSyntax;
+            
+            // Declarations (inherit from statement)
+            struct BaseDeclSyntax;
+                struct VariableDeclSyntax;
+                struct PropertyDeclSyntax;
+                struct ParameterDeclSyntax;
+                struct FunctionDeclSyntax;
+                struct ConstructorDeclSyntax;
+                struct EnumCaseDeclSyntax;
+                struct TypeDeclSyntax;
+                struct TypeParameterDeclSyntax;
+                struct NamespaceDeclSyntax;
+    
+    // Supporting nodes (not in main hierarchy)
+    struct MissingSyntax;
+    struct TypedIdentifier;
+    struct PropertyAccessorSyntax;
+    struct CompilationUnitSyntax;
 
     // Non-owning collection type (arena allocated)
     template <typename T>
     using List = std::span<T>;
+    #pragma endregion
 
 // Macro to create an accept function implementation
 #define ACCEPT_VISITOR \
     void accept(Visitor *visitor) override { visitor->visit(this); }
 
-    // ============================================================================
-    // --- Visitor Pattern ---
-    // ============================================================================
-
+    #pragma region Visitor Pattern
     class Visitor
     {
     public:
         virtual ~Visitor() = default;
+
+        
 
         // Base type visits - can be overridden for uniform handling
         virtual void visit(BaseSyntax *node);
@@ -109,65 +118,67 @@ namespace Bryo
         virtual void visit(BaseStmtSyntax *node);
         virtual void visit(BaseDeclSyntax *node);
 
-        // All concrete node types
+        // Names
         virtual void visit(IdentifierNameSyntax *node) = 0;
-        virtual void visit(TypedIdentifier *node) = 0;
-        virtual void visit(ErrorExpression *node) = 0;
-        virtual void visit(ErrorStatement *node) = 0;
-
-        // Expressions
-        virtual void visit(LiteralExpr *node) = 0;
-        virtual void visit(ArrayLiteralExpr *node) = 0;
-        virtual void visit(NameExpr *node) = 0;
-        virtual void visit(UnaryExpr *node) = 0;
-        virtual void visit(BinaryExpr *node) = 0;
-        virtual void visit(AssignmentExpr *node) = 0;
-        virtual void visit(CallExpr *node) = 0;
         virtual void visit(QualifiedNameSyntax *node) = 0;
-        virtual void visit(IndexerExpr *node) = 0;
-        virtual void visit(CastExpr *node) = 0;
-        virtual void visit(NewExpr *node) = 0;
-        virtual void visit(ThisExpr *node) = 0;
-        virtual void visit(LambdaExpr *node) = 0;
-        virtual void visit(ConditionalExpr *node) = 0;
-        virtual void visit(TypeOfExpr *node) = 0;
-        virtual void visit(SizeOfExpr *node) = 0;
-        virtual void visit(Block *node) = 0;
-        virtual void visit(IfStmt *node) = 0;
-        virtual void visit(ArrayTypeExpr *node) = 0;
-        virtual void visit(FunctionTypeExpr *node) = 0;
-        virtual void visit(GenericTypeExpr *node) = 0;
-        virtual void visit(PointerTypeExpr *node) = 0;
+        virtual void visit(GenericNameSyntax *node) = 0;
+        
+        // Expressions
+        virtual void visit(LiteralExprSyntax *node) = 0;
+        virtual void visit(ArrayLiteralExprSyntax *node) = 0;
+        virtual void visit(NameExprSyntax *node) = 0;
+        virtual void visit(ThisExprSyntax *node) = 0;
+        virtual void visit(ParenthesizedExprSyntax *node) = 0;
+        virtual void visit(UnaryExprSyntax *node) = 0;
+        virtual void visit(BinaryExprSyntax *node) = 0;
+        virtual void visit(AssignmentExprSyntax *node) = 0;
+        virtual void visit(ConditionalExprSyntax *node) = 0;
+        virtual void visit(MemberAccessExprSyntax *node) = 0;
+        virtual void visit(IndexerExprSyntax *node) = 0;
+        virtual void visit(CallExprSyntax *node) = 0;
+        virtual void visit(NewExprSyntax *node) = 0;
+        virtual void visit(CastExprSyntax *node) = 0;
+        virtual void visit(LambdaExprSyntax *node) = 0;
+        virtual void visit(TypeOfExprSyntax *node) = 0;
+        virtual void visit(SizeOfExprSyntax *node) = 0;
+        
+        // Type expressions
+        virtual void visit(ArrayTypeSyntax *node) = 0;
+        virtual void visit(FunctionTypeSyntax *node) = 0;
+        virtual void visit(GenericTypeSyntax *node) = 0;
+        virtual void visit(PointerTypeSyntax *node) = 0;
 
         // Statements
-        virtual void visit(ExpressionStmt *node) = 0;
-        virtual void visit(ReturnStmt *node) = 0;
-        virtual void visit(BreakStmt *node) = 0;
-        virtual void visit(ContinueStmt *node) = 0;
-        virtual void visit(WhileStmt *node) = 0;
-        virtual void visit(ForStmt *node) = 0;
-        virtual void visit(UsingDirective *node) = 0;
+        virtual void visit(BlockSyntax *node) = 0;
+        virtual void visit(IfStmtSyntax *node) = 0;
+        virtual void visit(WhileStmtSyntax *node) = 0;
+        virtual void visit(ForStmtSyntax *node) = 0;
+        virtual void visit(ReturnStmtSyntax *node) = 0;
+        virtual void visit(BreakStmtSyntax *node) = 0;
+        virtual void visit(ContinueStmtSyntax *node) = 0;
+        virtual void visit(ExpressionStmtSyntax *node) = 0;
+        virtual void visit(UsingDirectiveSyntax *node) = 0;
 
         // Declarations
-        virtual void visit(VariableDecl *node) = 0;
-        virtual void visit(PropertyDecl *node) = 0;
-        virtual void visit(ParameterDecl *node) = 0;
-        virtual void visit(FunctionDecl *node) = 0;
-        virtual void visit(ConstructorDecl *node) = 0;
-        virtual void visit(PropertyAccessor *node) = 0;
-        virtual void visit(EnumCaseDecl *node) = 0;
-        virtual void visit(TypeDecl *node) = 0;
-        virtual void visit(TypeParameterDecl *node) = 0;
-        virtual void visit(NamespaceDecl *node) = 0;
-
-        // Root
-        virtual void visit(CompilationUnit *node) = 0;
+        virtual void visit(VariableDeclSyntax *node) = 0;
+        virtual void visit(PropertyDeclSyntax *node) = 0;
+        virtual void visit(ParameterDeclSyntax *node) = 0;
+        virtual void visit(FunctionDeclSyntax *node) = 0;
+        virtual void visit(ConstructorDeclSyntax *node) = 0;
+        virtual void visit(EnumCaseDeclSyntax *node) = 0;
+        virtual void visit(TypeDeclSyntax *node) = 0;
+        virtual void visit(TypeParameterDeclSyntax *node) = 0;
+        virtual void visit(NamespaceDeclSyntax *node) = 0;
+        
+        // Supporting nodes
+        virtual void visit(MissingSyntax *node) = 0;
+        virtual void visit(TypedIdentifier *node) = 0;
+        virtual void visit(PropertyAccessorSyntax *node) = 0;
+        virtual void visit(CompilationUnitSyntax *node) = 0;
     };
+    #pragma endregion
 
-    // ============================================================================
-    // --- Core Node Hierarchy ---
-    // ============================================================================
-
+    #pragma region Core Node Hierarchy
     struct BaseSyntax
     {
         SourceRange location;
@@ -201,16 +212,6 @@ namespace Bryo
         TypePtr resolvedType;
         bool isLValue = false;
         ACCEPT_VISITOR
-
-        bool is_l_value() const
-        {
-            return isLValue;
-        }
-
-        bool is_r_value() const
-        {
-            return !isLValue;
-        }
     };
 
     struct BaseStmtSyntax : BaseSyntax
@@ -218,262 +219,260 @@ namespace Bryo
         ACCEPT_VISITOR
     };
 
-    // Base for declarations - no name field!
     struct BaseDeclSyntax : BaseStmtSyntax
     {
         ModifierKindFlags modifiers;
         ACCEPT_VISITOR
     };
+    #pragma endregion
 
-    struct Pattern : BaseSyntax
+    #pragma region Names
+    struct NameSyntax : BaseExprSyntax
     {
         ACCEPT_VISITOR
     };
 
-    // ============================================================================
-    // --- Basic Building Blocks ---
-    // ============================================================================
-
-    struct IdentifierNameSyntax : BaseSyntax
+    struct IdentifierNameSyntax : NameSyntax
     {
         std::string text;
         ACCEPT_VISITOR
     };
 
-    // Reusable component for name + optional type
+    struct QualifiedNameSyntax : NameSyntax
+    {
+        NameSyntax *left;              // The qualifier
+        IdentifierNameSyntax *right;   // The name
+        ACCEPT_VISITOR
+    };
+
+    struct GenericNameSyntax : NameSyntax
+    {
+        NameSyntax *name;                      // The generic type name
+        List<BaseExprSyntax*> typeArguments;   // The type arguments
+        ACCEPT_VISITOR
+    };
+    #pragma endregion
+
+    #pragma region Supporting Nodes
+    struct MissingSyntax : BaseSyntax
+    {
+        std::string message;
+        List<BaseSyntax*> partialNodes;
+        ACCEPT_VISITOR
+    };
+
     struct TypedIdentifier : BaseSyntax
     {
         IdentifierNameSyntax *name;
         BaseExprSyntax *type; // null = inferred (var)
         ACCEPT_VISITOR
     };
+    #pragma endregion
 
-    // ============================================================================
-    // --- Error Nodes (for robust error recovery) ---
-    // ============================================================================
-
-    struct ErrorExpression : BaseExprSyntax
-    {
-        std::string message;
-        List<BaseSyntax *> partialNodes;
-        ACCEPT_VISITOR
-    };
-
-    struct ErrorStatement : BaseStmtSyntax
-    {
-        std::string message;
-        List<BaseSyntax *> partialNodes;
-        ACCEPT_VISITOR
-    };
-
-    // ============================================================================
-    // --- Expressions ---
-    // ============================================================================
-
-    struct LiteralExpr : BaseExprSyntax
+    #pragma region Expressions
+    struct LiteralExprSyntax : BaseExprSyntax
     {
         LiteralKind kind;
         std::string value; // Raw text from source
         ACCEPT_VISITOR
     };
 
-    struct ArrayLiteralExpr : BaseExprSyntax
+    struct ArrayLiteralExprSyntax : BaseExprSyntax
     {
-        List<BaseExprSyntax *> elements;
+        List<BaseExprSyntax*> elements;
         ACCEPT_VISITOR
     };
 
-    struct NameExpr : BaseExprSyntax
+    struct NameExprSyntax : BaseExprSyntax
     {
         SymbolHandle resolvedSymbol = {0};
-        IdentifierNameSyntax *name; // Single identifier only - no multi-part names
+        IdentifierNameSyntax *name; // Single identifier only
         ACCEPT_VISITOR
-
-        std::string get_name() const
-        {
-            return name ? std::string(name->text) : "";
-        }
     };
 
-    struct UnaryExpr : BaseExprSyntax
+    struct ThisExprSyntax : BaseExprSyntax
+    {
+        ACCEPT_VISITOR
+    };
+
+    struct ParenthesizedExprSyntax : BaseExprSyntax
+    {
+        BaseExprSyntax *expression; // The expression inside parentheses
+        ACCEPT_VISITOR
+    };
+
+    struct UnaryExprSyntax : BaseExprSyntax
     {
         UnaryOperatorKind op;
-        BaseExprSyntax *operand; // Never null (ErrorExpression if parse fails)
+        BaseExprSyntax *operand;
         bool isPostfix;
         ACCEPT_VISITOR
     };
 
-    struct BinaryExpr : BaseExprSyntax
+    struct BinaryExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *left; // Never null
+        BaseExprSyntax *left;
         BinaryOperatorKind op;
-        BaseExprSyntax *right; // Never null
+        BaseExprSyntax *right;
         ACCEPT_VISITOR
     };
 
-    struct AssignmentExpr : BaseExprSyntax
+    struct AssignmentExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *target; // Never null, must be lvalue
+        BaseExprSyntax *target;
         AssignmentOperatorKind op;
-        BaseExprSyntax *value; // Never null
+        BaseExprSyntax *value;
         ACCEPT_VISITOR
     };
 
-    struct CallExpr : BaseExprSyntax
+    struct ConditionalExprSyntax : BaseExprSyntax
     {
-        SymbolHandle resolvedCallee = {0};
-        BaseExprSyntax *callee; // Never null
-        List<BaseExprSyntax *> arguments;
+        BaseExprSyntax *condition;
+        BaseExprSyntax *thenExpr;
+        BaseExprSyntax *elseExpr;
         ACCEPT_VISITOR
     };
 
-    struct QualifiedNameSyntax : BaseExprSyntax
+    struct MemberAccessExprSyntax : BaseExprSyntax
     {
         SymbolHandle resolvedMember = {0};
-        BaseExprSyntax *object; // Never null
-        IdentifierNameSyntax *member; // Never null
+        BaseExprSyntax *object;         // The object/expression being accessed
+        IdentifierNameSyntax *member;   // The member name
         ACCEPT_VISITOR
     };
 
-    struct IndexerExpr : BaseExprSyntax
+    struct IndexerExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *object; // Never null
-        BaseExprSyntax *index;  // Never null
+        BaseExprSyntax *object;
+        BaseExprSyntax *index;
         ACCEPT_VISITOR
     };
 
-    struct CastExpr : BaseExprSyntax
+    struct CallExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *targetType; // Never null
-        BaseExprSyntax *expression; // Never null
+        SymbolHandle resolvedCallee = {0};
+        BaseExprSyntax *callee;
+        List<BaseExprSyntax*> arguments;
         ACCEPT_VISITOR
     };
 
-    struct NewExpr : BaseExprSyntax
+    struct NewExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *type; // Never null
-        List<BaseExprSyntax *> arguments;
+        BaseExprSyntax *type;
+        List<BaseExprSyntax*> arguments;
         ACCEPT_VISITOR
     };
 
-    struct ThisExpr : BaseExprSyntax
+    struct CastExprSyntax : BaseExprSyntax
     {
+        BaseExprSyntax *targetType;
+        BaseExprSyntax *expression;
         ACCEPT_VISITOR
     };
 
-    struct LambdaExpr : BaseExprSyntax
+    struct LambdaExprSyntax : BaseExprSyntax
     {
-        List<ParameterDecl *> parameters;
-        BaseStmtSyntax *body; // Block or ExpressionStmt
+        List<ParameterDeclSyntax*> parameters;
+        BaseStmtSyntax *body; // BlockSyntax or ExpressionStmtSyntax
         ACCEPT_VISITOR
     };
 
-    struct ConditionalExpr : BaseExprSyntax
+    struct TypeOfExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *condition; // Never null
-        BaseExprSyntax *thenExpr;  // Never null
-        BaseExprSyntax *elseExpr;  // Never null
+        BaseExprSyntax *type;
         ACCEPT_VISITOR
     };
 
-    struct TypeOfExpr : BaseExprSyntax
+    struct SizeOfExprSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *type; // Never null - now Expression instead of TypeRef
+        BaseExprSyntax *type;
+        ACCEPT_VISITOR
+    };
+    #pragma endregion
+
+    #pragma region Type Expressions
+    struct ArrayTypeSyntax : BaseExprSyntax
+    {
+        BaseExprSyntax *elementType;
+        LiteralExprSyntax *size; // Can be null for unsized arrays
         ACCEPT_VISITOR
     };
 
-    struct SizeOfExpr : BaseExprSyntax
+    struct FunctionTypeSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *type; // Never null - now Expression instead of TypeRef
+        List<BaseExprSyntax*> parameterTypes;
+        BaseExprSyntax *returnType; // null = void
         ACCEPT_VISITOR
     };
 
-    // Type expressions (expressions that represent types in type contexts)
-    struct ArrayTypeExpr : BaseExprSyntax
+    struct GenericTypeSyntax : BaseExprSyntax
     {
-        BaseExprSyntax *baseType; // Never null - the element type expression
-        LiteralExpr *size;       // Can be null (size not type-checked), must be an integer literal if specified in the type
+        BaseExprSyntax *baseType;
+        List<BaseExprSyntax*> typeArguments;
         ACCEPT_VISITOR
     };
 
-    struct FunctionTypeExpr : BaseExprSyntax
+    struct PointerTypeSyntax : BaseExprSyntax
     {
-        List<BaseExprSyntax *> parameterTypes; // Parameter type expressions
-        BaseExprSyntax *returnType;            // null = void - return type expression
+        BaseExprSyntax *baseType;
+        ACCEPT_VISITOR
+    };
+    #pragma endregion
+
+    #pragma region Statements
+    struct BlockSyntax : BaseStmtSyntax
+    {
+        List<BaseStmtSyntax*> statements;
         ACCEPT_VISITOR
     };
 
-    struct GenericTypeExpr : BaseExprSyntax
+    struct IfStmtSyntax : BaseStmtSyntax
     {
-        BaseExprSyntax *baseType;               // The generic type (e.g., Array, Optional)
-        List<BaseExprSyntax *> typeArguments;  // The type arguments (e.g., i32, String)
-        ACCEPT_VISITOR
-    };
-
-    struct PointerTypeExpr : BaseExprSyntax
-    {
-        BaseExprSyntax *baseType; // Never null
-        ACCEPT_VISITOR
-    };
-
-    // Single block type for both statements and expressions
-    struct Block : BaseStmtSyntax
-    {
-        List<BaseStmtSyntax *> statements;
-        ACCEPT_VISITOR
-    };
-
-    struct IfStmt : BaseStmtSyntax
-    {
-        BaseExprSyntax *condition; // Never null
-        BaseStmtSyntax *thenBranch; // Never null (usually Block)
+        BaseExprSyntax *condition;
+        BaseStmtSyntax *thenBranch;
         BaseStmtSyntax *elseBranch; // Can be null
         ACCEPT_VISITOR
     };
 
-    // ============================================================================
-    // --- Statements ---
-    // ============================================================================
-
-    struct ExpressionStmt : BaseStmtSyntax
+    struct WhileStmtSyntax : BaseStmtSyntax
     {
-        BaseExprSyntax *expression; // Never null
+        BaseExprSyntax *condition;
+        BaseStmtSyntax *body;
         ACCEPT_VISITOR
     };
 
-    struct ReturnStmt : BaseStmtSyntax
+    struct ForStmtSyntax : BaseStmtSyntax
+    {
+        BaseStmtSyntax *initializer; // Can be null
+        BaseExprSyntax *condition;   // Can be null (infinite loop)
+        List<BaseExprSyntax*> updates;
+        BaseStmtSyntax *body;
+        ACCEPT_VISITOR
+    };
+
+    struct ReturnStmtSyntax : BaseStmtSyntax
     {
         BaseExprSyntax *value; // Can be null (void return)
         ACCEPT_VISITOR
     };
 
-    struct BreakStmt : BaseStmtSyntax
+    struct BreakStmtSyntax : BaseStmtSyntax
     {
         ACCEPT_VISITOR
     };
 
-    struct ContinueStmt : BaseStmtSyntax
+    struct ContinueStmtSyntax : BaseStmtSyntax
     {
         ACCEPT_VISITOR
     };
 
-    struct WhileStmt : BaseStmtSyntax
+    struct ExpressionStmtSyntax : BaseStmtSyntax
     {
-        BaseExprSyntax *condition; // Never null
-        BaseStmtSyntax *body;       // Never null (usually Block)
+        BaseExprSyntax *expression;
         ACCEPT_VISITOR
     };
 
-    struct ForStmt : BaseStmtSyntax
-    {
-        BaseStmtSyntax *initializer; // Can be null
-        BaseExprSyntax *condition;  // Can be null (infinite loop)
-        List<BaseExprSyntax *> updates;
-        BaseStmtSyntax *body; // Never null
-        ACCEPT_VISITOR
-    };
-
-    struct UsingDirective : BaseStmtSyntax
+    struct UsingDirectiveSyntax : BaseStmtSyntax
     {
         enum class Kind
         {
@@ -482,89 +481,93 @@ namespace Bryo
         };
 
         Kind kind;
-        BaseExprSyntax *target; // The imported name (was path) - now uniform Expression
+        BaseExprSyntax *target; // The imported namespace/type
 
         // For alias only
         IdentifierNameSyntax *alias = nullptr;
-        BaseExprSyntax *aliasedType = nullptr; // Now Expression instead of TypeRef
+        BaseExprSyntax *aliasedType = nullptr;
         ACCEPT_VISITOR
     };
 
-    // ============================================================================
-    // --- Declarations ---
-    // ============================================================================
-
-    // Regular local variable: var x = 5;
-    struct VariableDecl : BaseDeclSyntax
+    struct MissingSyntax : BaseStmtSyntax
     {
-        TypedIdentifier *variable; // Never null
-        BaseExprSyntax *initializer;   // Can be null
+        std::string message;
+        List<BaseSyntax*> partialNodes;
         ACCEPT_VISITOR
     };
+    #pragma endregion
 
-    // Property declaration: combines a variable with accessors
-    struct PropertyDecl : BaseDeclSyntax
+    #pragma region Declarations
+    struct VariableDeclSyntax : BaseDeclSyntax
     {
-        VariableDecl *variable;        // Never null - the underlying variable
-        PropertyAccessor *getter;      // null = auto-generated get accessor
-        PropertyAccessor *setter;      // null = no setter (read-only)
+        TypedIdentifier *variable;
+        BaseExprSyntax *initializer; // Can be null
         ACCEPT_VISITOR
     };
 
-    struct ParameterDecl : BaseDeclSyntax
+    struct PropertyDeclSyntax : BaseDeclSyntax
     {
-        TypedIdentifier *param;   // Never null
-        BaseExprSyntax *defaultValue; // Can be null
+        VariableDeclSyntax *variable;      // The underlying variable
+        PropertyAccessorSyntax *getter;     // null = auto-generated
+        PropertyAccessorSyntax *setter;     // null = no setter (read-only)
         ACCEPT_VISITOR
     };
 
-    struct FunctionDecl : BaseDeclSyntax
-    {
-        IdentifierNameSyntax *name; // Never null
-        List<TypeParameterDecl *> typeParameters;
-        List<ParameterDecl *> parameters;
-        BaseExprSyntax *returnType;      // null = void - now Expression instead of TypeRef
-        Block *body;                 // Can be null (abstract)
-        SymbolHandle functionSymbol; // Unique ID for this function scope
-        ACCEPT_VISITOR
-    };
-
-    struct ConstructorDecl : BaseDeclSyntax
-    {
-        // No name field - constructors are always "new"
-        List<ParameterDecl *> parameters;
-        Block *body; // Never null
-        ACCEPT_VISITOR
-    };
-
-    struct PropertyAccessor : BaseSyntax
+    struct PropertyAccessorSyntax : BaseSyntax
     {
         enum class Kind
         {
             Get,
             Set
         };
+        
         Kind kind;
         ModifierKindFlags modifiers;
 
         // Body representation
         std::variant<
-            std::monostate, // Default/auto-implemented
-            BaseExprSyntax *,   // Expression-bodied: => expr
-            Block *         // Block-bodied: { ... }
-            >
-            body;
+            std::monostate,     // Default/auto-implemented
+            BaseExprSyntax*,    // Expression-bodied: => expr
+            BlockSyntax*        // Block-bodied: { ... }
+        > body;
+        
         ACCEPT_VISITOR
     };
 
-    struct EnumCaseDecl : BaseDeclSyntax
+    struct ParameterDeclSyntax : BaseDeclSyntax
     {
-        IdentifierNameSyntax *name;                     // Never null
-        List<ParameterDecl *> associatedData; // Can be empty
+        TypedIdentifier *param;
+        BaseExprSyntax *defaultValue; // Can be null
         ACCEPT_VISITOR
     };
 
-    struct TypeDecl : BaseDeclSyntax
+    struct FunctionDeclSyntax : BaseDeclSyntax
+    {
+        IdentifierNameSyntax *name;
+        List<TypeParameterDeclSyntax*> typeParameters;
+        List<ParameterDeclSyntax*> parameters;
+        BaseExprSyntax *returnType; // null = void
+        BlockSyntax *body;          // Can be null (abstract)
+        SymbolHandle functionSymbol;
+        ACCEPT_VISITOR
+    };
+
+    struct ConstructorDeclSyntax : BaseDeclSyntax
+    {
+        // No name field - constructors are always "new"
+        List<ParameterDeclSyntax*> parameters;
+        BlockSyntax *body;
+        ACCEPT_VISITOR
+    };
+
+    struct EnumCaseDeclSyntax : BaseDeclSyntax
+    {
+        IdentifierNameSyntax *name;
+        List<ParameterDeclSyntax*> associatedData; // Can be empty
+        ACCEPT_VISITOR
+    };
+
+    struct TypeDeclSyntax : BaseDeclSyntax
     {
         enum class Kind
         {
@@ -574,447 +577,434 @@ namespace Bryo
             Enum        // enum
         };
 
-        IdentifierNameSyntax *name; // Never null
+        IdentifierNameSyntax *name;
         Kind kind;
-        List<TypeParameterDecl *> typeParameters;
-        List<BaseExprSyntax *> baseTypes; // Now Expression instead of TypeRef
-        List<BaseDeclSyntax *> members;
+        List<TypeParameterDeclSyntax*> typeParameters;
+        List<BaseExprSyntax*> baseTypes;
+        List<BaseDeclSyntax*> members;
         ACCEPT_VISITOR
     };
 
-    struct TypeParameterDecl : BaseDeclSyntax
+    struct TypeParameterDeclSyntax : BaseDeclSyntax
     {
-        IdentifierNameSyntax *name; // Never null - the type parameter name (T, U, etc.)
+        IdentifierNameSyntax *name; // The type parameter name (T, U, etc.)
         // Future: constraints can be added here
         ACCEPT_VISITOR
     };
 
-    struct NamespaceDecl : BaseDeclSyntax
+    struct NamespaceDeclSyntax : BaseDeclSyntax
     {
-        BaseExprSyntax *name; // Never null - now uniform Expression instead of path
+        BaseExprSyntax *name; // The namespace name
         bool isFileScoped;
-        std::optional<List<BaseStmtSyntax *>> body; // nullopt for file-scoped
+        std::optional<List<BaseStmtSyntax*>> body; // nullopt for file-scoped
         ACCEPT_VISITOR
     };
+    #pragma endregion
 
-    // ============================================================================
-    // --- Type System (Removed - types are now expressions) ---
-    // ============================================================================
-
-    // ============================================================================
-    // --- Root Node ---
-    // ============================================================================
-
-    struct CompilationUnit : BaseSyntax
+    #pragma region Root Node
+    struct CompilationUnitSyntax : BaseSyntax
     {
-        List<BaseStmtSyntax *> topLevelStatements;
+        List<BaseStmtSyntax*> topLevelStatements;
         ACCEPT_VISITOR
     };
+    #pragma endregion
 
-    // ============================================================================
-    // --- Default Visitor (with automatic traversal) ---
-    // ============================================================================
-
+    #pragma region Default Visitor
     class DefaultVisitor : public Visitor
     {
     public:
-        // Base type visit implementations - override these for uniform handling
+        // Base type visit implementations
         void visit(BaseSyntax *node) override { /* default: do nothing */ }
-        void visit(BaseExprSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
-        void visit(BaseStmtSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
-        void visit(BaseDeclSyntax *node) override { visit(static_cast<BaseStmtSyntax *>(node)); }
+        void visit(BaseExprSyntax *node) override { visit(static_cast<BaseSyntax*>(node)); }
+        void visit(BaseStmtSyntax *node) override { visit(static_cast<BaseSyntax*>(node)); }
+        void visit(BaseDeclSyntax *node) override { visit(static_cast<BaseStmtSyntax*>(node)); }
 
-        // Default implementations that traverse children
-        void visit(IdentifierNameSyntax *node) override { visit(static_cast<BaseSyntax *>(node)); }
-
-        void visit(TypedIdentifier *node) override
+        // Names
+        void visit(IdentifierNameSyntax *node) override
         {
-            visit(static_cast<BaseSyntax *>(node));
-            if (node->name)
-                node->name->accept(this);
-            if (node->type)
-                node->type->accept(this);
-        }
-
-        void visit(ErrorExpression *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            for (auto partial : node->partialNodes)
-            {
-                if (partial)
-                    partial->accept(this);
-            }
-        }
-
-        void visit(ErrorStatement *node) override
-        {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            for (auto partial : node->partialNodes)
-            {
-                if (partial)
-                    partial->accept(this);
-            }
-        }
-
-        void visit(LiteralExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-        }
-
-        void visit(ArrayLiteralExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            for (auto elem : node->elements)
-            {
-                elem->accept(this);
-            }
-        }
-
-        void visit(NameExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            if (node->name)
-                node->name->accept(this);
-        }
-
-        void visit(UnaryExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->operand->accept(this);
-        }
-
-        void visit(BinaryExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->left->accept(this);
-            node->right->accept(this);
-        }
-
-        void visit(AssignmentExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->target->accept(this);
-            node->value->accept(this);
-        }
-
-        void visit(CallExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->callee->accept(this);
-            for (auto arg : node->arguments)
-            {
-                arg->accept(this);
-            }
+            visit(static_cast<NameSyntax*>(node));
         }
 
         void visit(QualifiedNameSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->object->accept(this);
-            node->member->accept(this);
+            visit(static_cast<NameSyntax*>(node));
+            if (node->left) node->left->accept(this);
+            if (node->right) node->right->accept(this);
         }
 
-        void visit(IndexerExpr *node) override
+        void visit(GenericNameSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->object->accept(this);
-            node->index->accept(this);
+            visit(static_cast<NameSyntax*>(node));
+            if (node->name) node->name->accept(this);
+            for (auto arg : node->typeArguments)
+            {
+                if (arg) arg->accept(this);
+            }
         }
 
-        void visit(CastExpr *node) override
+        // Supporting nodes
+        void visit(TypedIdentifier *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->targetType->accept(this);
-            node->expression->accept(this);
+            visit(static_cast<BaseSyntax*>(node));
+            if (node->name) node->name->accept(this);
+            if (node->type) node->type->accept(this);
         }
 
-        void visit(NewExpr *node) override
+        void visit(PropertyAccessorSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->type->accept(this);
+            visit(static_cast<BaseSyntax*>(node));
+            if (auto expr = std::get_if<BaseExprSyntax*>(&node->body))
+            {
+                if (*expr) (*expr)->accept(this);
+            }
+            else if (auto block = std::get_if<BlockSyntax*>(&node->body))
+            {
+                if (*block) (*block)->accept(this);
+            }
+        }
+
+        // Expressions
+        void visit(LiteralExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+        }
+
+        void visit(ArrayLiteralExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            for (auto elem : node->elements)
+            {
+                if (elem) elem->accept(this);
+            }
+        }
+
+        void visit(NameExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->name) node->name->accept(this);
+        }
+
+        void visit(ThisExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+        }
+
+        void visit(ParenthesizedExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->expression) node->expression->accept(this);
+        }
+
+        void visit(UnaryExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->operand) node->operand->accept(this);
+        }
+
+        void visit(BinaryExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->left) node->left->accept(this);
+            if (node->right) node->right->accept(this);
+        }
+
+        void visit(AssignmentExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->target) node->target->accept(this);
+            if (node->value) node->value->accept(this);
+        }
+
+        void visit(ConditionalExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->condition) node->condition->accept(this);
+            if (node->thenExpr) node->thenExpr->accept(this);
+            if (node->elseExpr) node->elseExpr->accept(this);
+        }
+
+        void visit(MemberAccessExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->object) node->object->accept(this);
+            if (node->member) node->member->accept(this);
+        }
+
+        void visit(IndexerExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->object) node->object->accept(this);
+            if (node->index) node->index->accept(this);
+        }
+
+        void visit(CallExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->callee) node->callee->accept(this);
             for (auto arg : node->arguments)
             {
-                arg->accept(this);
+                if (arg) arg->accept(this);
             }
         }
 
-        void visit(ThisExpr *node) override
+        void visit(NewExprSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->type) node->type->accept(this);
+            for (auto arg : node->arguments)
+            {
+                if (arg) arg->accept(this);
+            }
         }
 
-        void visit(LambdaExpr *node) override
+        void visit(CastExprSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->targetType) node->targetType->accept(this);
+            if (node->expression) node->expression->accept(this);
+        }
+
+        void visit(LambdaExprSyntax *node) override
+        {
+            visit(static_cast<BaseExprSyntax*>(node));
             for (auto param : node->parameters)
             {
-                param->accept(this);
+                if (param) param->accept(this);
             }
-            if (node->body)
-                node->body->accept(this);
+            if (node->body) node->body->accept(this);
         }
 
-        void visit(ConditionalExpr *node) override
+        void visit(TypeOfExprSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->condition->accept(this);
-            node->thenExpr->accept(this);
-            node->elseExpr->accept(this);
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->type) node->type->accept(this);
         }
 
-        void visit(TypeOfExpr *node) override
+        void visit(SizeOfExprSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->type->accept(this);
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->type) node->type->accept(this);
         }
 
-        void visit(SizeOfExpr *node) override
+        // Type expressions
+        void visit(ArrayTypeSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->type->accept(this);
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->elementType) node->elementType->accept(this);
+            if (node->size) node->size->accept(this);
         }
 
-        void visit(Block *node) override
+        void visit(FunctionTypeSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            for (auto stmt : node->statements)
-            {
-                stmt->accept(this);
-            }
-        }
-
-        void visit(IfStmt *node) override
-        {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            node->condition->accept(this);
-            node->thenBranch->accept(this);
-            if (node->elseBranch)
-                node->elseBranch->accept(this);
-        }
-
-        void visit(ArrayTypeExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
-            if (node->baseType)
-                node->baseType->accept(this);
-            if (node->size)
-                node->size->accept(this);
-        }
-
-        void visit(FunctionTypeExpr *node) override
-        {
-            visit(static_cast<BaseExprSyntax *>(node));
+            visit(static_cast<BaseExprSyntax*>(node));
             for (auto paramType : node->parameterTypes)
             {
-                if (paramType)
-                    paramType->accept(this);
+                if (paramType) paramType->accept(this);
             }
-            if (node->returnType)
-                node->returnType->accept(this);
+            if (node->returnType) node->returnType->accept(this);
         }
 
-        void visit(GenericTypeExpr *node) override
+        void visit(GenericTypeSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            if (node->baseType)
-                node->baseType->accept(this);
-            for (auto typeArg : node->typeArguments)
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->baseType) node->baseType->accept(this);
+            for (auto arg : node->typeArguments)
             {
-                if (typeArg)
-                    typeArg->accept(this);
+                if (arg) arg->accept(this);
             }
         }
 
-        void visit(PointerTypeExpr *node) override
+        void visit(PointerTypeSyntax *node) override
         {
-            visit(static_cast<BaseExprSyntax *>(node));
-            node->baseType->accept(this);
+            visit(static_cast<BaseExprSyntax*>(node));
+            if (node->baseType) node->baseType->accept(this);
         }
 
-        void visit(ExpressionStmt *node) override
+        // Statements
+        void visit(BlockSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            node->expression->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            for (auto stmt : node->statements)
+            {
+                if (stmt) stmt->accept(this);
+            }
         }
 
-        void visit(ReturnStmt *node) override
+        void visit(IfStmtSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            if (node->value)
-                node->value->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->condition) node->condition->accept(this);
+            if (node->thenBranch) node->thenBranch->accept(this);
+            if (node->elseBranch) node->elseBranch->accept(this);
         }
 
-        void visit(BreakStmt *node) override
+        void visit(WhileStmtSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->condition) node->condition->accept(this);
+            if (node->body) node->body->accept(this);
         }
 
-        void visit(ContinueStmt *node) override
+        void visit(ForStmtSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
-        }
-
-        void visit(WhileStmt *node) override
-        {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            node->condition->accept(this);
-            node->body->accept(this);
-        }
-
-        void visit(ForStmt *node) override
-        {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            if (node->initializer)
-                node->initializer->accept(this);
-            if (node->condition)
-                node->condition->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->initializer) node->initializer->accept(this);
+            if (node->condition) node->condition->accept(this);
             for (auto update : node->updates)
             {
-                update->accept(this);
+                if (update) update->accept(this);
             }
-            node->body->accept(this);
+            if (node->body) node->body->accept(this);
         }
 
-        void visit(UsingDirective *node) override
+        void visit(ReturnStmtSyntax *node) override
         {
-            visit(static_cast<BaseStmtSyntax *>(node));
-            if (node->target)
-                node->target->accept(this);
-            if (node->alias)
-                node->alias->accept(this);
-            if (node->aliasedType)
-                node->aliasedType->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->value) node->value->accept(this);
         }
 
-        void visit(VariableDecl *node) override
+        void visit(BreakStmtSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->variable->accept(this);
-            if (node->initializer)
-                node->initializer->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
         }
 
-        void visit(PropertyDecl *node) override
+        void visit(ContinueStmtSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->variable->accept(this);
-            if (node->getter)
-                node->getter->accept(this);
-            if (node->setter)
-                node->setter->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
         }
 
-        void visit(ParameterDecl *node) override
+        void visit(ExpressionStmtSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->param->accept(this);
-            if (node->defaultValue)
-                node->defaultValue->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->expression) node->expression->accept(this);
         }
 
-        void visit(FunctionDecl *node) override
+        void visit(UsingDirectiveSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->name->accept(this);
+            visit(static_cast<BaseStmtSyntax*>(node));
+            if (node->target) node->target->accept(this);
+            if (node->alias) node->alias->accept(this);
+            if (node->aliasedType) node->aliasedType->accept(this);
+        }
+
+        void visit(MissingSyntax *node) override
+        {
+            visit(static_cast<BaseStmtSyntax*>(node));
+            for (auto partial : node->partialNodes)
+            {
+                if (partial) partial->accept(this);
+            }
+        }
+
+        // Declarations
+        void visit(VariableDeclSyntax *node) override
+        {
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->variable) node->variable->accept(this);
+            if (node->initializer) node->initializer->accept(this);
+        }
+
+        void visit(PropertyDeclSyntax *node) override
+        {
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->variable) node->variable->accept(this);
+            if (node->getter) node->getter->accept(this);
+            if (node->setter) node->setter->accept(this);
+        }
+
+        void visit(ParameterDeclSyntax *node) override
+        {
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->param) node->param->accept(this);
+            if (node->defaultValue) node->defaultValue->accept(this);
+        }
+
+        void visit(FunctionDeclSyntax *node) override
+        {
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->name) node->name->accept(this);
             for (auto typeParam : node->typeParameters)
             {
-                if (typeParam)
-                    typeParam->accept(this);
+                if (typeParam) typeParam->accept(this);
             }
             for (auto param : node->parameters)
             {
-                param->accept(this);
+                if (param) param->accept(this);
             }
-            if (node->returnType)
-                node->returnType->accept(this);
-            if (node->body)
-                node->body->accept(this);
+            if (node->returnType) node->returnType->accept(this);
+            if (node->body) node->body->accept(this);
         }
 
-        void visit(ConstructorDecl *node) override
+        void visit(ConstructorDeclSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
+            visit(static_cast<BaseDeclSyntax*>(node));
             for (auto param : node->parameters)
             {
-                param->accept(this);
+                if (param) param->accept(this);
             }
-            node->body->accept(this);
+            if (node->body) node->body->accept(this);
         }
 
-        void visit(PropertyAccessor *node) override
+        void visit(EnumCaseDeclSyntax *node) override
         {
-            visit(static_cast<BaseSyntax *>(node));
-            if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
-            {
-                (*expr)->accept(this);
-            }
-            else if (auto block = std::get_if<Block *>(&node->body))
-            {
-                (*block)->accept(this);
-            }
-        }
-
-        void visit(EnumCaseDecl *node) override
-        {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->name->accept(this);
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->name) node->name->accept(this);
             for (auto data : node->associatedData)
             {
-                data->accept(this);
+                if (data) data->accept(this);
             }
         }
 
-        void visit(TypeDecl *node) override
+        void visit(TypeDeclSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            node->name->accept(this);
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->name) node->name->accept(this);
             for (auto typeParam : node->typeParameters)
             {
-                if (typeParam)
-                    typeParam->accept(this);
+                if (typeParam) typeParam->accept(this);
             }
             for (auto base : node->baseTypes)
             {
-                base->accept(this);
+                if (base) base->accept(this);
             }
             for (auto member : node->members)
             {
-                member->accept(this);
+                if (member) member->accept(this);
             }
         }
 
-        void visit(TypeParameterDecl *node) override
+        void visit(TypeParameterDeclSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            if (node->name)
-                node->name->accept(this);
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->name) node->name->accept(this);
         }
 
-        void visit(NamespaceDecl *node) override
+        void visit(NamespaceDeclSyntax *node) override
         {
-            visit(static_cast<BaseDeclSyntax *>(node));
-            if (node->name)
-                node->name->accept(this);
+            visit(static_cast<BaseDeclSyntax*>(node));
+            if (node->name) node->name->accept(this);
             if (node->body)
             {
                 for (auto stmt : *node->body)
                 {
-                    stmt->accept(this);
+                    if (stmt) stmt->accept(this);
                 }
             }
         }
 
-        void visit(CompilationUnit *node) override
+        void visit(CompilationUnitSyntax *node) override
         {
-            visit(static_cast<BaseSyntax *>(node));
+            visit(static_cast<BaseSyntax*>(node));
             for (auto stmt : node->topLevelStatements)
             {
-                stmt->accept(this);
+                if (stmt) stmt->accept(this);
             }
         }
     };
+    #pragma endregion
 
-    // Implementation of Node::accept (needed for base case)
+    #pragma region Implementation Details
+    // Implementation of BaseSyntax::accept (needed for base case)
     inline void BaseSyntax::accept(Visitor *visitor)
     {
         visitor->visit(this);
@@ -1028,17 +1018,18 @@ namespace Bryo
 
     inline void Visitor::visit(BaseExprSyntax *node)
     {
-        visit(static_cast<BaseSyntax *>(node));
+        visit(static_cast<BaseSyntax*>(node));
     }
 
     inline void Visitor::visit(BaseStmtSyntax *node)
     {
-        visit(static_cast<BaseSyntax *>(node));
+        visit(static_cast<BaseSyntax*>(node));
     }
 
     inline void Visitor::visit(BaseDeclSyntax *node)
     {
-        visit(static_cast<BaseStmtSyntax *>(node));
+        visit(static_cast<BaseStmtSyntax*>(node));
     }
+    #pragma endregion
 
 } // namespace Bryo

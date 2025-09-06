@@ -78,7 +78,7 @@ namespace Bryo
         errors.push_back({msg, tokens.current().location, ParseError::WARNING});
     }
 
-    ErrorExpression *Parser::errorExpr(const std::string &msg)
+    MissingSyntax *Parser::errorExpr(const std::string &msg)
     {
         error(msg);
         auto err = arena.makeErrorExpr(msg);
@@ -86,7 +86,7 @@ namespace Bryo
         return err;
     }
 
-    ErrorStatement *Parser::errorStmt(const std::string &msg)
+    MissingSyntax *Parser::errorStmt(const std::string &msg)
     {
         error(msg);
         auto err = arena.makeErrorStmt(msg);

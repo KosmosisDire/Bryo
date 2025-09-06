@@ -117,8 +117,8 @@ namespace Bryo
             if (node->name)
                 node->name->accept(this);
         }
-        void visit(ErrorExpression *node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
-        void visit(ErrorStatement *node) override
+        void visit(MissingSyntax *node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
+        void visit(MissingSyntax *node) override
         {
             emit_indent();
             emit("[ERROR: " + std::string(node->message) + "]");

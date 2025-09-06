@@ -108,17 +108,17 @@ namespace Bryo
             return id;
         }
 
-        ErrorExpression *makeErrorExpr(std::string message)
+        MissingSyntax *makeErrorExpr(std::string message)
         {
-            auto error = make<ErrorExpression>();
+            auto error = make<MissingSyntax>();
             error->message = message;
             error->partialNodes = {};
             return error;
         }
 
-        ErrorStatement *makeErrorStmt(std::string message)
+        MissingSyntax *makeErrorStmt(std::string message)
         {
-            auto error = make<ErrorStatement>();
+            auto error = make<MissingSyntax>();
             error->message = message;
             error->partialNodes = {};
             return error;

@@ -51,8 +51,8 @@ private:
     // ================== Error Handling ==================
     void error(const std::string& msg);
     void warning(const std::string& msg);
-    ErrorExpression* errorExpr(const std::string& msg);
-    ErrorStatement* errorStmt(const std::string& msg);
+    MissingSyntax* errorExpr(const std::string& msg);
+    MissingSyntax* errorStmt(const std::string& msg);
     void synchronize();
 
     // ================== Context Management ==================

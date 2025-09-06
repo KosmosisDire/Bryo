@@ -87,8 +87,8 @@ namespace Bryo
 
         // --- Building Blocks & Errors ---
         void visit(IdentifierNameSyntax *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
-        void visit(ErrorExpression *node) override { leaf(node, "ErrorExpression", " (\"" + std::string(node->message) + "\")"); }
-        void visit(ErrorStatement *node) override { leaf(node, "ErrorStatement", " (\"" + std::string(node->message) + "\")"); }
+        void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
+        void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
         void visit(TypedIdentifier *node) override;
 
         // --- Expressions ---

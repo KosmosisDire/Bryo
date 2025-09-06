@@ -284,11 +284,11 @@ namespace Bryo
             {
                 trivia.push_back(scan_newline());
             }
-            else if (ch == '/' && peek_char() == '/')
+            else if (ch == '-' && peek_char() == '-')
             {
                 trivia.push_back(scan_line_comment());
             }
-            else if (ch == '/' && peek_char() == '*')
+            else if (ch == '-' && peek_char() == '-' && peek_char(2) == '-')
             {
                 trivia.push_back(scan_block_comment());
             }
@@ -389,8 +389,8 @@ namespace Bryo
     {
         size_t start = current_offset_;
 
-        // Skip "/*"
-        advance_chars(2);
+        // Skip "---"
+        advance_chars(3);
 
         // Check if this is a doc comment "/**"
         bool is_doc = !at_end() && current_char() == '*';

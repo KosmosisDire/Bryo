@@ -173,8 +173,8 @@ namespace Bryo
         void visit(IdentifierNameSyntax *node) override;
 
         // Errors
-        void visit(ErrorExpression *node) override;
-        void visit(ErrorStatement *node) override;
+        void visit(MissingSyntax *node) override;
+        void visit(MissingSyntax *node) override;
 
         // --- Unimplemented visitors will be caught by the base overrides ---
         void visit(TypedIdentifier *n) override {}

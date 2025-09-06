@@ -2930,7 +2930,7 @@ namespace Bryo
     void CodeGenerator::visit(BaseExprSyntax *node) { report_error(node, "Codegen for this expression type is not yet implemented."); }
     void CodeGenerator::visit(BaseStmtSyntax *node) { report_error(node, "Codegen for this statement type is not yet implemented."); }
     void CodeGenerator::visit(BaseDeclSyntax *node) { report_error(node, "Codegen for this declaration type is not yet implemented."); }
-    void CodeGenerator::visit(ErrorExpression *node)
+    void CodeGenerator::visit(MissingSyntax *node)
     {
         if (node)
         {
@@ -2938,7 +2938,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ErrorStatement *node)
+    void CodeGenerator::visit(MissingSyntax *node)
     {
         if (node)
         {
