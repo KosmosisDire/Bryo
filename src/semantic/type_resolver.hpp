@@ -49,7 +49,7 @@ namespace Bryo
 
         const std::vector<std::string> &get_errors() const { return errors; }
 
-        bool resolve(CompilationUnit *unit);
+        bool resolve(CompilationUnitSyntax *unit);
 
     private:
         // --- Core Unification Logic ---
@@ -58,7 +58,7 @@ namespace Bryo
         bool has_pending_constraints();
         void report_final_errors();
         void report_error(BaseSyntax *error_node, const std::string &message);
-        void update_ast_with_final_types(CompilationUnit *unit);
+        void update_ast_with_final_types(CompilationUnitSyntax *unit);
 
         // Single method that handles ALL expression annotations
         // Symbol is optional - many expressions don't have associated symbols
@@ -77,33 +77,33 @@ namespace Bryo
 
         // --- Visitor Overrides ---
         // [Keep all existing visitor declarations unchanged]
-        void visit(LiteralExpr *node) override;
-        void visit(ArrayLiteralExpr *node) override;
+        void visit(LiteralExprSyntax *node) override;
+        void visit(ArrayLiteralExprSyntax *node) override;
         void visit(NameExpr *node) override;
         void visit(BinaryExpr *node) override;
         void visit(AssignmentExpr *node) override;
         void visit(CallExpr *node) override;
         void visit(QualifiedNameSyntax *node) override;
         void visit(UnaryExpr *node) override;
-        void visit(IndexerExpr *node) override;
+        void visit(IndexerExprSyntax *node) override;
         void visit(ConditionalExpr *node) override;
         void visit(IfStmt *node) override;
         void visit(CastExpr *node) override;
         void visit(ThisExpr *node) override;
         void visit(NewExpr *node) override;
-        void visit(ReturnStmt *node) override;
-        void visit(ForStmt *node) override;
-        void visit(WhileStmt *node) override;
-        void visit(VariableDecl *node) override;
-        void visit(PropertyDecl *node) override;
-        void visit(PropertyAccessor *node) override;
-        void visit(FunctionDecl *node) override;
-        void visit(ParameterDecl *node) override;
+        void visit(ReturnStmtSyntax *node) override;
+        void visit(ForStmtSyntax *node) override;
+        void visit(WhileStmtSyntax *node) override;
+        void visit(VariableDeclSyntax *node) override;
+        void visit(PropertyDeclSyntax *node) override;
+        void visit(PropertyAccessorSyntax *node) override;
+        void visit(FunctionDeclSyntax *node) override;
+        void visit(ParameterDeclSyntax *node) override;
         void visit(TypedIdentifier *node) override;
-        void visit(TypeDecl *node) override;
+        void visit(TypeDeclSyntax *node) override;
         void visit(GenericTypeExpr *node) override;
         void visit(PointerTypeExpr *node) override;
-        void visit(TypeParameterDecl *node) override;
+        void visit(TypeParameterDeclSyntax *node) override;
 
         // --- Helper Methods ---
         TypePtr get_node_type(BaseSyntax *node);

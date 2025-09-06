@@ -70,7 +70,7 @@ namespace Bryo
         return typeSystem.get_unresolved_type();
     }
 
-    void SymbolTableBuilder::collect(CompilationUnit *unit)
+    void SymbolTableBuilder::collect(CompilationUnitSyntax *unit)
     {
         if (unit)
         {
@@ -83,7 +83,7 @@ namespace Bryo
         annotate_scope(node);
     }
 
-    void SymbolTableBuilder::visit(CompilationUnit *node)
+    void SymbolTableBuilder::visit(CompilationUnitSyntax *node)
     {
         symbolTable.enter_namespace("global");
         annotate_scope(node);
@@ -97,7 +97,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(NamespaceDecl *node)
+    void SymbolTableBuilder::visit(NamespaceDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -141,7 +141,7 @@ namespace Bryo
         // File-scoped namespaces don't exit scope
     }
 
-    void SymbolTableBuilder::visit(TypeDecl *node)
+    void SymbolTableBuilder::visit(TypeDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -173,7 +173,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
     
-    void SymbolTableBuilder::visit(FunctionDecl *node)
+    void SymbolTableBuilder::visit(FunctionDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -209,7 +209,7 @@ namespace Bryo
 
         func_symbol->set_access(AccessLevel::Public);
 
-        // Add parameters to function scope and visit ParameterDecl nodes
+        // Add parameters to function scope and visit ParameterDeclSyntax nodes
         auto parameters = std::vector<ParameterSymbol *>(node->parameters.size());
         for (size_t i = 0; i < node->parameters.size(); ++i)
         {
@@ -225,7 +225,7 @@ namespace Bryo
 
                 parameters[i] = param_symbol;
 
-                // Visit the ParameterDecl node to annotate it with scope
+                // Visit the ParameterDeclSyntax node to annotate it with scope
                 param->accept(this);
             }
         }
@@ -240,7 +240,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(VariableDecl *node)
+    void SymbolTableBuilder::visit(VariableDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -267,7 +267,7 @@ namespace Bryo
         }
     }
 
-    void SymbolTableBuilder::visit(PropertyDecl *node)
+    void SymbolTableBuilder::visit(PropertyDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -301,18 +301,18 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit_property_accessor(PropertyAccessor *accessor, TypePtr propType)
+    void SymbolTableBuilder::visit_property_accessor(PropertyAccessorSyntax *accessor, TypePtr propType)
     {
         if (!accessor)
             return;
 
         annotate_scope(accessor);
 
-        std::string kind_name = (accessor->kind == PropertyAccessor::Kind::Get) ? "get" : "set";
+        std::string kind_name = (accessor->kind == PropertyAccessorSyntax::Kind::Get) ? "get" : "set";
         auto accessor_scope = symbolTable.enter_block(kind_name + "-accessor");
 
         // For setters, add 'value' parameter
-        if (accessor->kind == PropertyAccessor::Kind::Set)
+        if (accessor->kind == PropertyAccessorSyntax::Kind::Set)
         {
             auto value_symbol = symbolTable.define_parameter("value", propType);
             if (!value_symbol)
@@ -334,7 +334,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(EnumCaseDecl *node)
+    void SymbolTableBuilder::visit(EnumCaseDeclSyntax *node)
     {
         annotate_scope(node);
 
@@ -386,7 +386,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(WhileStmt *node)
+    void SymbolTableBuilder::visit(WhileStmtSyntax *node)
     {
         annotate_scope(node);
 
@@ -410,7 +410,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(ForStmt *node)
+    void SymbolTableBuilder::visit(ForStmtSyntax *node)
     {
         annotate_scope(node);
 
@@ -475,7 +475,7 @@ namespace Bryo
         symbolTable.exit_scope();
     }
 
-    void SymbolTableBuilder::visit(ArrayTypeExpr *node)
+    void SymbolTableBuilder::visit(ArrayTypeSyntax *node)
     {
         // Call base visitor to annotate scope
         visit(static_cast<BaseExprSyntax *>(node));
@@ -524,7 +524,7 @@ namespace Bryo
         }
     }
 
-    void SymbolTableBuilder::visit(TypeParameterDecl *node)
+    void SymbolTableBuilder::visit(TypeParameterDeclSyntax *node)
     {
         annotate_scope(node);
 

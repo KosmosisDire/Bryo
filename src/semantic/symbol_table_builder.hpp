@@ -37,14 +37,14 @@ namespace Bryo
         TypePtr create_unresolved_type(BaseExprSyntax *typeExpr);
 
         // Helper for property accessors
-        void visit_property_accessor(PropertyAccessor *accessor, TypePtr propType);
+        void visit_property_accessor(PropertyAccessorSyntax *accessor, TypePtr propType);
 
     public:
         // Constructor
         explicit SymbolTableBuilder(SymbolTable &st);
 
         // Main entry point
-        void collect(CompilationUnit *unit);
+        void collect(CompilationUnitSyntax *unit);
 
         // Get collected errors
         const std::vector<std::string> &get_errors() const { return errors; }
@@ -56,27 +56,27 @@ namespace Bryo
         void visit(BaseSyntax *node) override;
 
         // Root
-        void visit(CompilationUnit *node) override;
+        void visit(CompilationUnitSyntax *node) override;
 
         // === Declarations - These create symbols ===
-        void visit(NamespaceDecl *node) override;
-        void visit(TypeDecl *node) override;
-        void visit(FunctionDecl *node) override;
-        void visit(VariableDecl *node) override;
-        void visit(PropertyDecl *node) override;
-        void visit(EnumCaseDecl *node) override;
+        void visit(NamespaceDeclSyntax *node) override;
+        void visit(TypeDeclSyntax *node) override;
+        void visit(FunctionDeclSyntax *node) override;
+        void visit(VariableDeclSyntax *node) override;
+        void visit(PropertyDeclSyntax *node) override;
+        void visit(EnumCaseDeclSyntax *node) override;
 
         // === Statements with scopes ===
         void visit(Block *node) override;
-        void visit(WhileStmt *node) override;
-        void visit(ForStmt *node) override;
+        void visit(WhileStmtSyntax *node) override;
+        void visit(ForStmtSyntax *node) override;
         void visit(IfStmt *node) override;
 
         // === Type expressions ===
-        void visit(ArrayTypeExpr *node) override;
+        void visit(ArrayTypeSyntax *node) override;
         void visit(GenericTypeExpr *node) override;
         void visit(PointerTypeExpr *node) override;
-        void visit(TypeParameterDecl *node) override;
+        void visit(TypeParameterDeclSyntax *node) override;
     };
 
 } // namespace Bryo

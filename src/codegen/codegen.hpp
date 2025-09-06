@@ -87,7 +87,7 @@ namespace Bryo
         llvm::Type *get_llvm_type(TypePtr type);
         void push_value(llvm::Value *val);
         llvm::Value *pop_value();
-        llvm::Value *create_constant(LiteralExpr *literal);
+        llvm::Value *create_constant(LiteralExprSyntax *literal);
         void ensure_terminator();
         Scope *get_containing_scope(BaseSyntax *node);
         Symbol *get_expression_symbol(BaseExprSyntax *expr);
@@ -119,7 +119,7 @@ namespace Bryo
         void declare_all_types_in_scope(Scope *scope);
         void declare_all_functions_in_scope(Scope *scope);
         llvm::Function *declare_function_from_symbol(FunctionSymbol *func_symbol);
-        void generate_property_getter(PropertyDecl *prop_decl, TypeSymbol *type_symbol, llvm::StructType *struct_type);
+        void generate_property_getter(PropertyDeclSyntax *prop_decl, TypeSymbol *type_symbol, llvm::StructType *struct_type);
 
     public:
         CodeGenerator(SymbolTable &st, const std::string &module_name, llvm::LLVMContext *ctx)
@@ -131,11 +131,11 @@ namespace Bryo
 
         // === Main API ===
 
-        std::unique_ptr<llvm::Module> generate(CompilationUnit *unit);
+        std::unique_ptr<llvm::Module> generate(CompilationUnitSyntax *unit);
         void declare_all_functions();
         void declare_all_types();
         void generate_builtin_functions();
-        void generate_definitions(CompilationUnit *unit);
+        void generate_definitions(CompilationUnitSyntax *unit);
         std::unique_ptr<llvm::Module> release_module() { return std::move(module); }
         const std::vector<CodeGenError> &get_errors() const { return errors; }
 
@@ -147,20 +147,20 @@ namespace Bryo
         void visit(BaseDeclSyntax *node) override;
 
         // Root
-        void visit(CompilationUnit *node) override;
+        void visit(CompilationUnitSyntax *node) override;
 
         // Declarations
-        void visit(NamespaceDecl *node) override;
-        void visit(TypeDecl *node) override;
-        void visit(FunctionDecl *node) override;
-        void visit(VariableDecl *node) override;
-        void visit(PropertyDecl *node) override;
-        void visit(ParameterDecl *node) override;
+        void visit(NamespaceDeclSyntax *node) override;
+        void visit(TypeDeclSyntax *node) override;
+        void visit(FunctionDeclSyntax *node) override;
+        void visit(VariableDeclSyntax *node) override;
+        void visit(PropertyDeclSyntax *node) override;
+        void visit(ParameterDeclSyntax *node) override;
 
         // Statements
         void visit(Block *node) override;
-        void visit(ExpressionStmt *node) override;
-        void visit(ReturnStmt *node) override;
+        void visit(ExpressionStmtSyntax *node) override;
+        void visit(ReturnStmtSyntax *node) override;
 
         // Expressions
         void visit(BinaryExpr *node) override;
@@ -168,9 +168,9 @@ namespace Bryo
         void visit(AssignmentExpr *node) override;
         void visit(CallExpr *node) override;
         void visit(NameExpr *node) override;
-        void visit(LiteralExpr *node) override;
+        void visit(LiteralExprSyntax *node) override;
         void visit(NewExpr *node) override;
-        void visit(IdentifierNameSyntax *node) override;
+        void visit(SimpleNameExprSyntax *node) override;
 
         // Errors
         void visit(MissingSyntax *node) override;
@@ -178,9 +178,9 @@ namespace Bryo
 
         // --- Unimplemented visitors will be caught by the base overrides ---
         void visit(TypedIdentifier *n) override {}
-        void visit(ArrayLiteralExpr *n) override;
+        void visit(ArrayLiteralExprSyntax *n) override;
         void visit(QualifiedNameSyntax *n) override;
-        void visit(IndexerExpr *n) override;
+        void visit(IndexerExprSyntax *n) override;
         void visit(CastExpr *n) override;
         void visit(ThisExpr *n) override;
         void visit(LambdaExpr *n) override;
@@ -188,21 +188,21 @@ namespace Bryo
         void visit(TypeOfExpr *n) override;
         void visit(SizeOfExpr *n) override;
         void visit(IfStmt *n) override;
-        void visit(BreakStmt *n) override;
-        void visit(ContinueStmt *n) override;
-        void visit(WhileStmt *n) override;
-        void visit(ForStmt *n) override;
-        void visit(UsingDirective *n) override;
-        void visit(ConstructorDecl *n) override;
-        void visit(PropertyAccessor *n) override;
-        void visit(EnumCaseDecl *n) override;
+        void visit(BreakStmtSyntax *n) override;
+        void visit(ContinueStmtSyntax *n) override;
+        void visit(WhileStmtSyntax *n) override;
+        void visit(ForStmtSyntax *n) override;
+        void visit(UsingDirectiveSyntax *n) override;
+        void visit(ConstructorDeclSyntax *n) override;
+        void visit(PropertyAccessorSyntax *n) override;
+        void visit(EnumCaseDeclSyntax *n) override;
 
         // Type expressions (now regular expressions) - treated as regular expressions
-        void visit(ArrayTypeExpr *n) override;
+        void visit(ArrayTypeSyntax *n) override;
         void visit(FunctionTypeExpr *n) override;
         void visit(GenericTypeExpr *n) override;
         void visit(PointerTypeExpr *n) override;
-        void visit(TypeParameterDecl *n) override;
+        void visit(TypeParameterDeclSyntax *n) override;
     };
 
 } // namespace Bryo

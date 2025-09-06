@@ -18,7 +18,7 @@ public:
     ~Parser();
 
     // Main entry point
-    CompilationUnit* parse();
+    CompilationUnitSyntax* parse();
 
     // Error tracking
     struct ParseError {
@@ -51,8 +51,8 @@ private:
     // ================== Error Handling ==================
     void error(const std::string& msg);
     void warning(const std::string& msg);
-    MissingSyntax* errorExpr(const std::string& msg);
-    MissingSyntax* errorStmt(const std::string& msg);
+    MissingExprSyntax* errorExpr(const std::string& msg);
+    MissingStmtSyntax* errorStmt(const std::string& msg);
     void synchronize();
 
     // ================== Context Management ==================
@@ -99,28 +99,28 @@ private:
     bool checkDeclarationStart();
     BaseDeclSyntax* parseDeclaration();
     ModifierKindFlags parseModifiers();
-    TypeDecl* parseTypeDecl(ModifierKindFlags modifiers, const Token& startToken);
-    EnumCaseDecl* parseEnumCase();
-    FunctionDecl* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
-    ConstructorDecl* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
+    TypeDeclSyntax* parseTypeDecl(ModifierKindFlags modifiers, const Token& startToken);
+    EnumCaseDeclSyntax* parseEnumCase();
+    FunctionDeclSyntax* parseFunctionDecl(ModifierKindFlags modifiers, const Token& startToken);
+    ConstructorDeclSyntax* parseConstructorDecl(ModifierKindFlags modifiers, const Token& startToken);
     BaseDeclSyntax* parseVarDeclaration(ModifierKindFlags modifiers, const Token& startToken);
     BaseExprSyntax* convertToArrayTypeIfNeeded(BaseExprSyntax* expr);
     std::vector<BaseDeclSyntax*> parseTypedMemberDeclarations(ModifierKindFlags modifiers, BaseExprSyntax* type, const Token& startToken);
-    void parsePropertyAccessors(PropertyDecl* prop);
-    NamespaceDecl* parseNamespaceDecl(const Token& startToken);
+    void parsePropertyAccessorSyntaxs(PropertyDeclSyntax* prop);
+    NamespaceDeclSyntax* parseNamespaceDecl(const Token& startToken);
 
     // ================== Statements ==================
     BaseStmtSyntax* parseStatement();
-    Block* parseBlock();
+    BlockSyntax* parseBlock();
     BaseStmtSyntax* parseIfStatement();
-    WhileStmt* parseWhileStatement();
+    WhileStmtSyntax* parseWhileStatement();
     BaseStmtSyntax* parseForStatement();
-    ForStmt* parseTraditionalForStatement();
-    ReturnStmt* parseReturnStatement();
-    BreakStmt* parseBreakStatement();
-    ContinueStmt* parseContinueStatement();
-    ExpressionStmt* parseExpressionStatement();
-    UsingDirective* parseUsingDirective();
+    ForStmtSyntax* parseTraditionalForStatement();
+    ReturnStmtSyntax* parseReturnStatement();
+    BreakStmtSyntax* parseBreakStatement();
+    ContinueStmtSyntax* parseContinueStatement();
+    ExpressionStmtSyntax* parseExpressionStatement();
+    UsingDirectiveSyntax* parseUsingDirective();
 
     // ================== Expressions (Precedence Climbing) ==================
     BaseExprSyntax* parseExpression(int minPrecedence = 0);
@@ -128,7 +128,7 @@ private:
     BaseExprSyntax* parsePrimaryExpression();
     BaseExprSyntax* parsePostfixExpression(BaseExprSyntax* expr);
     BaseExprSyntax* parseUnaryExpression();
-    LiteralExpr* parseLiteral();
+    LiteralExprSyntax* parseLiteral();
     BaseExprSyntax* parseNameExpression();
     List<BaseExprSyntax *> parseGenericArgs();
     BaseExprSyntax* parseTypeExpression();
@@ -140,10 +140,10 @@ private:
     BaseExprSyntax* parseTypeOfExpression();
     BaseExprSyntax* parseSizeOfExpression();
     
-    IdentifierNameSyntax* parseIdentifier();
+    SimpleNameExprSyntax* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();
-    List<ParameterDecl*> parseParameterList();
-    List<TypeParameterDecl*> parseTypeParameterList();
+    List<ParameterDeclSyntax*> parseParameterList();
+    List<TypeParameterDeclSyntax*> parseTypeParameterList();
     List<BaseExprSyntax*> parseBaseTypeList();  // Uses parseExpression() internally
 };
 

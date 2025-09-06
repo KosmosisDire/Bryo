@@ -20,9 +20,9 @@ namespace Bryo
 
     // ================== Public API ==================
 
-    CompilationUnit *Parser::parse()
+    CompilationUnitSyntax *Parser::parse()
     {
-        auto unit = arena.make<CompilationUnit>();
+        auto unit = arena.make<CompilationUnitSyntax>();
         if (tokens.at_end())
         {
             unit->location = {{0, 1, 1}, 0};
@@ -78,7 +78,7 @@ namespace Bryo
         errors.push_back({msg, tokens.current().location, ParseError::WARNING});
     }
 
-    MissingSyntax *Parser::errorExpr(const std::string &msg)
+    MissingExprSyntax *Parser::errorExpr(const std::string &msg)
     {
         error(msg);
         auto err = arena.makeErrorExpr(msg);
@@ -86,7 +86,7 @@ namespace Bryo
         return err;
     }
 
-    MissingSyntax *Parser::errorStmt(const std::string &msg)
+    MissingStmtSyntax *Parser::errorStmt(const std::string &msg)
     {
         error(msg);
         auto err = arena.makeErrorStmt(msg);
@@ -295,28 +295,28 @@ namespace Bryo
         return mods;
     }
 
-    TypeDecl *Parser::parseTypeDecl(ModifierKindFlags modifiers, const Token &startToken)
+    TypeDeclSyntax *Parser::parseTypeDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto decl = arena.make<TypeDecl>();
+        auto decl = arena.make<TypeDeclSyntax>();
         decl->modifiers = modifiers;
 
         if (consume(TokenKind::Static))
         {
             expect(TokenKind::Type, "Expected 'type' after 'static'");
-            decl->kind = TypeDecl::Kind::StaticType;
+            decl->kind = TypeDeclSyntax::Kind::StaticType;
         }
         else if (consume(TokenKind::Ref))
         {
             expect(TokenKind::Type, "Expected 'type' after 'ref'");
-            decl->kind = TypeDecl::Kind::RefType;
+            decl->kind = TypeDeclSyntax::Kind::RefType;
         }
         else if (consume(TokenKind::Enum))
         {
-            decl->kind = TypeDecl::Kind::Enum;
+            decl->kind = TypeDeclSyntax::Kind::Enum;
         }
         else if (consume(TokenKind::Type))
         {
-            decl->kind = TypeDecl::Kind::Type;
+            decl->kind = TypeDeclSyntax::Kind::Type;
         }
         else
         {
@@ -343,7 +343,7 @@ namespace Bryo
         }
         else
         {
-            decl->typeParameters = arena.emptyList<TypeParameterDecl *>();
+            decl->typeParameters = arena.emptyList<TypeParameterDeclSyntax *>();
         }
 
         if (consume(TokenKind::Colon))
@@ -361,7 +361,7 @@ namespace Bryo
         withContext(Context::TYPE_BODY, [&]()
                     {
         while (!check(TokenKind::RightBrace) && !tokens.at_end()) {
-            if (decl->kind == TypeDecl::Kind::Enum) {
+            if (decl->kind == TypeDeclSyntax::Kind::Enum) {
                 if (tokens.current().is_modifier() || check(TokenKind::Fn)) {
                     if (auto member = parseDeclaration()) members.push_back(member);
                 } else if (check(TokenKind::Identifier)) {
@@ -399,10 +399,10 @@ namespace Bryo
         return decl;
     }
 
-    EnumCaseDecl *Parser::parseEnumCase()
+    EnumCaseDeclSyntax *Parser::parseEnumCase()
     {
         auto startToken = tokens.current();
-        auto decl = arena.make<EnumCaseDecl>();
+        auto decl = arena.make<EnumCaseDeclSyntax>();
         decl->name = parseIdentifier();
 
         if (check(TokenKind::LeftParen))
@@ -411,16 +411,16 @@ namespace Bryo
         }
         else
         {
-            decl->associatedData = arena.emptyList<ParameterDecl *>();
+            decl->associatedData = arena.emptyList<ParameterDeclSyntax *>();
         }
 
         decl->location = SourceRange(startToken.location.start, previous().location.end());
         return decl;
     }
 
-    FunctionDecl *Parser::parseFunctionDecl(ModifierKindFlags modifiers, const Token &startToken)
+    FunctionDeclSyntax *Parser::parseFunctionDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto decl = arena.make<FunctionDecl>();
+        auto decl = arena.make<FunctionDeclSyntax>();
         decl->modifiers = modifiers;
 
         consume(TokenKind::Fn);
@@ -459,9 +459,9 @@ namespace Bryo
         return decl;
     }
 
-    ConstructorDecl *Parser::parseConstructorDecl(ModifierKindFlags modifiers, const Token &startToken)
+    ConstructorDeclSyntax *Parser::parseConstructorDecl(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto decl = arena.make<ConstructorDecl>();
+        auto decl = arena.make<ConstructorDeclSyntax>();
         decl->modifiers = modifiers;
 
         consume(TokenKind::New);
@@ -473,7 +473,7 @@ namespace Bryo
 
         if (!decl->body)
         {
-            auto block = arena.make<Block>();
+            auto block = arena.make<BlockSyntax>();
             block->location = previous().location;
             block->statements = arena.emptyList<BaseStmtSyntax *>();
             decl->body = block;
@@ -524,12 +524,12 @@ namespace Bryo
 
         if (isProperty)
         {
-            // Create PropertyDecl with embedded VariableDecl
-            auto prop = arena.make<PropertyDecl>();
+            // Create PropertyDeclSyntax with embedded VariableDeclSyntax
+            auto prop = arena.make<PropertyDeclSyntax>();
             prop->modifiers = modifiers;
 
             // Create the underlying variable
-            auto varDecl = arena.make<VariableDecl>();
+            auto varDecl = arena.make<VariableDeclSyntax>();
             varDecl->modifiers = modifiers;
 
             auto ti = arena.make<TypedIdentifier>();
@@ -545,8 +545,8 @@ namespace Bryo
 
             if (consume(TokenKind::FatArrow))
             {
-                auto getter = arena.make<PropertyAccessor>();
-                getter->kind = PropertyAccessor::Kind::Get;
+                auto getter = arena.make<PropertyAccessorSyntax>();
+                getter->kind = PropertyAccessorSyntax::Kind::Get;
                 getter->body = parseExpression();
                 prop->getter = getter;
                 prop->setter = nullptr;
@@ -554,15 +554,15 @@ namespace Bryo
             }
             else if (check(TokenKind::LeftBrace))
             {
-                parsePropertyAccessors(prop);
+                parsePropertyAccessorSyntaxs(prop);
             }
 
             prop->location = SourceRange(startToken.location.start, previous().location.end());
             return prop;
         }
 
-        // Always create VariableDecl - the context doesn't matter for the AST structure
-        auto decl = arena.make<VariableDecl>();
+        // Always create VariableDeclSyntax - the context doesn't matter for the AST structure
+        auto decl = arena.make<VariableDeclSyntax>();
         decl->modifiers = modifiers;
 
         auto ti = arena.make<TypedIdentifier>();
@@ -594,26 +594,26 @@ namespace Bryo
 
     BaseExprSyntax *Parser::convertToArrayTypeIfNeeded(BaseExprSyntax *expr)
     {
-        if (auto indexer = expr->as<IndexerExpr>())
+        if (auto indexer = expr->as<IndexerExprSyntax>())
         {
-            // Convert IndexerExpr to ArrayTypeExpr for type declarations
+            // Convert IndexerExprSyntax to ArrayTypeSyntax for type declarations
             // Check if the index is a literal (array size)
-            if (auto literal = indexer->index->as<LiteralExpr>())
+            if (auto literal = indexer->index->as<LiteralExprSyntax>())
             {
                 if (literal->kind == LiteralKind::I32 ||
                     literal->kind == LiteralKind::I64 ||
                     literal->kind == LiteralKind::I8)
                 {
-                    auto arrayType = arena.make<ArrayTypeExpr>();
-                    arrayType->baseType = indexer->object;
+                    auto arrayType = arena.make<ArrayTypeSyntax>();
+                    arrayType->elementType = indexer->object;
                     arrayType->size = literal;
                     arrayType->location = indexer->location;
                     return arrayType;
                 }
             }
             // For non-literal indices, still convert but without size
-            auto arrayType = arena.make<ArrayTypeExpr>();
-            arrayType->baseType = indexer->object;
+            auto arrayType = arena.make<ArrayTypeSyntax>();
+            arrayType->elementType = indexer->object;
             arrayType->size = nullptr;
             arrayType->location = indexer->location;
             return arrayType;
@@ -640,12 +640,12 @@ namespace Bryo
 
             if (checkAny({TokenKind::FatArrow, TokenKind::LeftBrace}))
             {
-                // Create PropertyDecl with embedded VariableDecl
-                auto prop = arena.make<PropertyDecl>();
+                // Create PropertyDeclSyntax with embedded VariableDeclSyntax
+                auto prop = arena.make<PropertyDeclSyntax>();
                 prop->modifiers = modifiers;
 
                 // Create the underlying variable
-                auto varDecl = arena.make<VariableDecl>();
+                auto varDecl = arena.make<VariableDeclSyntax>();
                 varDecl->modifiers = modifiers;
 
                 auto ti = arena.make<TypedIdentifier>();
@@ -661,8 +661,8 @@ namespace Bryo
 
                 if (consume(TokenKind::FatArrow))
                 {
-                    auto getter = arena.make<PropertyAccessor>();
-                    getter->kind = PropertyAccessor::Kind::Get;
+                    auto getter = arena.make<PropertyAccessorSyntax>();
+                    getter->kind = PropertyAccessorSyntax::Kind::Get;
                     getter->body = parseExpression();
                     prop->getter = getter;
                     prop->setter = nullptr;
@@ -670,7 +670,7 @@ namespace Bryo
                 }
                 else if (check(TokenKind::LeftBrace))
                 {
-                    parsePropertyAccessors(prop);
+                    parsePropertyAccessorSyntaxs(prop);
                 }
                 prop->location = SourceRange(fieldStartToken.location.start, previous().location.end());
                 declarations.push_back(prop);
@@ -678,8 +678,8 @@ namespace Bryo
             }
             else
             {
-                // Create regular VariableDecl for fields
-                auto field = arena.make<VariableDecl>();
+                // Create regular VariableDeclSyntax for fields
+                auto field = arena.make<VariableDeclSyntax>();
                 field->modifiers = modifiers;
 
                 auto ti = arena.make<TypedIdentifier>();
@@ -709,7 +709,7 @@ namespace Bryo
         return declarations;
     }
 
-    void Parser::parsePropertyAccessors(PropertyDecl *prop)
+    void Parser::parsePropertyAccessorSyntaxs(PropertyDeclSyntax *prop)
     {
         consume(TokenKind::LeftBrace);
         while (!check(TokenKind::RightBrace) && !tokens.at_end())
@@ -719,8 +719,8 @@ namespace Bryo
 
             if (consume(TokenKind::Get))
             {
-                auto getter = arena.make<PropertyAccessor>();
-                getter->kind = PropertyAccessor::Kind::Get;
+                auto getter = arena.make<PropertyAccessorSyntax>();
+                getter->kind = PropertyAccessorSyntax::Kind::Get;
                 getter->modifiers = accessorMods;
 
                 if (consume(TokenKind::FatArrow))
@@ -751,8 +751,8 @@ namespace Bryo
             }
             else if (consume(TokenKind::Set))
             {
-                auto setter = arena.make<PropertyAccessor>();
-                setter->kind = PropertyAccessor::Kind::Set;
+                auto setter = arena.make<PropertyAccessorSyntax>();
+                setter->kind = PropertyAccessorSyntax::Kind::Set;
                 setter->modifiers = accessorMods;
 
                 if (consume(TokenKind::FatArrow))
@@ -798,9 +798,9 @@ namespace Bryo
         expect(TokenKind::RightBrace, "Expected '}' after property accessors");
     }
 
-    NamespaceDecl *Parser::parseNamespaceDecl(const Token &startToken)
+    NamespaceDeclSyntax *Parser::parseNamespaceDecl(const Token &startToken)
     {
-        auto decl = arena.make<NamespaceDecl>();
+        auto decl = arena.make<NamespaceDeclSyntax>();
         consume(TokenKind::Namespace);
 
         // Parse the namespace name as an expression (can be qualified)
@@ -809,15 +809,15 @@ namespace Bryo
         {
             // Handle qualified names like "System.Collections"
             auto memberAccess = arena.make<QualifiedNameSyntax>();
-            memberAccess->object = decl->name;
-            memberAccess->member = parseIdentifier();
+            memberAccess->left = decl->name;
+            memberAccess->right = parseIdentifier();
             decl->name = memberAccess;
             // Continue parsing additional dots
             while (consume(TokenKind::Dot))
             {
                 auto nextMember = arena.make<QualifiedNameSyntax>();
-                nextMember->object = decl->name;
-                nextMember->member = parseIdentifier();
+                nextMember->left = decl->name;
+                nextMember->right = parseIdentifier();
                 decl->name = nextMember;
             }
         }
@@ -973,10 +973,10 @@ namespace Bryo
         return ifExpr;
     }
 
-    WhileStmt *Parser::parseWhileStatement()
+    WhileStmtSyntax *Parser::parseWhileStatement()
     {
         auto startToken = tokens.current();
-        auto stmt = arena.make<WhileStmt>();
+        auto stmt = arena.make<WhileStmtSyntax>();
         consume(TokenKind::While);
 
         // Check if parentheses are present
@@ -1006,10 +1006,10 @@ namespace Bryo
         return parseTraditionalForStatement();
     }
 
-    ForStmt *Parser::parseTraditionalForStatement()
+    ForStmtSyntax *Parser::parseTraditionalForStatement()
     {
         auto startToken = tokens.current();
-        auto stmt = arena.make<ForStmt>();
+        auto stmt = arena.make<ForStmtSyntax>();
         consume(TokenKind::For);
 
         // Check if parentheses are present
@@ -1084,10 +1084,10 @@ namespace Bryo
         return stmt;
     }
 
-    ReturnStmt *Parser::parseReturnStatement()
+    ReturnStmtSyntax *Parser::parseReturnStatement()
     {
         auto startToken = tokens.current();
-        auto stmt = arena.make<ReturnStmt>();
+        auto stmt = arena.make<ReturnStmtSyntax>();
         consume(TokenKind::Return);
 
         if (!check(TokenKind::Semicolon))
@@ -1108,10 +1108,10 @@ namespace Bryo
         return stmt;
     }
 
-    BreakStmt *Parser::parseBreakStatement()
+    BreakStmtSyntax *Parser::parseBreakStatement()
     {
         auto startToken = tokens.current();
-        auto stmt = arena.make<BreakStmt>();
+        auto stmt = arena.make<BreakStmtSyntax>();
         consume(TokenKind::Break);
         HANDLE_SEMI
         if (!inLoop())
@@ -1122,10 +1122,10 @@ namespace Bryo
         return stmt;
     }
 
-    ContinueStmt *Parser::parseContinueStatement()
+    ContinueStmtSyntax *Parser::parseContinueStatement()
     {
         auto startToken = tokens.current();
-        auto stmt = arena.make<ContinueStmt>();
+        auto stmt = arena.make<ContinueStmtSyntax>();
         consume(TokenKind::Continue);
         HANDLE_SEMI
         if (!inLoop())
@@ -1136,9 +1136,9 @@ namespace Bryo
         return stmt;
     }
 
-    ExpressionStmt *Parser::parseExpressionStatement()
+    ExpressionStmtSyntax *Parser::parseExpressionStatement()
     {
-        auto stmt = arena.make<ExpressionStmt>();
+        auto stmt = arena.make<ExpressionStmtSyntax>();
         stmt->expression = parseExpression();
         if (!stmt->expression)
         {
@@ -1149,10 +1149,10 @@ namespace Bryo
         return stmt;
     }
 
-    UsingDirective *Parser::parseUsingDirective()
+    UsingDirectiveSyntax *Parser::parseUsingDirective()
     {
         auto startToken = tokens.current();
-        auto directive = arena.make<UsingDirective>();
+        auto directive = arena.make<UsingDirectiveSyntax>();
         consume(TokenKind::Using);
 
         auto checkpoint = tokens.checkpoint();
@@ -1161,7 +1161,7 @@ namespace Bryo
             auto firstId = parseIdentifier();
             if (consume(TokenKind::Assign))
             {
-                directive->kind = UsingDirective::Kind::Alias;
+                directive->kind = UsingDirectiveSyntax::Kind::Alias;
                 directive->alias = firstId;
                 directive->aliasedType = parseExpression();
                 if (!directive->aliasedType)
@@ -1173,7 +1173,7 @@ namespace Bryo
             else
             {
                 tokens.restore(checkpoint);
-                directive->kind = UsingDirective::Kind::Namespace;
+                directive->kind = UsingDirectiveSyntax::Kind::Namespace;
                 directive->target = parseNameExpression(); // Parse the target namespace
                 if (consume(TokenKind::Dot))
                 {
@@ -1383,7 +1383,7 @@ namespace Bryo
                 tokens.advance();
 
                 // Regular indexer expression (arr[index])
-                auto indexer = arena.make<IndexerExpr>();
+                auto indexer = arena.make<IndexerExprSyntax>();
                 indexer->object = expr;
                 indexer->index = parseExpression();
                 if (!indexer->index)
@@ -1428,9 +1428,9 @@ namespace Bryo
         return unary;
     }
 
-    LiteralExpr *Parser::parseLiteral()
+    LiteralExprSyntax *Parser::parseLiteral()
     {
-        auto lit = arena.make<LiteralExpr>();
+        auto lit = arena.make<LiteralExprSyntax>();
         Token tok = tokens.current();
         lit->location = tok.location;
         lit->value = tok.text;
@@ -1527,7 +1527,7 @@ namespace Bryo
             tokens.restore(checkpoint);
             consume(TokenKind::LeftBracket);
 
-            auto arrayType = arena.make<ArrayTypeExpr>();
+            auto arrayType = arena.make<ArrayTypeSyntax>();
             arrayType->baseType = baseType;
 
             if (check(TokenKind::LiteralI32) || check(TokenKind::LiteralI64) || check(TokenKind::LiteralI8))
@@ -1751,10 +1751,10 @@ namespace Bryo
         if (check(TokenKind::LeftParen))
         {
             consume(TokenKind::LeftParen);
-            std::vector<ParameterDecl *> params;
+            std::vector<ParameterDeclSyntax *> params;
             while (!check(TokenKind::RightParen) && !tokens.at_end())
             {
-                auto param = arena.make<ParameterDecl>();
+                auto param = arena.make<ParameterDeclSyntax>();
                 auto paramStart = tokens.current();
                 param->param = parseTypedIdentifier();
                 if (!param->param)
@@ -1775,8 +1775,8 @@ namespace Bryo
         }
         else
         {
-            std::vector<ParameterDecl *> params;
-            auto param = arena.make<ParameterDecl>();
+            std::vector<ParameterDeclSyntax *> params;
+            auto param = arena.make<ParameterDeclSyntax>();
             auto paramStart = tokens.current();
             auto ti = arena.make<TypedIdentifier>();
             ti->type = nullptr;
@@ -1800,7 +1800,7 @@ namespace Bryo
             auto expr = parseExpression();
             if (!expr)
                 expr = errorExpr("Expected lambda body");
-            auto exprStmt = arena.make<ExpressionStmt>();
+            auto exprStmt = arena.make<ExpressionStmtSyntax>();
             exprStmt->expression = expr;
             exprStmt->location = expr->location;
             lambda->body = exprStmt;
@@ -1845,7 +1845,7 @@ namespace Bryo
 
     // ================== Helper Functions ==================
 
-    IdentifierNameSyntax *Parser::parseIdentifier()
+    SimpleNameExprSyntax *Parser::parseIdentifier()
     {
         if (!check(TokenKind::Identifier))
         {
@@ -1884,15 +1884,15 @@ namespace Bryo
         return ti;
     }
 
-    List<ParameterDecl *> Parser::parseParameterList()
+    List<ParameterDeclSyntax *> Parser::parseParameterList()
     {
         expect(TokenKind::LeftParen, "Expected '(' for parameter list");
 
-        std::vector<ParameterDecl *> params;
+        std::vector<ParameterDeclSyntax *> params;
         while (!check(TokenKind::RightParen) && !tokens.at_end())
         {
             auto startToken = tokens.current();
-            auto param = arena.make<ParameterDecl>();
+            auto param = arena.make<ParameterDeclSyntax>();
             param->param = parseTypedIdentifier();
             if (!param->param)
             {
@@ -1920,16 +1920,16 @@ namespace Bryo
         return arena.makeList(params);
     }
 
-    List<TypeParameterDecl *> Parser::parseTypeParameterList()
+    List<TypeParameterDeclSyntax *> Parser::parseTypeParameterList()
     {
-        std::vector<TypeParameterDecl *> typeParams;
+        std::vector<TypeParameterDeclSyntax *> typeParams;
 
         expect(TokenKind::Less, "Expected '<' to start type parameter list");
 
         while (!check(TokenKind::Greater) && !tokens.at_end())
         {
             auto startToken = tokens.current();
-            auto typeParam = arena.make<TypeParameterDecl>();
+            auto typeParam = arena.make<TypeParameterDeclSyntax>();
             typeParam->name = parseIdentifier();
             typeParam->location = SourceRange(startToken.location.start, previous().location.end());
             typeParams.push_back(typeParam);

@@ -102,7 +102,7 @@ namespace Bryo
         }
 
         // --- Basic Building Blocks & Errors (unchanged) ---
-        void visit(IdentifierNameSyntax *node) override { emit(std::string(node->text)); }
+        void visit(SimpleNameExprSyntax *node) override { emit(std::string(node->text)); }
         void visit(TypedIdentifier *node) override
         {
             if (node->type)
@@ -127,8 +127,8 @@ namespace Bryo
         // ErrorTypeRef removed - no longer exists
 
         // --- Expressions (unchanged) ---
-        void visit(LiteralExpr *node) override { emit(std::string(node->value)); }
-        void visit(ArrayLiteralExpr *node) override
+        void visit(LiteralExprSyntax *node) override { emit(std::string(node->value)); }
+        void visit(ArrayLiteralExprSyntax *node) override
         {
             emit("[");
             for (size_t i = 0; i < node->elements.size(); i++)
@@ -189,7 +189,7 @@ namespace Bryo
             emit(".");
             node->member->accept(this);
         }
-        void visit(IndexerExpr *node) override
+        void visit(IndexerExprSyntax *node) override
         {
             node->object->accept(this);
             emit("[");
@@ -300,7 +300,7 @@ namespace Bryo
         }
 
         // --- Statements ---
-        void visit(ExpressionStmt *node) override
+        void visit(ExpressionStmtSyntax *node) override
         {
             emit_indent();
             node->expression->accept(this);
@@ -310,7 +310,7 @@ namespace Bryo
             }
             emit_newline();
         }
-        void visit(ReturnStmt *node) override
+        void visit(ReturnStmtSyntax *node) override
         {
             emit_indent();
             emit("return");
@@ -322,19 +322,19 @@ namespace Bryo
             emit(";");
             emit_newline();
         }
-        void visit(BreakStmt *node) override
+        void visit(BreakStmtSyntax *node) override
         {
             emit_indent();
             emit("break;");
             emit_newline();
         }
-        void visit(ContinueStmt *node) override
+        void visit(ContinueStmtSyntax *node) override
         {
             emit_indent();
             emit("continue;");
             emit_newline();
         }
-        void visit(WhileStmt *node) override
+        void visit(WhileStmtSyntax *node) override
         {
             emit_indent();
             emit("while (");
@@ -342,13 +342,13 @@ namespace Bryo
             emit(")");
             print_body(node->body);
         }
-        void visit(ForStmt *node) override
+        void visit(ForStmtSyntax *node) override
         {
             emit_indent();
             emit("for (");
             if (node->initializer)
             {
-                if (auto varDecl = node->initializer->as<VariableDecl>())
+                if (auto varDecl = node->initializer->as<VariableDeclSyntax>())
                 {
                     print_modifiers(varDecl->modifiers);
                     varDecl->variable->accept(this);
@@ -358,7 +358,7 @@ namespace Bryo
                         varDecl->initializer->accept(this);
                     }
                 }
-                else if (auto exprStmt = node->initializer->as<ExpressionStmt>())
+                else if (auto exprStmt = node->initializer->as<ExpressionStmtSyntax>())
                 {
                     exprStmt->expression->accept(this);
                 }
@@ -378,11 +378,11 @@ namespace Bryo
             print_body(node->body);
         }
 
-        void visit(UsingDirective *node) override
+        void visit(UsingDirectiveSyntax *node) override
         {
             emit_indent();
             emit("using ");
-            if (node->kind == UsingDirective::Kind::Alias && node->alias)
+            if (node->kind == UsingDirectiveSyntax::Kind::Alias && node->alias)
             {
                 node->alias->accept(this);
                 emit(" = ");
@@ -399,7 +399,7 @@ namespace Bryo
         }
 
         // --- Declarations (with corrections) ---
-        void visit(VariableDecl *node) override
+        void visit(VariableDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -413,7 +413,7 @@ namespace Bryo
             emit_newline();
         }
 
-        void visit(PropertyDecl *node) override
+        void visit(PropertyDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -462,7 +462,7 @@ namespace Bryo
         }
 
 
-        void visit(ParameterDecl *node) override
+        void visit(ParameterDeclSyntax *node) override
         {
             print_modifiers(node->modifiers);
             node->param->accept(this);
@@ -473,7 +473,7 @@ namespace Bryo
             }
         }
 
-        void visit(FunctionDecl *node) override
+        void visit(FunctionDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -508,7 +508,7 @@ namespace Bryo
                 emit_newline();
             }
         }
-        void visit(ConstructorDecl *node) override
+        void visit(ConstructorDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -525,11 +525,11 @@ namespace Bryo
             node->body->accept(this);
             emit_newline();
         }
-        void visit(PropertyAccessor *node) override
+        void visit(PropertyAccessorSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
-            emit(node->kind == PropertyAccessor::Kind::Get ? "get" : "set");
+            emit(node->kind == PropertyAccessorSyntax::Kind::Get ? "get" : "set");
 
             if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
             {
@@ -549,7 +549,7 @@ namespace Bryo
             emit_newline();
         }
 
-        void visit(EnumCaseDecl *node) override
+        void visit(EnumCaseDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -570,22 +570,22 @@ namespace Bryo
             emit_newline();
         }
 
-        void visit(TypeDecl *node) override
+        void visit(TypeDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
             switch (node->kind)
             {
-            case TypeDecl::Kind::Type:
+            case TypeDeclSyntax::Kind::Type:
                 emit("type ");
                 break;
-            case TypeDecl::Kind::RefType:
+            case TypeDeclSyntax::Kind::RefType:
                 emit("ref type ");
                 break;
-            case TypeDecl::Kind::StaticType:
+            case TypeDeclSyntax::Kind::StaticType:
                 emit("static type ");
                 break;
-            case TypeDecl::Kind::Enum:
+            case TypeDeclSyntax::Kind::Enum:
                 emit("enum ");
                 break;
             }
@@ -621,7 +621,7 @@ namespace Bryo
             emit_newline();
         }
 
-        void visit(NamespaceDecl *node) override
+        void visit(NamespaceDeclSyntax *node) override
         {
             emit_indent();
             print_modifiers(node->modifiers);
@@ -656,7 +656,7 @@ namespace Bryo
 
         // --- Type Expressions (now regular expressions) ---
 
-        void visit(ArrayTypeExpr *node) override
+        void visit(ArrayTypeSyntax *node) override
         {
             node->baseType->accept(this);
             emit("[");
@@ -684,7 +684,7 @@ namespace Bryo
             }
         }
 
-        void visit(CompilationUnit *node) override
+        void visit(CompilationUnitSyntax *node) override
         {
             for (auto stmt : node->topLevelStatements)
             {

@@ -16,7 +16,7 @@ namespace Bryo
 
     // === Main API ===
 
-    std::unique_ptr<llvm::Module> CodeGenerator::generate(CompilationUnit *unit)
+    std::unique_ptr<llvm::Module> CodeGenerator::generate(CompilationUnitSyntax *unit)
     {
         // Clear any previous state from prior runs
         locals.clear();
@@ -264,7 +264,7 @@ namespace Bryo
         return function;
     }
 
-    void CodeGenerator::generate_definitions(CompilationUnit *unit)
+    void CodeGenerator::generate_definitions(CompilationUnitSyntax *unit)
     {
         if (unit)
         {
@@ -994,7 +994,7 @@ namespace Bryo
         std::cerr << "===== END MODULE STATE =====\n\n";
     }
 
-    void CodeGenerator::generate_property_getter(PropertyDecl *prop_decl, TypeSymbol *type_symbol, llvm::StructType *struct_type)
+    void CodeGenerator::generate_property_getter(PropertyDeclSyntax *prop_decl, TypeSymbol *type_symbol, llvm::StructType *struct_type)
     {
         if (!prop_decl || !prop_decl->variable || !prop_decl->variable->variable ||
             !prop_decl->variable->variable->name || !prop_decl->getter)
@@ -1279,7 +1279,7 @@ namespace Bryo
         return llvm_type;
     }
 
-    llvm::Value *CodeGenerator::create_constant(LiteralExpr *literal)
+    llvm::Value *CodeGenerator::create_constant(LiteralExprSyntax *literal)
     {
         if (!literal)
             return nullptr;
@@ -1378,9 +1378,9 @@ namespace Bryo
             }
 
         case LiteralKind::String:
-            // String literals are handled specially in visit(LiteralExpr)
+            // String literals are handled specially in visit(LiteralExprSyntax)
             // This shouldn't be reached
-            report_error(literal, "String literals should be handled in visit(LiteralExpr)");
+            report_error(literal, "String literals should be handled in visit(LiteralExprSyntax)");
             return nullptr;
 
         default:
@@ -1432,7 +1432,7 @@ namespace Bryo
 
     // --- Root and Declarations ---
 
-    void CodeGenerator::visit(CompilationUnit *node)
+    void CodeGenerator::visit(CompilationUnitSyntax *node)
     {
         if (!node)
             return;
@@ -1446,7 +1446,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(NamespaceDecl *node)
+    void CodeGenerator::visit(NamespaceDeclSyntax *node)
     {
         if (!node || !node->body)
             return;
@@ -1461,7 +1461,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(TypeDecl *node)
+    void CodeGenerator::visit(TypeDeclSyntax *node)
     {
         if (!node || !node->name)
             return;
@@ -1485,7 +1485,7 @@ namespace Bryo
         // Process method declarations to generate their bodies
         for (auto member : node->members)
         {
-            if (auto func_decl = member->as<FunctionDecl>())
+            if (auto func_decl = member->as<FunctionDeclSyntax>())
             {
                 // Get the already-declared function
                 auto func_symbol = symbol_table.lookup_handle(func_decl->functionSymbol)->as<FunctionSymbol>();
@@ -1626,7 +1626,7 @@ namespace Bryo
                 locals = saved_locals;
                 local_types = saved_local_types;
             }
-            else if (auto prop_decl = member->as<PropertyDecl>())
+            else if (auto prop_decl = member->as<PropertyDeclSyntax>())
             {
                 // Generate getter function body
                 if (prop_decl->getter)
@@ -1641,12 +1641,12 @@ namespace Bryo
             }
         }
     }
-    void CodeGenerator::visit(FunctionDecl *node)
+    void CodeGenerator::visit(FunctionDeclSyntax *node)
     {
         if (!node || !node->name)
             return;
 
-        // Skip if this is a method inside a type - it will be handled by visit(TypeDecl)
+        // Skip if this is a method inside a type - it will be handled by visit(TypeDeclSyntax)
         auto parent_scope = get_containing_scope(node);
         if (parent_scope && parent_scope->scope_as<TypeSymbol>())
             return; // This is a method, handled elsewhere
@@ -1749,7 +1749,7 @@ namespace Bryo
         local_types = saved_local_types;
     }
 
-    void CodeGenerator::visit(VariableDecl *node)
+    void CodeGenerator::visit(VariableDeclSyntax *node)
     {
         if (!node || !node->variable || !node->variable->name)
             return;
@@ -1825,9 +1825,9 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(PropertyDecl *node)
+    void CodeGenerator::visit(PropertyDeclSyntax *node)
     {
-        // Properties are handled in visit(TypeDecl) where we have access to the type context
+        // Properties are handled in visit(TypeDeclSyntax) where we have access to the type context
         // This visitor is for standalone property declarations, which shouldn't occur
         // at the statement level in the current language design
         if (node)
@@ -1836,9 +1836,9 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ParameterDecl *node)
+    void CodeGenerator::visit(ParameterDeclSyntax *node)
     {
-        // Parameters are handled in visit(FunctionDecl)
+        // Parameters are handled in visit(FunctionDeclSyntax)
         // This visitor shouldn't be called directly
         if (node)
         {
@@ -1862,7 +1862,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ExpressionStmt *node)
+    void CodeGenerator::visit(ExpressionStmtSyntax *node)
     {
         if (!node || !node->expression)
             return;
@@ -1878,7 +1878,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ReturnStmt *node)
+    void CodeGenerator::visit(ReturnStmtSyntax *node)
     {
         if (!node)
             return;
@@ -2668,7 +2668,7 @@ namespace Bryo
         push_value(alloca);
     }
 
-    void CodeGenerator::visit(LiteralExpr *node)
+    void CodeGenerator::visit(LiteralExprSyntax *node)
     {
         if (!node)
             return;
@@ -2946,7 +2946,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ArrayLiteralExpr *node)
+    void CodeGenerator::visit(ArrayLiteralExprSyntax *node)
     {
         if (!node || !node->resolvedType)
         {
@@ -3136,7 +3136,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(IndexerExpr *node)
+    void CodeGenerator::visit(IndexerExprSyntax *node)
     {
         if (!node || !node->object || !node->index)
             return;
@@ -3397,7 +3397,7 @@ namespace Bryo
         builder->SetInsertPoint(merge_bb);
     }
 
-    void CodeGenerator::visit(BreakStmt *node)
+    void CodeGenerator::visit(BreakStmtSyntax *node)
     {
         if (!node)
             return;
@@ -3421,7 +3421,7 @@ namespace Bryo
         builder->SetInsertPoint(unreachable_bb);
     }
 
-    void CodeGenerator::visit(ContinueStmt *node)
+    void CodeGenerator::visit(ContinueStmtSyntax *node)
     {
         if (!node)
             return;
@@ -3445,7 +3445,7 @@ namespace Bryo
         builder->SetInsertPoint(unreachable_bb);
     }
 
-    void CodeGenerator::visit(WhileStmt *node)
+    void CodeGenerator::visit(WhileStmtSyntax *node)
     {
         if (!node || !node->condition || !node->body)
             return;
@@ -3511,7 +3511,7 @@ namespace Bryo
         builder->SetInsertPoint(loop_exit);
     }
 
-    void CodeGenerator::visit(ForStmt *node)
+    void CodeGenerator::visit(ForStmtSyntax *node)
     {
         if (!node || !node->body)
             return;
@@ -3625,14 +3625,14 @@ namespace Bryo
         builder->SetInsertPoint(exit_bb);
     }
 
-    void CodeGenerator::visit(UsingDirective *n) { /* No codegen needed */ }
-    void CodeGenerator::visit(ConstructorDecl *n) { report_error(n, "Constructors not yet supported."); }
-    void CodeGenerator::visit(PropertyAccessor *n) { report_error(n, "Properties not yet supported."); }
-    void CodeGenerator::visit(EnumCaseDecl *n) { /* No codegen needed */ }
-    void CodeGenerator::visit(ArrayTypeExpr *n) { /* Type expressions are not executed */ }
+    void CodeGenerator::visit(UsingDirectiveSyntax *n) { /* No codegen needed */ }
+    void CodeGenerator::visit(ConstructorDeclSyntax *n) { report_error(n, "Constructors not yet supported."); }
+    void CodeGenerator::visit(PropertyAccessorSyntax *n) { report_error(n, "Properties not yet supported."); }
+    void CodeGenerator::visit(EnumCaseDeclSyntax *n) { /* No codegen needed */ }
+    void CodeGenerator::visit(ArrayTypeSyntax *n) { /* Type expressions are not executed */ }
     void CodeGenerator::visit(FunctionTypeExpr *n) { /* Type expressions are not executed */ }
     void CodeGenerator::visit(GenericTypeExpr *n) { /* Generic type expressions are not executed - handled during type resolution */ }
     void CodeGenerator::visit(PointerTypeExpr *n) { /* Pointer type expressions are not executed */ }
-    void CodeGenerator::visit(TypeParameterDecl *n) { /* Type parameter declarations don't generate code - handled during monomorphization */ }
+    void CodeGenerator::visit(TypeParameterDeclSyntax *n) { /* Type parameter declarations don't generate code - handled during monomorphization */ }
 
 } // namespace Bryo

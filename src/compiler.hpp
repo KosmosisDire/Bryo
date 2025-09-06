@@ -24,7 +24,7 @@ namespace Bryo
         std::unique_ptr<TokenStream> tokens;      // store the token stream here
         std::unique_ptr<Parser> parser;           // store the parser since it owns the AST
         std::unique_ptr<SymbolTable> symbolTable; // symbols local to this file
-        CompilationUnit *ast;                     // pointer to the AST root
+        CompilationUnitSyntax *ast;                     // pointer to the AST root
 
         std::vector<std::string> errors;
 

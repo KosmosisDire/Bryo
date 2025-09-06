@@ -6,7 +6,7 @@ namespace Bryo
     // ============================================================================
     // --- TypeResolver Implementation ---
     // ============================================================================
-    bool TypeResolver::resolve(CompilationUnit *unit)
+    bool TypeResolver::resolve(CompilationUnitSyntax *unit)
     {
         nodeTypes.clear();
         substitution.clear();
@@ -115,7 +115,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::update_ast_with_final_types(CompilationUnit *unit)
+    void TypeResolver::update_ast_with_final_types(CompilationUnitSyntax *unit)
     {
         class TypeUpdateVisitor : public DefaultVisitor
         {
@@ -227,7 +227,7 @@ namespace Bryo
             return false;
 
         // Array indexing is always an lvalue
-        if (expr->is<IndexerExpr>())
+        if (expr->is<IndexerExprSyntax>())
         {
             return true;
         }
@@ -337,7 +337,7 @@ namespace Bryo
             return symbolTable.resolve_type_name(qualifiedName, scope->as_scope_node());
         }
         // Array type (like "i32[]")
-        else if (auto array = type_expr->as<ArrayTypeExpr>())
+        else if (auto array = type_expr->as<ArrayTypeSyntax>())
         {
             TypePtr elemType = resolve_expr_type(array->baseType, scope);
             int arrSize = -1;
@@ -420,7 +420,7 @@ namespace Bryo
 
             ReturnTypeFinder(TypeResolver *res) : resolver(res) {}
 
-            void visit(ReturnStmt *node) override
+            void visit(ReturnStmtSyntax *node) override
             {
                 if (node->value)
                 {
@@ -460,7 +460,7 @@ namespace Bryo
                 }
             }
 
-            void visit(FunctionDecl *node) override
+            void visit(FunctionDeclSyntax *node) override
             {
                 // Don't visit nested functions - their return statements don't affect outer function
             }
@@ -699,13 +699,13 @@ namespace Bryo
 
     // --- Visitor Implementations ---
 
-    void TypeResolver::visit(LiteralExpr *node)
+    void TypeResolver::visit(LiteralExprSyntax *node)
     {
         std::string type_name = std::string(to_string(node->kind));
         annotate_expression(node, typeSystem.get_primitive_type(type_name));
     }
 
-    void TypeResolver::visit(ArrayLiteralExpr *node)
+    void TypeResolver::visit(ArrayLiteralExprSyntax *node)
     {
         // Visit all elements first
         for (auto elem : node->elements)
@@ -1116,7 +1116,7 @@ namespace Bryo
         annotate_expression(node, resolve_expr_type(node->type, scope));
     }
 
-    void TypeResolver::visit(VariableDecl *node)
+    void TypeResolver::visit(VariableDeclSyntax *node)
     {
         auto scope = get_containing_scope(node);
         if (!scope)
@@ -1309,7 +1309,7 @@ namespace Bryo
         }
         // No symbol for unary operations
     }
-    void TypeResolver::visit(IndexerExpr *node)
+    void TypeResolver::visit(IndexerExprSyntax *node)
     {
         // Visit children
         if (node->object)
@@ -1455,7 +1455,7 @@ namespace Bryo
         annotate_expression(node, typeSystem.get_unresolved_type());
     }
 
-    void TypeResolver::visit(ReturnStmt *node)
+    void TypeResolver::visit(ReturnStmtSyntax *node)
     {
         // Visit children manually
         if (node->value)
@@ -1533,7 +1533,7 @@ namespace Bryo
         report_error(node, "Return statement not within a function");
     }
 
-    void TypeResolver::visit(ForStmt *node)
+    void TypeResolver::visit(ForStmtSyntax *node)
     {
         // Visit children manually
         if (node->initializer)
@@ -1560,7 +1560,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(WhileStmt *node)
+    void TypeResolver::visit(WhileStmtSyntax *node)
     {
         // Visit children manually
         if (node->condition)
@@ -1577,7 +1577,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(FunctionDecl *node)
+    void TypeResolver::visit(FunctionDeclSyntax *node)
     {
         // Visit children manually
         if (node->name)
@@ -1708,7 +1708,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(ParameterDecl *node)
+    void TypeResolver::visit(ParameterDeclSyntax *node)
     {
         // Visit children manually
         if (node->param)
@@ -1717,7 +1717,7 @@ namespace Bryo
             node->defaultValue->accept(this);
 
         // Look up the parameter symbol in the function's scope
-        // Parameters are defined in the function scope, not where the ParameterDecl node is annotated
+        // Parameters are defined in the function scope, not where the ParameterDeclSyntax node is annotated
         auto scope = get_containing_scope(node);
         if (!scope)
             return;
@@ -1762,10 +1762,10 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(PropertyDecl *node)
+    void TypeResolver::visit(PropertyDeclSyntax *node)
     {
         // Handle property symbol resolution in the property's own scope context
-        // Don't visit the nested VariableDecl - handle the property symbol directly
+        // Don't visit the nested VariableDeclSyntax - handle the property symbol directly
 
         auto scope = get_containing_scope(node);
         if (!scope)
@@ -1842,7 +1842,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(PropertyAccessor *node)
+    void TypeResolver::visit(PropertyAccessorSyntax *node)
     {
         // Visit the accessor body to resolve types in expressions
         if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
@@ -1904,7 +1904,7 @@ namespace Bryo
         annotate_expression(node, resolvedType);
     }
 
-    void TypeResolver::visit(TypeParameterDecl *node)
+    void TypeResolver::visit(TypeParameterDeclSyntax *node)
     {
         // Type parameter declarations don't need type resolution
         // They are handled during generic type definition processing
@@ -1912,7 +1912,7 @@ namespace Bryo
             node->name->accept(this);
     }
 
-    void TypeResolver::visit(TypeDecl *node)
+    void TypeResolver::visit(TypeDeclSyntax *node)
     {
         // Save current type parameters
         auto savedTypeParameters = currentTypeParameters;
