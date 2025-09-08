@@ -1,4 +1,4 @@
-fn PrintLn(char[] str)
+fn PrintLn(char* str)
 {
     Print(str);
     Print("\n");
@@ -18,7 +18,7 @@ fn PrintLn(f32 f)
 
 fn Print(i32 value)
 {
-    var buffer = new char[12];  // Enough for 32-bit int
+    var buffer = new char[12];  -- Enough for 32-bit int
     IntToString(value, buffer);
     Print(buffer);
 }
@@ -33,26 +33,26 @@ fn IntToString(i32 num, char[] buffer) {
     bool isNegative = num < 0;
     if (isNegative)
     {
-        num = -num;  // Make positive for digit extraction
+        num = -num;  -- Make positive for digit extraction
     }
     
     i32 index = 0;
     
-    // Extract digits (builds string backwards)
+    -- Extract digits (builds string backwards)
     while (num > 0) {
         buffer[index++] = (char)((num % 10)) + '0';
         num /= 10;
     }
     
-    // Add negative sign if needed
+    -- Add negative sign if needed
     if (isNegative)
     {
         buffer[index++] = '-';
     }
     
-    buffer[index] = '\0';  // Null terminate
+    buffer[index] = '\0';  -- Null terminate
     
-    // Reverse the string in-place
+    -- Reverse the string in-place
     i32 start = 0;
     i32 end = index - 1;
     while (start < end) {
@@ -63,23 +63,23 @@ fn IntToString(i32 num, char[] buffer) {
         end--;
     }
     
-    return index;  // Return length
+    return index;  -- Return length
 }
 
 fn Print(f32 value, i32 places)
 {
-    var buffer = new char[32];  // Enough for 32-bit float
+    var buffer = new char[32];  -- Enough for 32-bit float
     FloatToString(value, buffer, places);
     Print(buffer);
 }
 
 fn Print(f32 value)
 {
-    Print(value, 2);  // Default to 2 decimal places
+    Print(value, 2);  -- Default to 2 decimal places
 }
 
 fn FloatToString(f32 num, char[] buffer, i32 places) {
-    // Handle special cases
+    -- Handle special cases
     if (num == 0.0) {
         buffer[0] = '0';
         if (places > 0) {
@@ -106,25 +106,25 @@ fn FloatToString(f32 num, char[] buffer, i32 places) {
 
     i32 index = 0;
     
-    // Handle case where integer part is 0
+    -- Handle case where integer part is 0
     if (integerPart == 0) {
         buffer[index++] = '0';
     } else {
-        // Extract digits (builds string backwards)
+        -- Extract digits (builds string backwards)
         while (integerPart > 0) {
             buffer[index++] = (char)((integerPart % 10)) + '0';
             integerPart /= 10;
         }
     }
 
-    // Add negative sign if needed
+    -- Add negative sign if needed
     if (isNegative) {
         buffer[index++] = '-';
     }
 
-    buffer[index] = '\0';  // Null terminate
+    buffer[index] = '\0';  -- Null terminate
 
-    // Reverse the string in-place
+    -- Reverse the string in-place
     i32 start = 0;
     i32 end = index - 1;
     while (start < end) {
@@ -135,7 +135,7 @@ fn FloatToString(f32 num, char[] buffer, i32 places) {
         end--;
     }
 
-    // Add fractional part if places > 0
+    -- Add fractional part if places > 0
     if (places > 0) {
         buffer[index++] = '.';
         for (i32 i = 0; i < places; i++) {
@@ -146,6 +146,6 @@ fn FloatToString(f32 num, char[] buffer, i32 places) {
         }
     }
 
-    buffer[index] = '\0';  // Null terminate
-    return index;  // Return length
+    buffer[index] = '\0';  -- Null terminate
+    return index;  -- Return length
 }

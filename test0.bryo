@@ -24,7 +24,7 @@ type Transform
 
     fn Rotate(Quaternion amount)
     {
-        // Simplified rotation logic, actual implementation would be more complex
+        -- Simplified rotation logic, actual implementation would be more complex
         rotation.x = rotation.x + amount.x;
         rotation.y = rotation.y + amount.y;
         rotation.z = rotation.z + amount.z;
@@ -70,9 +70,9 @@ fn main(): i32
     player.health = 100;
     player.speed = 5;
 
-    // Example usage
-    player.Move(new Vector3(1, 0, 0)); // Move right
-    player.TakeDamage(20); // Take damage
+    -- Example usage
+    player.Move(new Vector3(1, 0, 0)); -- Move right
+    player.TakeDamage(20); -- Take damage
 
     return player.TakeDamage(15);
 }

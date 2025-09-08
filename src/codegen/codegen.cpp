@@ -451,7 +451,7 @@ namespace Bryo
 
         if (wantAddress)
         {
-            if (!expr->is_l_value())
+            if (!expr->isLValue)
             {
                 report_error(expr, "Cannot take address of rvalue expression");
                 return nullptr;
@@ -466,7 +466,7 @@ namespace Bryo
 
     llvm::Value *CodeGenerator::genLValue(BaseExprSyntax *expr)
     {
-        if (!expr || !expr->is_l_value())
+        if (!expr || !expr->isLValue)
         {
             report_error(expr, "Expected lvalue expression");
             return nullptr;
@@ -482,7 +482,7 @@ namespace Bryo
         if (!expr)
             return nullptr;
 
-        if (expr->is_l_value())
+        if (expr->isLValue)
         {
             // Get address then load based on storage kind
             auto addr = genLValue(expr);
@@ -1000,7 +1000,7 @@ namespace Bryo
             !prop_decl->variable->variable->name || !prop_decl->getter)
             return;
 
-        std::string prop_name(prop_decl->variable->variable->name->text);
+        std::string prop_name(prop_decl->variable->variable->name->get_name());
 
         // Find the property symbol
         auto prop_symbol = type_symbol->lookup_local(prop_name)->as<PropertySymbol>();
@@ -1096,8 +1096,8 @@ namespace Bryo
         else if (expr->is<QualifiedNameSyntax>())
         {
             auto memberExpr = expr->as<QualifiedNameSyntax>();
-            return memberExpr->resolvedMember.id != 0
-                       ? symbol_table.lookup_handle(memberExpr->resolvedMember)->as<Symbol>()
+            return memberExpr->resolvedSymbol.id != 0
+                       ? symbol_table.lookup_handle(memberExpr->resolvedSymbol)->as<Symbol>()
                        : nullptr;
         }
         else if (expr->is<CallExprSyntax>())
@@ -1113,9 +1113,9 @@ namespace Bryo
 
     std::string CodeGenerator::build_qualified_name(BaseNameExprSyntax *name_expr)
     {
-        if (!name_expr || !name_expr->name)
+        if (!name_expr)
             return "";
-        return std::string(name_expr->name->text);
+        return name_expr->get_name();
     }
 
     void CodeGenerator::push_value(llvm::Value *val)
@@ -1471,7 +1471,7 @@ namespace Bryo
         if (!scope)
             return;
 
-        auto type_symbol = scope->lookup(node->name->text)->as<TypeSymbol>();
+        auto type_symbol = scope->lookup(node->name->get_name())->as<TypeSymbol>();
         if (!type_symbol)
             return;
 
@@ -1654,7 +1654,7 @@ namespace Bryo
         auto func_symbol = symbol_table.lookup_handle(node->functionSymbol)->as<FunctionSymbol>();
         if (!func_symbol)
         {
-            report_error(node, "Function symbol not found for '" + std::string(node->name->text) + "'");
+            report_error(node, "Function symbol not found for '" + std::string(node->name->get_name()) + "'");
             return;
         }
 
@@ -1758,10 +1758,10 @@ namespace Bryo
         if (!parent_scope)
             return;
 
-        auto var_symbol = parent_scope->lookup(node->variable->name->text);
+        auto var_symbol = parent_scope->lookup(node->variable->name->get_name());
         if (!var_symbol)
         {
-            report_error(node, "Variable symbol not found for '" + std::string(node->variable->name->text) + "'");
+            report_error(node, "Variable symbol not found for '" + std::string(node->variable->name->get_name()) + "'");
             return;
         }
 
@@ -1788,7 +1788,7 @@ namespace Bryo
             alloca = builder->CreateAlloca(
                 llvm::PointerType::get(*context, 0),
                 nullptr,
-                node->variable->name->text);
+                node->variable->name->get_name());
         }
         else if (storageKind == Type::StorageKind::Indirect)
         {
@@ -1796,12 +1796,12 @@ namespace Bryo
             alloca = builder->CreateAlloca(
                 llvm::PointerType::get(*context, 0),
                 nullptr,
-                node->variable->name->text);
+                node->variable->name->get_name());
         }
         else
         {
             // Value type or explicit pointer: allocate space for the actual type
-            alloca = builder->CreateAlloca(llvm_type, nullptr, node->variable->name->text);
+            alloca = builder->CreateAlloca(llvm_type, nullptr, node->variable->name->get_name());
         }
 
         locals[var_symbol] = alloca;
@@ -2109,7 +2109,7 @@ namespace Bryo
             node->op == UnaryOperatorKind::PreDecrement)
         {
             // For increment/decrement, we need the operand as an lvalue
-            if (!node->operand->is_l_value())
+            if (!node->operand->isLValue)
             {
                 report_error(node, "Increment/decrement operators require an lvalue");
                 return;
@@ -2182,7 +2182,7 @@ namespace Bryo
             if (node->op == UnaryOperatorKind::AddressOf)
             {
                 // Address-of operator needs lvalue and returns its address
-                if (!node->operand->is_l_value())
+                if (!node->operand->isLValue)
                 {
                     report_error(node, "Cannot take address of rvalue");
                     return;
@@ -2399,19 +2399,19 @@ namespace Bryo
         {
             // Get the object (this pointer)
             // For method calls, we need the address of the object
-            if (member_expr->object->is_l_value())
+            if (member_expr->left->isLValue)
             {
-                this_ptr = genLValue(member_expr->object);
+                this_ptr = genLValue(member_expr->left);
             }
             else
             {
                 // Rvalue object - need to create temporary storage
-                auto obj_value = genRValue(member_expr->object);
-                this_ptr = ensureAddress(obj_value, member_expr->object->resolvedType);
+                auto obj_value = genRValue(member_expr->left);
+                this_ptr = ensureAddress(obj_value, member_expr->left->resolvedType);
             }
 
             // Get the method name and look up the function
-            auto obj_type = member_expr->object->resolvedType;
+            auto obj_type = member_expr->left->resolvedType;
             if (auto type_ref = std::get_if<TypeReference>(&obj_type->value))
             {
                 if (auto type_sym = type_ref->definition->as<TypeSymbol>())
@@ -2419,7 +2419,7 @@ namespace Bryo
                     auto callee_symbol = symbol_table.lookup_handle(node->resolvedCallee)->as<FunctionSymbol>();
                     if (!callee_symbol)
                     {
-                        report_error(node->callee, "Unknown method referenced: " + std::string(member_expr->member->text));
+                        report_error(node->callee, "Unknown method referenced: " + member_expr->right->get_name());
                         return;
                     }
 
@@ -2604,7 +2604,7 @@ namespace Bryo
 
     void CodeGenerator::visit(BaseNameExprSyntax *node)
     {
-        if (!node || !node->name)
+        if (!node)
             return;
 
         auto parent_scope = get_containing_scope(node);
@@ -2716,10 +2716,34 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(IdentifierNameSyntax *node)
+    void CodeGenerator::visit(SimpleNameSyntax *node)
     {
-        // Identifiers are typically handled by BaseNameExprSyntax which contains identifier parts.
-        // Individual identifier nodes usually don't generate code directly.
+        // SimpleNameSyntax should be handled as a BaseNameExprSyntax
+        visit(static_cast<BaseNameExprSyntax*>(node));
+    }
+
+    void CodeGenerator::visit(GenericNameSyntax *node)
+    {
+        // GenericNameSyntax should be handled as a BaseNameExprSyntax for now
+        visit(static_cast<BaseNameExprSyntax*>(node));
+    }
+
+    void CodeGenerator::visit(ParenthesizedExprSyntax *node)
+    {
+        if (!node || !node->expression)
+            return;
+        // Just forward to the inner expression
+        node->expression->accept(this);
+    }
+
+    void CodeGenerator::visit(MemberAccessExprSyntax *node)
+    {
+        if (!node || !node->object || !node->member)
+            return;
+
+        // For now, treat member access similar to qualified names
+        // This needs proper implementation based on the language semantics
+        report_error(node, "Member access not yet fully implemented");
     }
 
     void CodeGenerator::visit(NewExprSyntax *node)
@@ -2930,7 +2954,7 @@ namespace Bryo
     void CodeGenerator::visit(BaseExprSyntax *node) { report_error(node, "Codegen for this expression type is not yet implemented."); }
     void CodeGenerator::visit(BaseStmtSyntax *node) { report_error(node, "Codegen for this statement type is not yet implemented."); }
     void CodeGenerator::visit(BaseDeclSyntax *node) { report_error(node, "Codegen for this declaration type is not yet implemented."); }
-    void CodeGenerator::visit(MissingSyntax *node)
+    void CodeGenerator::visit(MissingExprSyntax *node)
     {
         if (node)
         {
@@ -2938,7 +2962,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(MissingSyntax *node)
+    void CodeGenerator::visit(MissingStmtSyntax *node)
     {
         if (node)
         {
@@ -3000,11 +3024,11 @@ namespace Bryo
 
     void CodeGenerator::visit(QualifiedNameSyntax *node)
     {
-        if (!node || !node->object || !node->member)
+        if (!node || !node->left || !node->right)
             return;
 
         // Get the object's resolved type to find the struct type
-        auto obj_type = node->object->resolvedType;
+        auto obj_type = node->left->resolvedType;
         if (!obj_type)
         {
             report_error(node, "Object type not resolved");
@@ -3024,7 +3048,7 @@ namespace Bryo
         {
             if (auto type_sym = type_ref->definition->as<TypeSymbol>())
             {
-                std::string member_name(node->member->text);
+                std::string member_name(node->right->get_name());
                 auto member_symbol = type_sym->lookup_local(member_name);
 
                 if (!member_symbol)
@@ -3041,15 +3065,15 @@ namespace Bryo
                     // We need the struct address
                     llvm::Value *struct_ptr = nullptr;
 
-                    if (node->object->is_l_value())
+                    if (node->left->isLValue)
                     {
                         // Object is an lvalue - get its address
-                        struct_ptr = genLValue(node->object);
+                        struct_ptr = genLValue(node->left);
                     }
                     else
                     {
                         // Object is an rvalue - need to create temporary storage
-                        auto struct_val = genRValue(node->object);
+                        auto struct_val = genRValue(node->left);
                         if (!struct_val)
                             return;
                         struct_ptr = ensureAddress(struct_val, obj_type);
@@ -3095,13 +3119,13 @@ namespace Bryo
                     // Get struct pointer for 'this' parameter
                     llvm::Value *struct_ptr = nullptr;
 
-                    if (node->object->is_l_value())
+                    if (node->left->isLValue)
                     {
-                        struct_ptr = genLValue(node->object);
+                        struct_ptr = genLValue(node->left);
                     }
                     else
                     {
-                        auto struct_val = genRValue(node->object);
+                        auto struct_val = genRValue(node->left);
                         if (!struct_val)
                             return;
                         struct_ptr = ensureAddress(struct_val, obj_type);
@@ -3319,8 +3343,8 @@ namespace Bryo
 
     void CodeGenerator::visit(LambdaExprSyntax *n) { report_error(n, "Lambda expressions not yet supported."); }
     void CodeGenerator::visit(ConditionalExprSyntax *n) { report_error(n, "Conditional (ternary) expressions not yet supported."); }
-    void CodeGenerator::visit(TypeOfExpr *n) { report_error(n, "'typeof' not yet supported."); }
-    void CodeGenerator::visit(SizeOfExpr *n) { report_error(n, "'sizeof' not yet supported."); }
+    void CodeGenerator::visit(TypeOfExprSyntax *n) { report_error(n, "'typeof' not yet supported."); }
+    void CodeGenerator::visit(SizeOfExprSyntax *n) { report_error(n, "'sizeof' not yet supported."); }
     void CodeGenerator::visit(IfStmtSyntax *node)
     {
         if (!node || !node->condition || !node->thenBranch)

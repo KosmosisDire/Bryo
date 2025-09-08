@@ -1,4 +1,4 @@
-// this is a concept for bracket initializers and tree initializers
+-- this is a concept for bracket initializers and tree initializers
 
 
 type Player
@@ -30,8 +30,8 @@ type Element
     Measure fontSize;
     string fontFamily;
 
-    treeparent Element parent; //tree parent means this property will be populated from a tree initializer
-    childlist List<Element> children; // childlist means that this list can be populated directly from the initializer
+    treeparent Element parent; --tree parent means this property will be populated from a tree initializer
+    childlist List<Element> children; -- childlist means that this list can be populated directly from the initializer
 }
 
 var element = new Element

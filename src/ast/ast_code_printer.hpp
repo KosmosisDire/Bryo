@@ -102,7 +102,7 @@ namespace Bryo
         }
 
         // --- Basic Building Blocks & Errors (unchanged) ---
-        void visit(BaseNameExprSyntax *node) override { emit(std::string(node->text)); }
+        void visit(BaseNameExprSyntax *node) override { emit(node->get_name()); }
         void visit(TypedIdentifier *node) override
         {
             if (node->type)
@@ -117,8 +117,8 @@ namespace Bryo
             if (node->name)
                 node->name->accept(this);
         }
-        void visit(MissingSyntax *node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
-        void visit(MissingSyntax *node) override
+        void visit(MissingExprSyntax *node) override { emit("[ERROR: " + std::string(node->message) + "]"); }
+        void visit(MissingStmtSyntax *node) override
         {
             emit_indent();
             emit("[ERROR: " + std::string(node->message) + "]");
@@ -140,10 +140,9 @@ namespace Bryo
             }
             emit("]");
         }
-        void visit(BaseNameExprSyntax *node) override
+        void visit(SimpleNameSyntax *node) override
         {
-            if (node->name)
-                node->name->accept(this);
+            emit(std::string(node->identifier.text));
         }
         void visit(UnaryExprSyntax *node) override
         {
@@ -185,9 +184,11 @@ namespace Bryo
         }
         void visit(QualifiedNameSyntax *node) override
         {
-            node->object->accept(this);
+            if (node->left)
+                node->left->accept(this);
             emit(".");
-            node->member->accept(this);
+            if (node->right)
+                node->right->accept(this);
         }
         void visit(IndexerExprSyntax *node) override
         {
@@ -240,13 +241,13 @@ namespace Bryo
             emit(" : ");
             node->elseExpr->accept(this);
         }
-        void visit(TypeOfExpr *node) override
+        void visit(TypeOfExprSyntax *node) override
         {
             emit("typeof(");
             node->type->accept(this);
             emit(")");
         }
-        void visit(SizeOfExpr *node) override
+        void visit(SizeOfExprSyntax *node) override
         {
             emit("sizeof(");
             node->type->accept(this);
@@ -382,17 +383,9 @@ namespace Bryo
         {
             emit_indent();
             emit("using ");
-            if (node->kind == UsingDirectiveSyntax::Kind::Alias && node->alias)
+            if (node->target)
             {
-                node->alias->accept(this);
-                emit(" = ");
-                if (node->aliasedType)
-                    node->aliasedType->accept(this);
-            }
-            else
-            {
-                if (node->target)
-                    node->target->accept(this);
+                node->target->accept(this);
             }
             emit(";");
             emit_newline();
@@ -667,21 +660,10 @@ namespace Bryo
             emit("]");
         }
 
-        void visit(FunctionTypeExpr *node) override
+        void visit(PointerTypeSyntax *node) override
         {
-            emit("fn(");
-            for (size_t i = 0; i < node->parameterTypes.size(); i++)
-            {
-                if (i > 0)
-                    emit(", ");
-                node->parameterTypes[i]->accept(this);
-            }
-            emit(")");
-            if (node->returnType)
-            {
-                emit(" -> ");
-                node->returnType->accept(this);
-            }
+            emit("*");
+            node->baseType->accept(this);
         }
 
         void visit(CompilationUnitSyntax *node) override

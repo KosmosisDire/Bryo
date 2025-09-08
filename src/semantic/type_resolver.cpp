@@ -953,7 +953,7 @@ namespace Bryo
         // Handle member access function calls (e.g., obj.method())
         else if (auto memberAccess = node->callee->as<QualifiedNameSyntax>())
         {
-            TypePtr objectType = get_node_type(memberAccess->object);
+            TypePtr objectType = get_node_type(memberAccess->left);
             if (objectType)
             {
                 TypePtr canonicalType = apply_substitution(objectType);
@@ -964,7 +964,7 @@ namespace Bryo
                     TypeLikeSymbol *typeSymbol = typeRef->definition;
                     if (auto scope = typeSymbol->as<Scope>())
                     {
-                        std::string methodName = std::string(memberAccess->member->text);
+                        std::string methodName = memberAccess->right->get_name();
 
                         // Collect overloads for this method
                         std::vector<FunctionSymbol *> overloads = scope->lookup_functions_local(methodName);
@@ -977,7 +977,7 @@ namespace Bryo
                             {
                                 annotate_expression(node, best->return_type());
                                 node->resolvedCallee = best->handle;
-                                memberAccess->resolvedMember = best->handle;
+                                memberAccess->resolvedSymbol = best->handle;
                                 return;
                             }
                             else
@@ -1033,7 +1033,7 @@ namespace Bryo
         if (!scope)
             return;
 
-        auto symbol = scope->lookup(node->variable->name->text);
+        auto symbol = scope->lookup(node->variable->name->get_name());
         auto var_symbol = symbol ? symbol->as<TypedSymbol>() : nullptr;
 
         if (var_symbol)
@@ -1075,12 +1075,12 @@ namespace Bryo
     void TypeResolver::visit(QualifiedNameSyntax *node)
     {
         // Visit children
-        if (node->object)
-            node->object->accept(this);
-        if (node->member)
-            node->member->accept(this);
+        if (node->left)
+            node->left->accept(this);
+        if (node->right)
+            node->right->accept(this);
 
-        TypePtr objectType = get_node_type(node->object);
+        TypePtr objectType = get_node_type(node->left);
         if (!objectType)
         {
             annotate_expression(node, typeSystem.get_unresolved_type());
@@ -1119,7 +1119,7 @@ namespace Bryo
         }
 
         // Look up member
-        std::string memberName = std::string(node->member->text);
+        std::string memberName = node->right->get_name();
         auto member = scope->lookup_local(memberName);
 
         if (!member)
@@ -1151,7 +1151,7 @@ namespace Bryo
             // For function groups (methods), we can't determine the exact type without call context
             // Mark with unresolved type but store the symbol for later overload resolution
             annotate_expression(node, typeSystem.get_unresolved_type(), member);
-            node->resolvedMember = func_group->handle;
+            node->resolvedSymbol = func_group->handle;
         }
         else
         {
@@ -1511,7 +1511,7 @@ namespace Bryo
         if (!scope)
             return;
 
-        auto symbol = scope->lookup_local(node->name->text);
+        auto symbol = scope->lookup_local(node->name->get_name());
         FunctionSymbol *funcSymbol = nullptr;
 
         // Handle both direct FunctionSymbol and FunctionGroupSymbol
@@ -1593,7 +1593,7 @@ namespace Bryo
         {
             if (paramDecl && paramDecl->param && paramDecl->param->name)
             {
-                std::string paramName(paramDecl->param->name->text);
+                std::string paramName(paramDecl->param->name->get_name());
                 auto functionScope = static_cast<Scope *>(funcSymbol);
                 auto paramSymbol = functionScope->lookup_local(paramName);
                 if (auto typedParamSymbol = paramSymbol ? paramSymbol->as<TypedSymbol>() : nullptr)
@@ -1634,11 +1634,11 @@ namespace Bryo
             return;
 
         // Parameters should be in the current scope (function scope)
-        auto symbol = scope->lookup_local(node->param->name->text);
+        auto symbol = scope->lookup_local(node->param->name->get_name());
         if (!symbol)
         {
             // If not found locally, try looking in parent scope (might be in function scope)
-            symbol = scope->lookup(node->param->name->text);
+            symbol = scope->lookup(node->param->name->get_name());
         }
         auto paramSymbol = symbol ? symbol->as<ParameterSymbol>() : nullptr;
         if (!paramSymbol)
@@ -1685,7 +1685,7 @@ namespace Bryo
         if (!node->variable || !node->variable->variable || !node->variable->variable->name)
             return;
 
-        std::string prop_name(node->variable->variable->name->text);
+        std::string prop_name(node->variable->variable->name->get_name());
         auto symbol = scope->lookup(prop_name);
         auto prop_symbol = symbol ? symbol->as<TypedSymbol>() : nullptr;
 
@@ -1812,7 +1812,7 @@ namespace Bryo
         {
             if (typeParam && typeParam->name)
             {
-                std::string paramName(typeParam->name->text);
+                std::string paramName(typeParam->name->get_name());
                 TypePtr paramType = typeSystem.get_type_parameter(paramName, parameterId++);
                 currentTypeParameters[paramName] = paramType;
 

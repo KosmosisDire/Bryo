@@ -86,14 +86,13 @@ namespace Bryo
         // --- Override Visitor Methods ---
 
         // --- Building Blocks & Errors ---
-        void visit(BaseNameExprSyntax *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
-        void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
-        void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
+        void visit(BaseNameExprSyntax *node) override { leaf(node, "Identifier", " (" + node->get_name() + ")"); }
+        void visit(MissingExprSyntax *node) override { leaf(node, "MissingExprSyntax", " (\"" + std::string(node->message) + "\")"); }
+        void visit(MissingStmtSyntax *node) override { leaf(node, "MissingStmtSyntax", " (\"" + std::string(node->message) + "\")"); }
         void visit(TypedIdentifier *node) override;
 
         // --- Expressions ---
         void visit(LiteralExprSyntax *node) override;
-        void visit(BaseNameExprSyntax *node) override;
         void visit(UnaryExprSyntax *node) override;
         void visit(BinaryExprSyntax *node) override;
         void visit(AssignmentExprSyntax *node) override;
@@ -106,8 +105,8 @@ namespace Bryo
         void visit(NewExprSyntax *node) override { enter(node, "NewExprSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(LambdaExprSyntax *node) override { enter(node, "LambdaExprSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(ConditionalExprSyntax *node) override { enter(node, "ConditionalExprSyntax"); DefaultVisitor::visit(node); leave(); }
-        void visit(TypeOfExpr *node) override { enter(node, "TypeOfExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(SizeOfExpr *node) override { enter(node, "SizeOfExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(TypeOfExprSyntax *node) override { enter(node, "TypeOfExprSyntax"); DefaultVisitor::visit(node); leave(); }
+        void visit(SizeOfExprSyntax *node) override { enter(node, "SizeOfExprSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(IfStmtSyntax *node) override { enter(node, "IfStmtSyntax"); DefaultVisitor::visit(node); leave(); }
 
         // --- Statements ---
@@ -186,7 +185,7 @@ namespace Bryo
 
     inline void AstPrinter::visit(TypedIdentifier *node)
     {
-        enter(node, "TypedIdentifier", " (" + std::string(node->name->text) + ")");
+        enter(node, "TypedIdentifier", " (" + node->name->get_name() + ")");
         if (node->type)
         {
             node->type->accept(this);
@@ -204,10 +203,6 @@ namespace Bryo
         leaf(node, "LiteralExprSyntax", " (Kind: " + std::string(to_string(node->kind)) + ", Value: " + std::string(node->value) + ")");
     }
 
-    inline void AstPrinter::visit(BaseNameExprSyntax *node)
-    {
-        leaf(node, "BaseNameExprSyntax", " (" + node->get_name() + ")");
-    }
 
     inline void AstPrinter::visit(UnaryExprSyntax *node)
     {
@@ -238,33 +233,24 @@ namespace Bryo
     
     inline void AstPrinter::visit(QualifiedNameSyntax *node)
     {
-        std::string memberName = node->member ? std::string(node->member->text) : "<unknown>";
-        enter(node, "MemberAccessExpr", " (Member: " + memberName + ")");
-        node->object->accept(this); // Visit object, but not member since we printed it.
+        std::string rightName = node->right ? node->right->get_name() : "<unknown>";
+        enter(node, "QualifiedNameSyntax", " (Right: " + rightName + ")");
+        if (node->left) node->left->accept(this);
+        if (node->right) node->right->accept(this);
         leave();
     }
 
     inline void AstPrinter::visit(UsingDirectiveSyntax *node)
     {
-        if (node->kind == UsingDirectiveSyntax::Kind::Alias)
-        {
-            enter(node, "UsingDirectiveSyntax", " (Alias: " + std::string(node->alias->text) + ")");
-            if (node->aliasedType)
-                node->aliasedType->accept(this);
-            leave();
-        }
-        else
-        {
-            enter(node, "UsingDirectiveSyntax", " (Namespace)");
-            if (node->target)
-                node->target->accept(this);
-            leave();
-        }
+        enter(node, "UsingDirectiveSyntax");
+        if (node->target)
+            node->target->accept(this);
+        leave();
     }
 
     inline void AstPrinter::visit(VariableDeclSyntax *node)
     {
-        std::string name = (node->variable && node->variable->name) ? std::string(node->variable->name->text) : "<unnamed>";
+        std::string name = (node->variable && node->variable->name) ? node->variable->name->get_name() : "<unnamed>";
         enter(node, "VariableDeclSyntax", " (" + name + ")" + to_string(node->modifiers));
         DefaultVisitor::visit(node);
         leave();
@@ -273,7 +259,7 @@ namespace Bryo
     inline void AstPrinter::visit(PropertyDeclSyntax *node)
     {
         std::string name = (node->variable && node->variable->variable && node->variable->variable->name)
-                               ? std::string(node->variable->variable->name->text)
+                               ? node->variable->variable->name->get_name()
                                : "<invalid>";
         enter(node, "PropertyDeclSyntax", " (" + name + ")" + to_string(node->modifiers));
         DefaultVisitor::visit(node);
@@ -282,7 +268,7 @@ namespace Bryo
     
     inline void AstPrinter::visit(ParameterDeclSyntax *node)
     {
-        std::string name = (node->param && node->param->name) ? std::string(node->param->name->text) : "<unnamed>";
+        std::string name = (node->param && node->param->name) ? node->param->name->get_name() : "<unnamed>";
         enter(node, "ParameterDeclSyntax", " (" + name + ")" + to_string(node->modifiers));
         DefaultVisitor::visit(node);
         leave();
@@ -290,7 +276,7 @@ namespace Bryo
 
     inline void AstPrinter::visit(FunctionDeclSyntax *node)
     {
-        enter(node, "FunctionDeclSyntax", " (" + std::string(node->name->text) + ")" + to_string(node->modifiers));
+        enter(node, "FunctionDeclSyntax", " (" + node->name->get_name() + ")" + to_string(node->modifiers));
         DefaultVisitor::visit(node);
         leave();
     }
@@ -312,7 +298,7 @@ namespace Bryo
 
     inline void AstPrinter::visit(EnumCaseDeclSyntax *node)
     {
-        enter(node, "EnumCaseDeclSyntax", " (" + std::string(node->name->text) + ")" + to_string(node->modifiers));
+        enter(node, "EnumCaseDeclSyntax", " (" + node->name->get_name() + ")" + to_string(node->modifiers));
         DefaultVisitor::visit(node);
         leave();
     }
@@ -327,7 +313,7 @@ namespace Bryo
         case TypeDeclSyntax::Kind::StaticType: kind_str = "static type"; break;
         case TypeDeclSyntax::Kind::Enum: kind_str = "enum"; break;
         }
-        enter(node, "TypeDeclSyntax", " (" + std::string(node->name->text) + ", Kind: " + kind_str + ")" + to_string(node->modifiers));
+        enter(node, "TypeDeclSyntax", " (" + node->name->get_name() + ", Kind: " + kind_str + ")" + to_string(node->modifiers));
         
         // Print type parameters with label
         if (!node->typeParameters.empty())
@@ -371,7 +357,7 @@ namespace Bryo
             output << indent() << "}\n";
         }
 
-        leave(" " + std::string(node->name->text));
+        leave(" " + node->name->get_name());
     }
 
     inline void AstPrinter::visit(NamespaceDeclSyntax *node)
@@ -402,7 +388,7 @@ namespace Bryo
 
     inline void AstPrinter::visit(TypeParameterDeclSyntax *node)
     {
-        leaf(node, "TypeParameterDeclSyntax", " (" + std::string(node->name->text) + ")");
+        leaf(node, "TypeParameterDeclSyntax", " (" + node->name->get_name() + ")");
     }
 
 } // namespace Bryo

@@ -1,10 +1,10 @@
 using System;
 using System.Collections;
 
-// File-scoped namespace
+-- File-scoped namespace
 namespace TestNamespace;
 
-// Bracketed namespace
+-- Bracketed namespace
 namespace TestBracketed
 {
     public fn HelperFunction(): i32
@@ -13,7 +13,7 @@ namespace TestBracketed
     }
 }
 
-// Simple enum without methods (to avoid match expression issues)
+-- Simple enum without methods (to avoid match expression issues)
 public enum Color
 {
     Red,
@@ -22,7 +22,7 @@ public enum Color
     Alpha(i32 value)
 }
 
-// Enum with simple methods
+-- Enum with simple methods
 public enum Status
 {
     Active,
@@ -31,7 +31,7 @@ public enum Status
     
     public fn IsActive(): bool
     {
-        // Simple implementation without match
+        -- Simple implementation without match
         return true;
     }
     
@@ -41,7 +41,7 @@ public enum Status
     }
 }
 
-// Static type
+-- Static type
 public static type Logger
 {
     public i32 logCount;
@@ -59,13 +59,13 @@ public static type Logger
     }
 }
 
-// Simple type with various members
+-- Simple type with various members
 public type Point2D
 {
     public f32 x;
     public f32 y;
     
-    // Constructor
+    -- Constructor
     new(f32 xPos, f32 yPos)
     {
         x = xPos;
@@ -78,18 +78,18 @@ public type Point2D
     }
 }
 
-// Type with properties
+-- Type with properties
 public type Rectangle
 {
-    // Regular fields
+    -- Regular fields
     f32 width;
 
     
-    // Arrow property (getter only)
+    -- Arrow property (getter only)
     public f32 area => width * Height;
     f32 stuff => width * Height;
     
-    // Property with accessor block
+    -- Property with accessor block
     public f32 Width
     {
         get => width;
@@ -102,13 +102,13 @@ public type Rectangle
         }
     }
     
-    // Property with both accessors and backing field with initializer
+    -- Property with both accessors and backing field with initializer
     public var Height = 1.0
     {
         get
         {
-            var stuff = 10.0; // Local variable
-            var things = new Point2D(1.0, 2.0); // Local object
+            var stuff = 10.0; -- Local variable
+            var things = new Point2D(1.0, 2.0); -- Local object
             return field * stuff + things.x;
         }
         set
@@ -117,10 +117,10 @@ public type Rectangle
         }
     }
 
-    // Var property with arrow
+    -- Var property with arrow
     public var perimeter => (width + Height) * 2;
 
-    // Constructor
+    -- Constructor
     new(f32 w, f32 h)
     {
         width = w;
@@ -128,22 +128,22 @@ public type Rectangle
     }
 }
 
-// Abstract type
+-- Abstract type
 public abstract type Shape
 {
     protected f32 centerX;
     protected f32 centerY;
     
-    // Abstract method
+    -- Abstract method
     public abstract fn CalculateArea(): f32;
     
-    // Virtual method with implementation
+    -- Virtual method with implementation
     public virtual fn GetCenter(): Point2D
     {
         return new Point2D(centerX, centerY);
     }
     
-    // Enforced method
+    -- Enforced method
     public enforced fn Move(f32 dx, f32 dy)
     {
         centerX += dx;
@@ -151,7 +151,7 @@ public abstract type Shape
     }
 }
 
-// Simple type (inheritance removed)
+-- Simple type (inheritance removed)
 public type Circle
 {
     public f32 radius;
@@ -165,27 +165,27 @@ public type Circle
         radius = r;
     }
     
-    // Regular method (override removed)
+    -- Regular method (override removed)
     public fn CalculateArea(): f32
     {
         return 3.14159 * radius * radius;
     }
     
-    // Regular method (inherit removed)  
+    -- Regular method (inherit removed)  
     public fn Move(f32 dx, f32 dy)
     {
         centerX += dx;
         centerY += dy;
     }
     
-    // GetCenter method to match abstract Shape interface
+    -- GetCenter method to match abstract Shape interface
     public fn GetCenter(): Point2D
     {
         return new Point2D(centerX, centerY);
     }
 }
 
-// Ref type
+-- Ref type
 public ref type Container
 {
     public i32 capacity;
@@ -213,35 +213,35 @@ public ref type Container
     }
 }
 
-// Main function to test various statements
+-- Main function to test various statements
 fn Main(): i32
 {
-    // Variable declarations
+    -- Variable declarations
     var x = 10;
     var y = 20;
     var message = "Hello World";
     f32 pi = 3.14159;
     bool isReady = true;
     
-    // Type declarations
+    -- Type declarations
     i32 counter = 0;
     string name = "Test";
     
-    // Object creation
+    -- Object creation
     var point = new Point2D(1.0, 2.0);
     var rect = new Rectangle(10.0, 20.0);
     var circle = new Circle(0.0, 0.0, 5.0);
     var container = new Container(100);
     
-    // Property access (would be member access in real usage)
+    -- Property access (would be member access in real usage)
     var area = rect.area;
     
-    // Method calls
+    -- Method calls
     var dist = point.Distance();
     var circleArea = circle.CalculateArea();
     container.Add();
     
-    // Control flow - if statements
+    -- Control flow - if statements
     if (x > 5)
     {
         y = y + 1;
@@ -256,14 +256,14 @@ fn Main(): i32
         Logger.Log("System is not ready");
     }
     
-    // While loop
+    -- While loop
     while (counter < 10)
     {
         counter++;
         Logger.logCount = counter;
     }
     
-    // For loop (traditional)
+    -- For loop (traditional)
     for (i32 t = 0; t < 5; t++)
     {
         if (t < 2)
@@ -275,7 +275,7 @@ fn Main(): i32
 
         if (x > 20)
         {
-            break; // Exit loop if x exceeds 20
+            break; -- Exit loop if x exceeds 20
         }
     }
 
@@ -284,7 +284,7 @@ fn Main(): i32
         x = x + t2;
     }
     
-    // Nested blocks
+    -- Nested blocks
     {
         var localVar = 100;
         if (localVar > 50)
@@ -296,17 +296,17 @@ fn Main(): i32
         }
     }
     
-    // Expression statements
+    -- Expression statements
     x + y;
     point.Distance();
     new Point2D(3.0, 4.0);
     
-    // Assignment expressions
+    -- Assignment expressions
     x = 100;
     y += 50;
     counter *= 2;
     
-    // Logical expressions
+    -- Logical expressions
     if (x > 50 && y < 100)
     {
         isReady = true;
@@ -317,7 +317,7 @@ fn Main(): i32
         message = "Condition met";
     }
     
-    // Comparison expressions
+    -- Comparison expressions
     if (x >= y)
     {
         var temp = x;
@@ -325,14 +325,14 @@ fn Main(): i32
         y = temp;
     }
     
-    // Arithmetic expressions
+    -- Arithmetic expressions
     var sum = x + y;
     var diff = x - y;
     var product = x * 2;
     var quotient = y / 2;
     var remainder = x % 3;
     
-    // Unary expressions
+    -- Unary expressions
     counter++;
     counter--;
     ++counter;
@@ -340,10 +340,10 @@ fn Main(): i32
     var negative = -x;
     var notReady = !isReady;
     
-    // Member access chains
+    -- Member access chains
     var centerPoint = circle.GetCenter();
     
-    // Range expressions
+    -- Range expressions
     var range1 = 0..10;
     var range2 = 5..15 by 2;
 
@@ -352,14 +352,14 @@ fn Main(): i32
         counter++;
         if (counter == 150)
         {
-            break; // Exit loop when counter reaches 150
+            break; -- Exit loop when counter reaches 150
         }
     }
     
-    // Return statement
+    -- Return statement
     return 0;
 }
 
-// Call main
+-- Call main
 Main();
 

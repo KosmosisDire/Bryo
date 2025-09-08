@@ -2,7 +2,7 @@ public type Vector2
 {
     public f32 x, y;
     
-    // examples for operator overloading
+    -- examples for operator overloading
     public op +(Vector2 other): Vector2
     {
         return new Vector2(x + other.x, y + other.y);
@@ -20,22 +20,22 @@ public type Vector2
     }
 }
 
-// maybe some other type from a different library
+-- maybe some other type from a different library
 public type Vector2f
 {
     public f32 x, y;
 }
 
-// we want to create an easy transformation between Vector2 and Vector2f
+-- we want to create an easy transformation between Vector2 and Vector2f
 public extension Vector2
 {
-    // allow adding static methods
+    -- allow adding static methods
     public static fn Dot(Vector2 a, Vector2 b): f32
     {
         return a.x * b.x + a.y * b.y;
     }
 
-    // or just normal methods
+    -- or just normal methods
     public fn ToString(): string
     {
         return "({x}, {y})"
@@ -60,7 +60,7 @@ public ref type Transform
     public var position = new Vector2(0, 0);
     public f32 rotation = 0.0;
     
-    // explicit cast to Vector2
+    -- explicit cast to Vector2
     public explicit op cast(): Vector2
     {
         return position;
@@ -72,7 +72,7 @@ public ref type Player
     public var transform = new Transform();
     public i32 health = 100;
     public bool IsAlive => health > 0;
-    bool privateData = true; // private data example
+    bool privateData = true; -- private data example
     
     new(f32 startX, f32 startY)
     {
@@ -96,15 +96,15 @@ fn Main()
 {
     var player = new Player(10.0, 20.0);
     
-    // Function type parameter example with return value
+    -- Function type parameter example with return value
     var alive = player.Update(p => {
         p.Move(1.0, 2.0);
         p.health -= 5;
         return match (p.health)
         {
-            in ..=0 => false, // Player is dead
-            in 1..100 => true, // Player is injured but alive
-            in 101.. => throw new Exception("Player health is out of expected range") // Unexpected health value
+            in ..=0 => false, -- Player is dead
+            in 1..100 => true, -- Player is injured but alive
+            in 101.. => throw new Exception("Player health is out of expected range") -- Unexpected health value
         };
     });
     

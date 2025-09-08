@@ -634,6 +634,11 @@ namespace Bryo
             visit(static_cast<BaseExprSyntax *>(node));
         }
 
+        void visit(SimpleNameSyntax *node) override
+        {
+            visit(static_cast<BaseNameExprSyntax *>(node));
+        }
+
         void visit(QualifiedNameSyntax *node) override
         {
             visit(static_cast<BaseNameExprSyntax *>(node));

@@ -1478,11 +1478,13 @@ namespace Bryo
                 break;
         }
 
-        if (!(expect(TokenKind::Greater, "Expected '>' to close generic type arguments")))
+        if (!check(TokenKind::Greater))
         {
             tokens.restore(cp);
             return {};
         }
+        
+        consume(TokenKind::Greater);
 
         return arena.makeList(typeArgs);
     }

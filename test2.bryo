@@ -17,21 +17,21 @@ type GameCharacter {
             health = health - damage;
             if (health <= 0) {
                 alive = false;
-                return true;  // character died
+                return true;  -- character died
             }
-            return false;  // still alive
+            return false;  -- still alive
         }
-        return false;  // already dead
+        return false;  -- already dead
     }
     
     fn heal(i32 amount): i32 {
         if (isAlive()) {
             health = health + amount;
             if (health > 100) {
-                health = 100;  // cap at 100
+                health = 100;  -- cap at 100
             }
         }
-        return getHealth();  // Call another member function
+        return getHealth();  -- Call another member function
     }
     
     fn castSpell(i32 manaCost): bool {
@@ -46,14 +46,14 @@ type GameCharacter {
         var damage = 0;
         
         if (isAlive()) {
-            // Cast healing spell if low health
+            -- Cast healing spell if low health
             if (getHealth() < 30 && mana >= 10) {
                 if (castSpell(10)) {
                     heal(25);
                 }
             }
             
-            // Take damage from enemy
+            -- Take damage from enemy
             var enemyDamage = 20;
             var died = takeDamage(enemyDamage);
             damage = enemyDamage;
@@ -62,9 +62,9 @@ type GameCharacter {
                 return damage;
             }
             
-            // Counter attack
+            -- Counter attack
             if (castSpell(5)) {
-                damage = damage + 10;  // bonus damage dealt
+                damage = damage + 10;  -- bonus damage dealt
             }
         }
         
@@ -135,7 +135,7 @@ type Shop {
     fn trade(): i32 {
         var profit = 0;
 
-        // Buy cheap items
+        -- Buy cheap items
         var potion = new Item("Potion", 20, 35);
         if (buyItem(potion)) {
             profit = profit - potion.getCost();
@@ -146,13 +146,13 @@ type Shop {
             profit = profit - sword.getCost();
         }
         
-        // Sell items for higher price
+        -- Sell items for higher price
         if (sellItem()) {
-            profit = profit + 35; // from potion
+            profit = profit + 35; -- from potion
         }
         
         if (sellItem()) {
-            profit = profit + 40; // from sword
+            profit = profit + 40; -- from sword
         }
         
         return profit;
@@ -167,28 +167,28 @@ fn main(): i32 {
     
     var totalScore = 0;
     
-    // Test initial health
+    -- Test initial health
     var initialHealth = character.getHealth();
-    totalScore = totalScore + initialHealth;  // +100
+    totalScore = totalScore + initialHealth;  -- +100
     
-    // Test combat
+    -- Test combat
     var combatDamage = character.combatRound();
     totalScore = totalScore + combatDamage;
     
-    // Heal
+    -- Heal
     if (character.isAlive()) {
         var healResult = character.heal(30);
         totalScore = totalScore + healResult;
     }
     
-    // Shop trading
+    -- Shop trading
     var shopProfit = shop.trade();
     totalScore = totalScore + shopProfit;
     
     var finalGold = shop.getGold();
     totalScore = totalScore + finalGold;
     
-    // More combat
+    -- More combat
     if (character.isAlive())
     {
         for (var i in 0..10 by 2 at var i)

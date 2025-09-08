@@ -170,23 +170,26 @@ namespace Bryo
         void visit(BaseNameExprSyntax *node) override;
         void visit(LiteralExprSyntax *node) override;
         void visit(NewExprSyntax *node) override;
-        void visit(BaseNameExprSyntax *node) override;
 
         // Errors
-        void visit(MissingSyntax *node) override;
-        void visit(MissingSyntax *node) override;
+        void visit(MissingExprSyntax *node) override;
+        void visit(MissingStmtSyntax *node) override;
 
         // --- Unimplemented visitors will be caught by the base overrides ---
         void visit(TypedIdentifier *n) override {}
         void visit(ArrayLiteralExprSyntax *n) override;
+        void visit(SimpleNameSyntax *n) override;
+        void visit(GenericNameSyntax *n) override;
         void visit(QualifiedNameSyntax *n) override;
+        void visit(ParenthesizedExprSyntax *n) override;
+        void visit(MemberAccessExprSyntax *n) override;
         void visit(IndexerExprSyntax *n) override;
         void visit(CastExprSyntax *n) override;
         void visit(ThisExprSyntax *n) override;
         void visit(LambdaExprSyntax *n) override;
         void visit(ConditionalExprSyntax *n) override;
-        void visit(TypeOfExpr *n) override;
-        void visit(SizeOfExpr *n) override;
+        void visit(TypeOfExprSyntax *n) override;
+        void visit(SizeOfExprSyntax *n) override;
         void visit(IfStmtSyntax *n) override;
         void visit(BreakStmtSyntax *n) override;
         void visit(ContinueStmtSyntax *n) override;

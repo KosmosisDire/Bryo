@@ -21,18 +21,18 @@ type GameCharacter {
             health = health - damage;
             if (health <= 0) {
                 alive = false;
-                return true;  // character died
+                return true;  -- character died
             }
-            return false;  // still alive
+            return false;  -- still alive
         }
-        return false;  // already dead
+        return false;  -- already dead
     }
     
     fn heal(i32 amount): i32 {
         if (isAlive()) {
             health = health + amount;
             if (health > 100) {
-                health = 100;  // cap at 100
+                health = 100;  -- cap at 100
             }
         }
         return getHealthPercent();
@@ -42,18 +42,18 @@ type GameCharacter {
         if (isAlive()) {
             experience = experience + exp;
             
-            // Check for level up (every 100 exp)
+            -- Check for level up (every 100 exp)
             for (var i = 0; i < 10; i = i + 1) {
                 if (experience >= level * 100) {
                     level = level + 1;
-                    mana = mana + 10;  // gain mana per level
+                    mana = mana + 10;  -- gain mana per level
                     experience = experience - (level - 1) * 100;
                 } else {
-                    return true;  // leveled up
+                    return true;  -- leveled up
                 }
             }
         }
-        return false;  // no level up or dead
+        return false;  -- no level up or dead
     }
     
     fn castSpell(i32 manaCost): bool {
@@ -70,34 +70,34 @@ type GameCharacter {
         
         for (var round = 0; round < rounds; round = round + 1) {
             if (isAlive()) {
-                // Cast healing spell if low health
+                -- Cast healing spell if low health
                 if (getHealthPercent() < 30 && mana >= 10) {
                     if (castSpell(10)) {
                         heal(25);
                     }
                 }
                 
-                // Take damage from enemy
-                var enemyDamage = 15 + round;  // damage increases per round
+                -- Take damage from enemy
+                var enemyDamage = 15 + round;  -- damage increases per round
                 var died = takeDamage(enemyDamage);
                 totalDamage = totalDamage + enemyDamage;
                 
                 if (died) {
-                    return totalDamage;  // died, return damage taken
+                    return totalDamage;  -- died, return damage taken
                 }
                 
-                // Counter attack and gain experience
+                -- Counter attack and gain experience
                 if (castSpell(5)) {
                     var expGained = 10 + round;
                     gainExperience(expGained);
                     victories = victories + 1;
                 }
             } else {
-                return totalDamage;  // dead, exit combat
+                return totalDamage;  -- dead, exit combat
             }
         }
         
-        return victories * 100 + totalDamage;  // survived all rounds
+        return victories * 100 + totalDamage;  -- survived all rounds
     }
 }
 
@@ -135,15 +135,15 @@ type Inventory {
     fn optimizeInventory(): i32 {
         var transactions = 0;
         
-        // Try to buy items if we have gold and space
+        -- Try to buy items if we have gold and space
         for (var i = 0; i < 5; i = i + 1) {
-            var itemCost = 20 + i * 5;  // increasing cost
+            var itemCost = 20 + i * 5;  -- increasing cost
             if (buyItem(itemCost)) {
                 transactions = transactions + 1;
             }
         }
         
-        // Sell expensive items if inventory is full
+        -- Sell expensive items if inventory is full
         if (itemCount >= maxItems) {
             for (var j = 0; j < 3; j = j + 1) {
                 var sellValue = 30 + j * 10;
@@ -163,31 +163,31 @@ fn main(): i32 {
     
     var totalScore = 0;
     
-    // Initial character stats
+    -- Initial character stats
     var initialHealth = character.getHealthPercent();
     totalScore = totalScore + initialHealth;
     
-    // Test combat simulation
+    -- Test combat simulation
     var combatResult = character.simulateCombat(5);
     totalScore = totalScore + combatResult;
     
-    // Test healing if character survived
+    -- Test healing if character survived
     if (character.isAlive()) {
         var healResult = character.heal(50);
         totalScore = totalScore + healResult;
         
-        // Test experience gain
+        -- Test experience gain
         var leveledUp = character.gainExperience(250);
         if (leveledUp) {
-            totalScore = totalScore + 100;  // bonus for leveling up
+            totalScore = totalScore + 100;  -- bonus for leveling up
         }
     }
     
-    // Test inventory management
+    -- Test inventory management
     var transactions = inventory.optimizeInventory();
     totalScore = totalScore + transactions * 10;
     
-    // Test buying healing potions
+    -- Test buying healing potions
     for (var potions = 0; potions < 3; potions = potions + 1) {
         if (inventory.canAfford(15)) {
             if (inventory.buyItem(15)) {
@@ -199,7 +199,7 @@ fn main(): i32 {
         }
     }
     
-    // Final character state bonus
+    -- Final character state bonus
     if (character.isAlive()) {
         var finalHealth = character.getHealthPercent();
         totalScore = totalScore + finalHealth;
