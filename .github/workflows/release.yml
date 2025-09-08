@@ -29,7 +29,7 @@ jobs:
 
     - name: Configure CMake (Linux)
       run: |
-        cmake --preset github-actions-linux
+        cmake --preset github-actions-linux --preset-file CMakePresetsActions.json
         
     - name: Build (Linux)
       run: |
@@ -62,7 +62,7 @@ jobs:
 
     - name: Configure CMake (Windows)
       run: |
-        cmake --preset github-actions-windows
+        cmake --preset github-actions-windows --preset-file CMakePresetsActions.json
         
     - name: Build (Windows)
       run: |

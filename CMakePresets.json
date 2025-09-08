@@ -63,28 +63,6 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
             }
-        },
-        {
-            "name": "github-actions-linux",
-            "displayName": "GitHub Actions - Linux",
-            "description": "Release build for GitHub Actions Linux runners.",
-            "generator": "Unix Makefiles",
-            "binaryDir": "${sourceDir}/build",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
-            }
-        },
-        {
-            "name": "github-actions-windows",
-            "displayName": "GitHub Actions - Windows",
-            "description": "Release build for GitHub Actions Windows runners.",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/Release",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
-            }
         }
     ],
     "buildPresets": [
