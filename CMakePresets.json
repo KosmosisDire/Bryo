@@ -14,8 +14,8 @@
             "binaryDir": "${sourceDir}/build/Debug",
             "condition": {
                 "type": "notEquals",
-                "lhs": "${env:VCPKG_ROOT}",
-                "rhs": ""
+                "lhs": "${env:CI}",
+                "rhs": "true"
             },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
@@ -34,8 +34,8 @@
             "binaryDir": "${sourceDir}/build/Release",
             "condition": {
                 "type": "notEquals",
-                "lhs": "${env:VCPKG_ROOT}",
-                "rhs": ""
+                "lhs": "${env:CI}",
+                "rhs": "true"
             },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
@@ -74,6 +74,11 @@
             "description": "Release build for GitHub Actions Linux runners.",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build",
+            "condition": {
+                "type": "equals",
+                "lhs": "${env:CI}",
+                "rhs": "true"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
@@ -85,6 +90,11 @@
             "description": "Release build for GitHub Actions Windows runners.",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/Release",
+            "condition": {
+                "type": "equals",
+                "lhs": "${env:CI}",
+                "rhs": "true"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE"
