@@ -29,7 +29,7 @@ jobs:
 
     - name: Configure CMake (Linux)
       run: |
-        cmake --preset linux-release
+        cmake --preset github-actions-linux
         
     - name: Build (Linux)
       run: |
@@ -60,21 +60,9 @@ jobs:
         version: "19.1.7"
         directory: ${{ runner.temp }}/llvm
 
-    - name: Setup vcpkg
-      uses: lukka/get-cmake@latest
-
-    - name: Install vcpkg
-      run: |
-        git clone https://github.com/Microsoft/vcpkg.git
-        .\vcpkg\bootstrap-vcpkg.bat
-        echo "${{ github.workspace }}\vcpkg" >> $env:GITHUB_PATH
-
-    - name: Set VCPKG_ROOT
-      run: echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
-
     - name: Configure CMake (Windows)
       run: |
-        cmake --preset windows-vcpkg-ninja-release
+        cmake --preset github-actions-windows
         
     - name: Build (Windows)
       run: |
