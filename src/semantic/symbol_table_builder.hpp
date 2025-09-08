@@ -28,10 +28,7 @@ namespace Bryo
         void annotate_scope(BaseSyntax *node);
 
         // Visit block contents without creating a new scope
-        void visit_block_contents(Block *block);
-
-        // Build qualified name from MemberAccessExpr chain
-        std::string build_qualified_name(QualifiedNameSyntax *memberAccess);
+        void visit_block_contents(BlockSyntax *block);
 
         // Create unresolved type from type expression (does not actually resolve)
         TypePtr create_unresolved_type(BaseExprSyntax *typeExpr);
@@ -67,15 +64,14 @@ namespace Bryo
         void visit(EnumCaseDeclSyntax *node) override;
 
         // === Statements with scopes ===
-        void visit(Block *node) override;
+        void visit(BlockSyntax *node) override;
         void visit(WhileStmtSyntax *node) override;
         void visit(ForStmtSyntax *node) override;
-        void visit(IfStmt *node) override;
+        void visit(IfStmtSyntax *node) override;
 
         // === Type expressions ===
         void visit(ArrayTypeSyntax *node) override;
-        void visit(GenericTypeExpr *node) override;
-        void visit(PointerTypeExpr *node) override;
+        void visit(PointerTypeSyntax *node) override;
         void visit(TypeParameterDeclSyntax *node) override;
     };
 

@@ -701,6 +701,11 @@ namespace Bryo
                 text = {};
         }
 
+        static Token invalid_token(Token current)
+        {
+            return Token(TokenKind::Invalid, SourceRange(current.location.start, 1), current.text);
+        }
+
         // Check if this is a specific token kind
         bool is(TokenKind k) const { return kind == k; }
 

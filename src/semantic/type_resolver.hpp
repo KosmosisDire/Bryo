@@ -79,18 +79,18 @@ namespace Bryo
         // [Keep all existing visitor declarations unchanged]
         void visit(LiteralExprSyntax *node) override;
         void visit(ArrayLiteralExprSyntax *node) override;
-        void visit(NameExpr *node) override;
-        void visit(BinaryExpr *node) override;
-        void visit(AssignmentExpr *node) override;
-        void visit(CallExpr *node) override;
+        void visit(BaseNameExprSyntax *node) override;
+        void visit(BinaryExprSyntax *node) override;
+        void visit(AssignmentExprSyntax *node) override;
+        void visit(CallExprSyntax *node) override;
         void visit(QualifiedNameSyntax *node) override;
-        void visit(UnaryExpr *node) override;
+        void visit(UnaryExprSyntax *node) override;
         void visit(IndexerExprSyntax *node) override;
-        void visit(ConditionalExpr *node) override;
-        void visit(IfStmt *node) override;
-        void visit(CastExpr *node) override;
-        void visit(ThisExpr *node) override;
-        void visit(NewExpr *node) override;
+        void visit(ConditionalExprSyntax *node) override;
+        void visit(IfStmtSyntax *node) override;
+        void visit(CastExprSyntax *node) override;
+        void visit(ThisExprSyntax *node) override;
+        void visit(NewExprSyntax *node) override;
         void visit(ReturnStmtSyntax *node) override;
         void visit(ForStmtSyntax *node) override;
         void visit(WhileStmtSyntax *node) override;
@@ -101,15 +101,14 @@ namespace Bryo
         void visit(ParameterDeclSyntax *node) override;
         void visit(TypedIdentifier *node) override;
         void visit(TypeDeclSyntax *node) override;
-        void visit(GenericTypeExpr *node) override;
-        void visit(PointerTypeExpr *node) override;
+        void visit(PointerTypeSyntax *node) override;
         void visit(TypeParameterDeclSyntax *node) override;
 
         // --- Helper Methods ---
         TypePtr get_node_type(BaseSyntax *node);
         void set_node_type(BaseSyntax *node, TypePtr type);
         TypePtr resolve_expr_type(BaseExprSyntax *type_expr, Scope *scope);
-        TypePtr infer_function_return_type(Block *body);
+        TypePtr infer_function_return_type(BlockSyntax *body);
         ConversionKind check_conversion(TypePtr from, TypePtr to);
         bool check_implicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);
         bool check_explicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);

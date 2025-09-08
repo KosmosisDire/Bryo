@@ -86,32 +86,32 @@ namespace Bryo
         // --- Override Visitor Methods ---
 
         // --- Building Blocks & Errors ---
-        void visit(SimpleNameExprSyntax *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
+        void visit(BaseNameExprSyntax *node) override { leaf(node, "Identifier", " (" + std::string(node->text) + ")"); }
         void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
         void visit(MissingSyntax *node) override { leaf(node, "MissingSyntax", " (\"" + std::string(node->message) + "\")"); }
         void visit(TypedIdentifier *node) override;
 
         // --- Expressions ---
         void visit(LiteralExprSyntax *node) override;
-        void visit(NameExpr *node) override;
-        void visit(UnaryExpr *node) override;
-        void visit(BinaryExpr *node) override;
-        void visit(AssignmentExpr *node) override;
-        void visit(ThisExpr *node) override { leaf(node, "ThisExpr"); }
+        void visit(BaseNameExprSyntax *node) override;
+        void visit(UnaryExprSyntax *node) override;
+        void visit(BinaryExprSyntax *node) override;
+        void visit(AssignmentExprSyntax *node) override;
+        void visit(ThisExprSyntax *node) override { leaf(node, "ThisExprSyntax"); }
         void visit(QualifiedNameSyntax *node) override;
         void visit(ArrayLiteralExprSyntax *node) override { enter(node, "ArrayLiteralExprSyntax"); DefaultVisitor::visit(node); leave(); }
-        void visit(CallExpr *node) override { enter(node, "CallExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(CallExprSyntax *node) override { enter(node, "CallExprSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(IndexerExprSyntax *node) override { enter(node, "IndexerExprSyntax"); DefaultVisitor::visit(node); leave(); }
-        void visit(CastExpr *node) override { enter(node, "CastExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(NewExpr *node) override { enter(node, "NewExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(LambdaExpr *node) override { enter(node, "LambdaExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(ConditionalExpr *node) override { enter(node, "ConditionalExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(CastExprSyntax *node) override { enter(node, "CastExprSyntax"); DefaultVisitor::visit(node); leave(); }
+        void visit(NewExprSyntax *node) override { enter(node, "NewExprSyntax"); DefaultVisitor::visit(node); leave(); }
+        void visit(LambdaExprSyntax *node) override { enter(node, "LambdaExprSyntax"); DefaultVisitor::visit(node); leave(); }
+        void visit(ConditionalExprSyntax *node) override { enter(node, "ConditionalExprSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(TypeOfExpr *node) override { enter(node, "TypeOfExpr"); DefaultVisitor::visit(node); leave(); }
         void visit(SizeOfExpr *node) override { enter(node, "SizeOfExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(IfStmt *node) override { enter(node, "IfStmt"); DefaultVisitor::visit(node); leave(); }
+        void visit(IfStmtSyntax *node) override { enter(node, "IfStmtSyntax"); DefaultVisitor::visit(node); leave(); }
 
         // --- Statements ---
-        void visit(Block *node) override { enter(node, "Block"); DefaultVisitor::visit(node); leave(); }
+        void visit(BlockSyntax *node) override { enter(node, "BlockSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(ExpressionStmtSyntax *node) override { enter(node, "ExpressionStmtSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(ReturnStmtSyntax *node) override { enter(node, "ReturnStmtSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(BreakStmtSyntax *node) override { leaf(node, "BreakStmtSyntax"); }
@@ -175,9 +175,7 @@ namespace Bryo
 
         // --- Type Expressions ---
         void visit(ArrayTypeSyntax *node) override { enter(node, "ArrayTypeSyntax"); DefaultVisitor::visit(node); leave(); }
-        void visit(FunctionTypeExpr *node) override { enter(node, "FunctionTypeExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(GenericTypeExpr *node) override { enter(node, "GenericTypeExpr"); DefaultVisitor::visit(node); leave(); }
-        void visit(PointerTypeExpr *node) override { enter(node, "PointerTypeExpr"); DefaultVisitor::visit(node); leave(); }
+        void visit(PointerTypeSyntax *node) override { enter(node, "PointerTypeSyntax"); DefaultVisitor::visit(node); leave(); }
         void visit(TypeParameterDeclSyntax *node) override;
 
         // --- Root ---
@@ -206,12 +204,12 @@ namespace Bryo
         leaf(node, "LiteralExprSyntax", " (Kind: " + std::string(to_string(node->kind)) + ", Value: " + std::string(node->value) + ")");
     }
 
-    inline void AstPrinter::visit(NameExpr *node)
+    inline void AstPrinter::visit(BaseNameExprSyntax *node)
     {
-        leaf(node, "NameExpr", " (" + node->get_name() + ")");
+        leaf(node, "BaseNameExprSyntax", " (" + node->get_name() + ")");
     }
 
-    inline void AstPrinter::visit(UnaryExpr *node)
+    inline void AstPrinter::visit(UnaryExprSyntax *node)
     {
         std::string details = " (Op: " + std::string(to_string(node->op));
         if (node->isPostfix)
@@ -219,21 +217,21 @@ namespace Bryo
             details += ", Postfix";
         }
         details += ")";
-        enter(node, "UnaryExpr", details);
+        enter(node, "UnaryExprSyntax", details);
         DefaultVisitor::visit(node);
         leave();
     }
 
-    inline void AstPrinter::visit(BinaryExpr *node)
+    inline void AstPrinter::visit(BinaryExprSyntax *node)
     {
-        enter(node, "BinaryExpr", " (Op: " + std::string(to_string(node->op)) + ")");
+        enter(node, "BinaryExprSyntax", " (Op: " + std::string(to_string(node->op)) + ")");
         DefaultVisitor::visit(node);
         leave();
     }
 
-    inline void AstPrinter::visit(AssignmentExpr *node)
+    inline void AstPrinter::visit(AssignmentExprSyntax *node)
     {
-        enter(node, "AssignmentExpr", " (Op: " + std::string(to_string(node->op)) + ")");
+        enter(node, "AssignmentExprSyntax", " (Op: " + std::string(to_string(node->op)) + ")");
         DefaultVisitor::visit(node);
         leave();
     }

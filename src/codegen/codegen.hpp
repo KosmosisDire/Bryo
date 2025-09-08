@@ -91,7 +91,7 @@ namespace Bryo
         void ensure_terminator();
         Scope *get_containing_scope(BaseSyntax *node);
         Symbol *get_expression_symbol(BaseExprSyntax *expr);
-        std::string build_qualified_name(NameExpr *name_expr);
+        std::string build_qualified_name(BaseNameExprSyntax *name_expr);
 
         // Core expression generation helpers
         llvm::Value* genLValue(BaseExprSyntax* expr);  // Returns address
@@ -158,19 +158,19 @@ namespace Bryo
         void visit(ParameterDeclSyntax *node) override;
 
         // Statements
-        void visit(Block *node) override;
+        void visit(BlockSyntax *node) override;
         void visit(ExpressionStmtSyntax *node) override;
         void visit(ReturnStmtSyntax *node) override;
 
         // Expressions
-        void visit(BinaryExpr *node) override;
-        void visit(UnaryExpr *node) override;
-        void visit(AssignmentExpr *node) override;
-        void visit(CallExpr *node) override;
-        void visit(NameExpr *node) override;
+        void visit(BinaryExprSyntax *node) override;
+        void visit(UnaryExprSyntax *node) override;
+        void visit(AssignmentExprSyntax *node) override;
+        void visit(CallExprSyntax *node) override;
+        void visit(BaseNameExprSyntax *node) override;
         void visit(LiteralExprSyntax *node) override;
-        void visit(NewExpr *node) override;
-        void visit(SimpleNameExprSyntax *node) override;
+        void visit(NewExprSyntax *node) override;
+        void visit(BaseNameExprSyntax *node) override;
 
         // Errors
         void visit(MissingSyntax *node) override;
@@ -181,13 +181,13 @@ namespace Bryo
         void visit(ArrayLiteralExprSyntax *n) override;
         void visit(QualifiedNameSyntax *n) override;
         void visit(IndexerExprSyntax *n) override;
-        void visit(CastExpr *n) override;
-        void visit(ThisExpr *n) override;
-        void visit(LambdaExpr *n) override;
-        void visit(ConditionalExpr *n) override;
+        void visit(CastExprSyntax *n) override;
+        void visit(ThisExprSyntax *n) override;
+        void visit(LambdaExprSyntax *n) override;
+        void visit(ConditionalExprSyntax *n) override;
         void visit(TypeOfExpr *n) override;
         void visit(SizeOfExpr *n) override;
-        void visit(IfStmt *n) override;
+        void visit(IfStmtSyntax *n) override;
         void visit(BreakStmtSyntax *n) override;
         void visit(ContinueStmtSyntax *n) override;
         void visit(WhileStmtSyntax *n) override;
@@ -199,9 +199,7 @@ namespace Bryo
 
         // Type expressions (now regular expressions) - treated as regular expressions
         void visit(ArrayTypeSyntax *n) override;
-        void visit(FunctionTypeExpr *n) override;
-        void visit(GenericTypeExpr *n) override;
-        void visit(PointerTypeExpr *n) override;
+        void visit(PointerTypeSyntax *n) override;
         void visit(TypeParameterDeclSyntax *n) override;
     };
 

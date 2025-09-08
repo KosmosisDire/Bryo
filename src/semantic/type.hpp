@@ -14,7 +14,7 @@ namespace Bryo
     class TypeLikeSymbol;
     class ScopeNode;
     struct BaseExprSyntax;
-    struct Block;
+    struct BlockSyntax;
     using TypePtr = std::shared_ptr<Type>;
 
     

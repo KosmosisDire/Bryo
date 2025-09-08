@@ -320,10 +320,7 @@ namespace Bryo
         }
         else
         {
-            error("Expected type declaration keyword");
-            decl->name = arena.makeIdentifier("");
-            decl->location = startToken.location;
-            return decl;
+            return nullptr;
         }
 
         if (check(TokenKind::Identifier))
@@ -333,7 +330,7 @@ namespace Bryo
         else
         {
             error("Expected type name");
-            decl->name = arena.makeIdentifier("");
+            decl->name = arena.makeIdentifier(Token::invalid_token(tokens.current()));
         }
 
         // Parse generic type parameters: <T, U, V>
@@ -605,7 +602,7 @@ namespace Bryo
                     literal->kind == LiteralKind::I8)
                 {
                     auto arrayType = arena.make<ArrayTypeSyntax>();
-                    arrayType->elementType = indexer->object;
+                    arrayType->baseType = indexer->object;
                     arrayType->size = literal;
                     arrayType->location = indexer->location;
                     return arrayType;
@@ -613,7 +610,7 @@ namespace Bryo
             }
             // For non-literal indices, still convert but without size
             auto arrayType = arena.make<ArrayTypeSyntax>();
-            arrayType->elementType = indexer->object;
+            arrayType->baseType = indexer->object;
             arrayType->size = nullptr;
             arrayType->location = indexer->location;
             return arrayType;
@@ -890,10 +887,10 @@ namespace Bryo
         return parseExpressionStatement();
     }
 
-    Block *Parser::parseBlock()
+    BlockSyntax *Parser::parseBlock()
     {
         auto startToken = tokens.current();
-        auto block = arena.make<Block>();
+        auto block = arena.make<BlockSyntax>();
         consume(TokenKind::LeftBrace);
 
         std::vector<BaseStmtSyntax *> statements;
@@ -964,7 +961,7 @@ namespace Bryo
                 elseStmt = errorStmt("Expected else statement");
         }
 
-        auto ifExpr = arena.make<IfStmt>();
+        auto ifExpr = arena.make<IfStmtSyntax>();
         ifExpr->condition = condition;
         ifExpr->thenBranch = thenStmt;
         ifExpr->elseBranch = elseStmt;
@@ -1155,44 +1152,24 @@ namespace Bryo
         auto directive = arena.make<UsingDirectiveSyntax>();
         consume(TokenKind::Using);
 
-        auto checkpoint = tokens.checkpoint();
         if (check(TokenKind::Identifier))
         {
-            auto firstId = parseIdentifier();
-            if (consume(TokenKind::Assign))
+            directive->target = parseNameExpression(); // Parse the target namespace
+            if (consume(TokenKind::Dot))
             {
-                directive->kind = UsingDirectiveSyntax::Kind::Alias;
-                directive->alias = firstId;
-                directive->aliasedType = parseExpression();
-                if (!directive->aliasedType)
+                // Handle qualified names like "System.Collections"
+                auto memberAccess = arena.make<QualifiedNameSyntax>();
+                memberAccess->left = directive->target;
+                memberAccess->right = parseIdentifier();
+                directive->target = memberAccess;
+                // Continue parsing additional dots
+                while (consume(TokenKind::Dot))
                 {
-                    directive->aliasedType = errorExpr("Expected type after '='");
+                    auto nextMember = arena.make<QualifiedNameSyntax>();
+                    nextMember->left = directive->target;
+                    nextMember->right = parseIdentifier();
+                    directive->target = nextMember;
                 }
-                directive->target = nullptr;
-            }
-            else
-            {
-                tokens.restore(checkpoint);
-                directive->kind = UsingDirectiveSyntax::Kind::Namespace;
-                directive->target = parseNameExpression(); // Parse the target namespace
-                if (consume(TokenKind::Dot))
-                {
-                    // Handle qualified names like "System.Collections"
-                    auto memberAccess = arena.make<QualifiedNameSyntax>();
-                    memberAccess->object = directive->target;
-                    memberAccess->member = parseIdentifier();
-                    directive->target = memberAccess;
-                    // Continue parsing additional dots
-                    while (consume(TokenKind::Dot))
-                    {
-                        auto nextMember = arena.make<QualifiedNameSyntax>();
-                        nextMember->object = directive->target;
-                        nextMember->member = parseIdentifier();
-                        directive->target = nextMember;
-                    }
-                }
-                directive->alias = nullptr;
-                directive->aliasedType = nullptr;
             }
         }
 
@@ -1227,7 +1204,7 @@ namespace Bryo
 
                 tokens.advance();
 
-                auto conditional = arena.make<ConditionalExpr>();
+                auto conditional = arena.make<ConditionalExprSyntax>();
                 conditional->condition = left;
 
                 conditional->thenExpr = parseExpression(precedence + 1);
@@ -1250,7 +1227,7 @@ namespace Bryo
             if (op.is_assignment_operator())
             {
                 tokens.advance();
-                auto assign = arena.make<AssignmentExpr>();
+                auto assign = arena.make<AssignmentExprSyntax>();
                 assign->target = left;
                 assign->op = op.to_assignment_operator_kind();
                 assign->value = parseExpression(precedence);
@@ -1268,7 +1245,7 @@ namespace Bryo
             if (!right)
                 right = errorExpr("Expected right operand");
 
-            auto binary = arena.make<BinaryExpr>();
+            auto binary = arena.make<BinaryExprSyntax>();
             binary->left = left;
             binary->op = op.to_binary_operator_kind();
             binary->right = right;
@@ -1307,7 +1284,7 @@ namespace Bryo
         else if (check(TokenKind::This))
         {
             auto startToken = tokens.current();
-            auto thisExpr = arena.make<ThisExpr>();
+            auto thisExpr = arena.make<ThisExprSyntax>();
             tokens.advance();
             thisExpr->location = startToken.location;
             expr = thisExpr;
@@ -1348,7 +1325,7 @@ namespace Bryo
             if (check(TokenKind::LeftParen))
             {
                 tokens.advance();
-                auto call = arena.make<CallExpr>();
+                auto call = arena.make<CallExprSyntax>();
                 call->callee = expr;
 
                 std::vector<BaseExprSyntax *> args;
@@ -1373,9 +1350,9 @@ namespace Bryo
             {
                 tokens.advance();
                 auto member = arena.make<QualifiedNameSyntax>();
-                member->object = expr;
-                member->member = parseIdentifier();
-                member->location = SourceRange(expr->location.start, member->member->location.end());
+                member->left = expr->as<BaseNameExprSyntax>();
+                member->right = parseIdentifier();
+                member->location = SourceRange(expr->location.start, member->right->location.end());
                 expr = member;
             }
             else if (check(TokenKind::LeftBracket))
@@ -1395,7 +1372,7 @@ namespace Bryo
             }
             else if (checkAny({TokenKind::Increment, TokenKind::Decrement}))
             {
-                auto unary = arena.make<UnaryExpr>();
+                auto unary = arena.make<UnaryExprSyntax>();
                 unary->operand = expr;
                 unary->op = tokens.current().to_unary_operator_kind();
                 unary->isPostfix = true;
@@ -1414,7 +1391,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseUnaryExpression()
     {
         auto startToken = tokens.current();
-        auto unary = arena.make<UnaryExpr>();
+        auto unary = arena.make<UnaryExprSyntax>();
         Token op = tokens.current();
         tokens.advance();
         unary->op = op.to_unary_operator_kind();
@@ -1439,13 +1416,47 @@ namespace Bryo
         return lit;
     }
 
-    BaseExprSyntax *Parser::parseNameExpression()
-    {
-        auto nameExpr = arena.make<NameExpr>();
-        nameExpr->name = parseIdentifier();
-        nameExpr->location = nameExpr->name->location;
-        return nameExpr;
-    }
+        BaseNameExprSyntax *Parser::parseNameExpression()
+        {
+            BaseNameExprSyntax *nameExpr = parseIdentifier();
+            if (!nameExpr)
+            {
+                return nullptr;
+            }
+
+            // Check for generic arguments: identifier<T, U>
+            if (check(TokenKind::Less))
+            {
+                auto genericArgs = parseGenericArgs();
+                if (!genericArgs.empty())
+                {
+                    auto generic = arena.make<GenericNameSyntax>();
+                    generic->identifier = nameExpr;
+                    generic->typeArguments = genericArgs;
+                    generic->location = SourceRange(nameExpr->location.start, previous().location.end());
+                    nameExpr = generic;
+                }
+            }
+
+            // Recursively handle qualified names: left.right.more...
+            if (consume(TokenKind::Dot))
+            {
+                auto right = parseNameExpression(); // Recursive call
+                if (!right)
+                {
+                    error("Expected identifier after '.'");
+                    return nameExpr;
+                }
+
+                auto qualified = arena.make<QualifiedNameSyntax>();
+                qualified->left = nameExpr;
+                qualified->right = right;
+                qualified->location = SourceRange(nameExpr->location.start, right->location.end());
+                return qualified;
+            }
+
+            return nameExpr;
+        }
 
     List<BaseExprSyntax *> Parser::parseGenericArgs()
     {
@@ -1484,16 +1495,7 @@ namespace Bryo
         }
 
         auto nameExpr = parseNameExpression();
-        List<BaseExprSyntax *> typeArgs = parseGenericArgs();
         BaseExprSyntax *baseType = nameExpr;
-
-        if (!typeArgs.empty())
-        {
-            auto genericType = arena.make<GenericTypeExpr>();
-            genericType->baseType = baseType;
-            genericType->typeArguments = typeArgs;
-            baseType = genericType;
-        }
 
         // Speculatively check for array type syntax
         if (check(TokenKind::LeftBracket))
@@ -1548,7 +1550,7 @@ namespace Bryo
 
         if (consume(TokenKind::Asterisk))
         {
-            auto pointerType = arena.make<PointerTypeExpr>();
+            auto pointerType = arena.make<PointerTypeSyntax>();
             pointerType->baseType = baseType;
             baseType = pointerType;
         }
@@ -1671,7 +1673,7 @@ namespace Bryo
             expr = errorExpr("Expected expression after cast");
         }
 
-        auto cast = arena.make<CastExpr>();
+        auto cast = arena.make<CastExprSyntax>();
         cast->targetType = targetType;
         cast->expression = expr;
         cast->location = SourceRange(startToken.location.start, expr->location.end());
@@ -1681,7 +1683,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseArrayLiteral()
     {
         auto startToken = tokens.current();
-        auto array = arena.make<ArrayLiteralExpr>();
+        auto array = arena.make<ArrayLiteralExprSyntax>();
         consume(TokenKind::LeftBracket);
 
         std::vector<BaseExprSyntax *> elements;
@@ -1704,7 +1706,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseNewExpression()
     {
         auto startToken = tokens.current();
-        auto newExpr = arena.make<NewExpr>();
+        auto newExpr = arena.make<NewExprSyntax>();
         consume(TokenKind::New);
 
         // Parse constructor type - use parseTypeExpression to handle generics properly
@@ -1746,7 +1748,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseLambdaExpression()
     {
         auto startToken = tokens.current();
-        auto lambda = arena.make<LambdaExpr>();
+        auto lambda = arena.make<LambdaExprSyntax>();
 
         if (check(TokenKind::LeftParen))
         {
@@ -1761,7 +1763,7 @@ namespace Bryo
                 {
                     auto ti = arena.make<TypedIdentifier>();
                     ti->type = errorExpr("Expected parameter type");
-                    ti->name = arena.makeIdentifier("");
+                    ti->name = arena.makeIdentifier(Token::invalid_token(tokens.current()));
                     param->param = ti;
                 }
                 param->defaultValue = nullptr;
@@ -1812,7 +1814,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseTypeOfExpression()
     {
         auto startToken = tokens.current();
-        auto typeOf = arena.make<TypeOfExpr>();
+        auto typeOf = arena.make<TypeOfExprSyntax>();
         consume(TokenKind::Typeof);
         expect(TokenKind::LeftParen, "Expected '(' after 'typeof'");
 
@@ -1828,7 +1830,7 @@ namespace Bryo
     BaseExprSyntax *Parser::parseSizeOfExpression()
     {
         auto startToken = tokens.current();
-        auto sizeOf = arena.make<SizeOfExpr>();
+        auto sizeOf = arena.make<SizeOfExprSyntax>();
         consume(TokenKind::Sizeof);
         expect(TokenKind::LeftParen, "Expected '(' after 'sizeof'");
 
@@ -1845,19 +1847,18 @@ namespace Bryo
 
     // ================== Helper Functions ==================
 
-    SimpleNameExprSyntax *Parser::parseIdentifier()
+    BaseNameExprSyntax *Parser::parseIdentifier()
     {
         if (!check(TokenKind::Identifier))
         {
-            error("Expected identifier");
-            auto id = arena.makeIdentifier("");
-            id->location = tokens.current().location;
-            return id;
+            return nullptr;
         }
+
         auto tok = tokens.current();
-        auto id = arena.makeIdentifier(tok.text);
+        auto id = arena.makeIdentifier(tok);
         id->location = tok.location;
         tokens.advance();
+
         return id;
     }
 
@@ -1898,7 +1899,7 @@ namespace Bryo
             {
                 auto ti = arena.make<TypedIdentifier>();
                 ti->type = errorExpr("Expected parameter type");
-                ti->name = arena.makeIdentifier("");
+                ti->name = arena.makeIdentifier(Token::invalid_token(tokens.current()));
                 param->param = ti;
             }
 

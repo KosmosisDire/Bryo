@@ -758,7 +758,7 @@ namespace Bryo
 
         // ===== 3. Generate Alloc function (stack allocation) =====
         {
-            // this is handled in CallExpr so that it is inlined properly
+            // this is handled in CallExprSyntax so that it is inlined properly
         }
 
         // ===== 4. Generate Free function (heap deallocation) =====
@@ -1061,7 +1061,7 @@ namespace Bryo
                 builder->CreateRet(result);
             }
         }
-        else if (auto block = std::get_if<Block *>(&prop_decl->getter->body))
+        else if (auto block = std::get_if<BlockSyntax *>(&prop_decl->getter->body))
         {
             (*block)->accept(this);
             ensure_terminator();
@@ -1086,9 +1086,9 @@ namespace Bryo
             return nullptr;
 
         // Use is() and as() to get the appropriate symbol
-        if (expr->is<NameExpr>())
+        if (expr->is<BaseNameExprSyntax>())
         {
-            auto nameExpr = expr->as<NameExpr>();
+            auto nameExpr = expr->as<BaseNameExprSyntax>();
             return nameExpr->resolvedSymbol.id != 0
                        ? symbol_table.lookup_handle(nameExpr->resolvedSymbol)->as<Symbol>()
                        : nullptr;
@@ -1100,9 +1100,9 @@ namespace Bryo
                        ? symbol_table.lookup_handle(memberExpr->resolvedMember)->as<Symbol>()
                        : nullptr;
         }
-        else if (expr->is<CallExpr>())
+        else if (expr->is<CallExprSyntax>())
         {
-            auto callExpr = expr->as<CallExpr>();
+            auto callExpr = expr->as<CallExprSyntax>();
             return callExpr->resolvedCallee.id != 0
                        ? symbol_table.lookup_handle(callExpr->resolvedCallee)->as<Symbol>()
                        : nullptr;
@@ -1111,7 +1111,7 @@ namespace Bryo
         return nullptr;
     }
 
-    std::string CodeGenerator::build_qualified_name(NameExpr *name_expr)
+    std::string CodeGenerator::build_qualified_name(BaseNameExprSyntax *name_expr)
     {
         if (!name_expr || !name_expr->name)
             return "";
@@ -1848,7 +1848,7 @@ namespace Bryo
 
     // --- Statements ---
 
-    void CodeGenerator::visit(Block *node)
+    void CodeGenerator::visit(BlockSyntax *node)
     {
         if (!node)
             return;
@@ -1908,7 +1908,7 @@ namespace Bryo
 
     // --- Expressions ---
 
-    void CodeGenerator::visit(BinaryExpr *node)
+    void CodeGenerator::visit(BinaryExprSyntax *node)
     {
         if (!node || !node->left || !node->right)
             return;
@@ -2095,7 +2095,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(UnaryExpr *node)
+    void CodeGenerator::visit(UnaryExprSyntax *node)
     {
         if (!node || !node->operand)
             return;
@@ -2250,7 +2250,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(AssignmentExpr *node)
+    void CodeGenerator::visit(AssignmentExprSyntax *node)
     {
         if (!node || !node->target || !node->value)
             return;
@@ -2386,7 +2386,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(CallExpr *node)
+    void CodeGenerator::visit(CallExprSyntax *node)
     {
         if (!node || !node->callee)
             return;
@@ -2439,8 +2439,8 @@ namespace Bryo
                 return;
             }
         }
-        // Handle regular function calls (callee is NameExpr)
-        else if (auto name_expr = node->callee->as<NameExpr>())
+        // Handle regular function calls (callee is BaseNameExprSyntax)
+        else if (auto name_expr = node->callee->as<BaseNameExprSyntax>())
         {
             std::string func_name = build_qualified_name(name_expr);
 
@@ -2602,7 +2602,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(NameExpr *node)
+    void CodeGenerator::visit(BaseNameExprSyntax *node)
     {
         if (!node || !node->name)
             return;
@@ -2718,11 +2718,11 @@ namespace Bryo
 
     void CodeGenerator::visit(IdentifierNameSyntax *node)
     {
-        // Identifiers are typically handled by NameExpr which contains identifier parts.
+        // Identifiers are typically handled by BaseNameExprSyntax which contains identifier parts.
         // Individual identifier nodes usually don't generate code directly.
     }
 
-    void CodeGenerator::visit(NewExpr *node)
+    void CodeGenerator::visit(NewExprSyntax *node)
     {
         if (!node || !node->resolvedType)
             return;
@@ -3118,10 +3118,10 @@ namespace Bryo
                 }
                 else if (auto func_sym = member_symbol->as<FunctionSymbol>())
                 {
-                    // Method access without call - this is handled by CallExpr
+                    // Method access without call - this is handled by CallExprSyntax
                     // We shouldn't generate code here, just push a placeholder
                     // Actually, this case might not be reachable if methods are only
-                    // accessed through CallExpr
+                    // accessed through CallExprSyntax
                     report_error(node, "Method reference without call not yet supported");
                 }
                 else
@@ -3203,7 +3203,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(CastExpr *node)
+    void CodeGenerator::visit(CastExprSyntax *node)
     {
         if (!node || !node->expression || !node->targetType)
         {
@@ -3279,7 +3279,7 @@ namespace Bryo
         }
     }
 
-    void CodeGenerator::visit(ThisExpr *node)
+    void CodeGenerator::visit(ThisExprSyntax *node)
     {
         if (!node)
             return;
@@ -3317,11 +3317,11 @@ namespace Bryo
         push_value(first_param);
     }
 
-    void CodeGenerator::visit(LambdaExpr *n) { report_error(n, "Lambda expressions not yet supported."); }
-    void CodeGenerator::visit(ConditionalExpr *n) { report_error(n, "Conditional (ternary) expressions not yet supported."); }
+    void CodeGenerator::visit(LambdaExprSyntax *n) { report_error(n, "Lambda expressions not yet supported."); }
+    void CodeGenerator::visit(ConditionalExprSyntax *n) { report_error(n, "Conditional (ternary) expressions not yet supported."); }
     void CodeGenerator::visit(TypeOfExpr *n) { report_error(n, "'typeof' not yet supported."); }
     void CodeGenerator::visit(SizeOfExpr *n) { report_error(n, "'sizeof' not yet supported."); }
-    void CodeGenerator::visit(IfStmt *node)
+    void CodeGenerator::visit(IfStmtSyntax *node)
     {
         if (!node || !node->condition || !node->thenBranch)
             return;
@@ -3630,9 +3630,7 @@ namespace Bryo
     void CodeGenerator::visit(PropertyAccessorSyntax *n) { report_error(n, "Properties not yet supported."); }
     void CodeGenerator::visit(EnumCaseDeclSyntax *n) { /* No codegen needed */ }
     void CodeGenerator::visit(ArrayTypeSyntax *n) { /* Type expressions are not executed */ }
-    void CodeGenerator::visit(FunctionTypeExpr *n) { /* Type expressions are not executed */ }
-    void CodeGenerator::visit(GenericTypeExpr *n) { /* Generic type expressions are not executed - handled during type resolution */ }
-    void CodeGenerator::visit(PointerTypeExpr *n) { /* Pointer type expressions are not executed */ }
+    void CodeGenerator::visit(PointerTypeSyntax *n) { /* Pointer type expressions are not executed */ }
     void CodeGenerator::visit(TypeParameterDeclSyntax *n) { /* Type parameter declarations don't generate code - handled during monomorphization */ }
 
 } // namespace Bryo

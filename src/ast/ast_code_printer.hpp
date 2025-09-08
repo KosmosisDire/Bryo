@@ -59,7 +59,7 @@ namespace Bryo
                 return;
             }
 
-            if (body->is<Block>())
+            if (body->is<BlockSyntax>())
             {
                 emit(" ");
                 body->accept(this);
@@ -102,7 +102,7 @@ namespace Bryo
         }
 
         // --- Basic Building Blocks & Errors (unchanged) ---
-        void visit(SimpleNameExprSyntax *node) override { emit(std::string(node->text)); }
+        void visit(BaseNameExprSyntax *node) override { emit(std::string(node->text)); }
         void visit(TypedIdentifier *node) override
         {
             if (node->type)
@@ -140,12 +140,12 @@ namespace Bryo
             }
             emit("]");
         }
-        void visit(NameExpr *node) override
+        void visit(BaseNameExprSyntax *node) override
         {
             if (node->name)
                 node->name->accept(this);
         }
-        void visit(UnaryExpr *node) override
+        void visit(UnaryExprSyntax *node) override
         {
             if (node->isPostfix)
             {
@@ -158,19 +158,19 @@ namespace Bryo
                 node->operand->accept(this);
             }
         }
-        void visit(BinaryExpr *node) override
+        void visit(BinaryExprSyntax *node) override
         {
             node->left->accept(this);
             emit(" " + std::string(to_string(node->op)) + " ");
             node->right->accept(this);
         }
-        void visit(AssignmentExpr *node) override
+        void visit(AssignmentExprSyntax *node) override
         {
             node->target->accept(this);
             emit(" " + std::string(to_string(node->op)) + " ");
             node->value->accept(this);
         }
-        void visit(CallExpr *node) override
+        void visit(CallExprSyntax *node) override
         {
             node->callee->accept(this);
             emit("(");
@@ -196,14 +196,14 @@ namespace Bryo
             node->index->accept(this);
             emit("]");
         }
-        void visit(CastExpr *node) override
+        void visit(CastExprSyntax *node) override
         {
             emit("(");
             node->targetType->accept(this);
             emit(")");
             node->expression->accept(this);
         }
-        void visit(NewExpr *node) override
+        void visit(NewExprSyntax *node) override
         {
             emit("new ");
             node->type->accept(this);
@@ -217,8 +217,8 @@ namespace Bryo
             }
             emit(")");
         }
-        void visit(ThisExpr *node) override { emit("this"); }
-        void visit(LambdaExpr *node) override
+        void visit(ThisExprSyntax *node) override { emit("this"); }
+        void visit(LambdaExprSyntax *node) override
         {
             emit("(");
             for (size_t i = 0; i < node->parameters.size(); i++)
@@ -232,7 +232,7 @@ namespace Bryo
             if (node->body)
                 node->body->accept(this);
         }
-        void visit(ConditionalExpr *node) override
+        void visit(ConditionalExprSyntax *node) override
         {
             node->condition->accept(this);
             emit(" ? ");
@@ -255,7 +255,7 @@ namespace Bryo
 
         // --- CORRECTED VISITORS ---
 
-        void visit(Block *node) override
+        void visit(BlockSyntax *node) override
         {
             emit("{");
             emit_newline();
@@ -274,7 +274,7 @@ namespace Bryo
             emit("}");     // The caller adds the final newline if needed.
         }
 
-        void visit(IfStmt *node) override
+        void visit(IfStmtSyntax *node) override
         {
             emit("if (");
             node->condition->accept(this);
@@ -287,7 +287,7 @@ namespace Bryo
                 output.seekp(-1, std::ios_base::end);
                 emit(" else");
 
-                if (node->elseBranch->is<IfStmt>())
+                if (node->elseBranch->is<IfStmtSyntax>())
                 {
                     emit(" ");
                     node->elseBranch->accept(this);
@@ -304,7 +304,7 @@ namespace Bryo
         {
             emit_indent();
             node->expression->accept(this);
-            if (!node->expression->is<IfStmt>() && !node->expression->is<Block>())
+            if (!node->expression->is<IfStmtSyntax>() && !node->expression->is<BlockSyntax>())
             {
                 emit(";");
             }
@@ -537,7 +537,7 @@ namespace Bryo
                 (*expr)->accept(this);
                 emit(";");
             }
-            else if (auto block = std::get_if<Block *>(&node->body))
+            else if (auto block = std::get_if<BlockSyntax *>(&node->body))
             {
                 emit(" ");
                 (*block)->accept(this);

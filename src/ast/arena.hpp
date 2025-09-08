@@ -101,10 +101,10 @@ namespace Bryo
         }
 
         // Helper factory methods
-        IdentifierNameSyntax *makeIdentifier(std::string text)
+        SimpleNameSyntax *makeIdentifier(Token token)
         {
-            auto id = make<IdentifierNameSyntax>();
-            id->text = text;
+            auto id = make<SimpleNameSyntax>();
+            id->identifier = token;
             return id;
         }
 

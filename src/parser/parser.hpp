@@ -129,7 +129,7 @@ private:
     BaseExprSyntax* parsePostfixExpression(BaseExprSyntax* expr);
     BaseExprSyntax* parseUnaryExpression();
     LiteralExprSyntax* parseLiteral();
-    BaseExprSyntax* parseNameExpression();
+    BaseNameExprSyntax* parseNameExpression();
     List<BaseExprSyntax *> parseGenericArgs();
     BaseExprSyntax* parseTypeExpression();
     BaseExprSyntax* parseParenthesizedOrLambda();
@@ -140,7 +140,7 @@ private:
     BaseExprSyntax* parseTypeOfExpression();
     BaseExprSyntax* parseSizeOfExpression();
     
-    SimpleNameExprSyntax* parseIdentifier();
+    BaseNameExprSyntax* parseIdentifier();
     TypedIdentifier* parseTypedIdentifier();
     List<ParameterDeclSyntax*> parseParameterList();
     List<TypeParameterDeclSyntax*> parseTypeParameterList();

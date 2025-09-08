@@ -190,17 +190,17 @@ namespace Bryo
             return;
 
         // Use is() and as() to set the appropriate symbol field
-        if (expr->is<NameExpr>())
+        if (auto baseName = expr->as<BaseNameExprSyntax>())
         {
-            expr->as<NameExpr>()->resolvedSymbol = symbol->handle;
+            baseName->resolvedSymbol = symbol->handle;
         }
-        else if (expr->is<QualifiedNameSyntax>())
+        else if (auto qualified = expr->as<QualifiedNameSyntax>())
         {
-            expr->as<QualifiedNameSyntax>()->resolvedMember = symbol->handle;
+            qualified->resolvedSymbol = symbol->handle;
         }
-        else if (expr->is<CallExpr>())
+        else if (expr->is<CallExprSyntax>())
         {
-            expr->as<CallExpr>()->resolvedCallee = symbol->handle;
+            expr->as<CallExprSyntax>()->resolvedCallee = symbol->handle;
         }
         // Other expression types don't have symbol fields
     }
@@ -233,15 +233,15 @@ namespace Bryo
         }
 
         // 'this' is always an lvalue
-        if (expr->is<ThisExpr>())
+        if (expr->is<ThisExprSyntax>())
         {
             return true;
         }
 
         // Dereference produces lvalue
-        if (expr->is<UnaryExpr>())
+        if (expr->is<UnaryExprSyntax>())
         {
-            auto unary = expr->as<UnaryExpr>();
+            auto unary = expr->as<UnaryExprSyntax>();
             if (unary->op == UnaryOperatorKind::Dereference)
             {
                 return true;
@@ -275,7 +275,7 @@ namespace Bryo
             return typeSystem.get_unresolved_type();
 
         // Single identifier (like "i32", "String", "T")
-        if (auto name = type_expr->as<NameExpr>())
+        if (auto name = type_expr->as<BaseNameExprSyntax>())
         {
             std::string typeName = name->get_name();
 
@@ -296,46 +296,6 @@ namespace Bryo
             // Otherwise look up in symbol table
             return symbolTable.resolve_type_name(typeName, scope->as_scope_node());
         }
-        // Qualified name (like "System.String")
-        else if (auto member = type_expr->as<QualifiedNameSyntax>())
-        {
-            // Build qualified name from MemberAccessExpr chain inline to avoid linking issues
-            std::string qualifiedName;
-            auto currentMember = member;
-            std::vector<std::string> parts;
-
-            // Collect all parts
-            while (currentMember)
-            {
-                if (currentMember->member)
-                {
-                    parts.insert(parts.begin(), std::string(currentMember->member->text));
-                }
-                if (auto nestedMember = currentMember->object->as<QualifiedNameSyntax>())
-                {
-                    currentMember = nestedMember;
-                }
-                else if (auto name = currentMember->object->as<NameExpr>())
-                {
-                    parts.insert(parts.begin(), name->get_name());
-                    break;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            // Build qualified name
-            for (size_t i = 0; i < parts.size(); ++i)
-            {
-                if (i > 0)
-                    qualifiedName += ".";
-                qualifiedName += parts[i];
-            }
-
-            return symbolTable.resolve_type_name(qualifiedName, scope->as_scope_node());
-        }
         // Array type (like "i32[]")
         else if (auto array = type_expr->as<ArrayTypeSyntax>())
         {
@@ -347,52 +307,7 @@ namespace Bryo
             }
             return typeSystem.get_array_type(elemType, arrSize);
         }
-        // Function type (like "fn(i32, i32) -> i32")
-        else if (auto func = type_expr->as<FunctionTypeExpr>())
-        {
-            std::vector<TypePtr> paramTypes;
-            for (auto paramExpr : func->parameterTypes)
-            {
-                paramTypes.push_back(resolve_expr_type(paramExpr, scope));
-            }
-            TypePtr returnType = func->returnType ? resolve_expr_type(func->returnType, scope) : typeSystem.get_primitive_type("void");
-            return typeSystem.get_function_type(paramTypes, returnType);
-        }
-        // Generic type instantiation (like "Array<i32>")
-        else if (auto generic = type_expr->as<GenericTypeExpr>())
-        {
-            // Resolve the base type
-            TypePtr baseType = resolve_expr_type(generic->baseType, scope);
-            if (!baseType)
-                return typeSystem.get_unresolved_type();
-
-            // Extract the TypeLikeSymbol from the base type
-            TypeLikeSymbol *genericDefinition = nullptr;
-            if (auto typeRef = std::get_if<TypeReference>(&baseType->value))
-            {
-                genericDefinition = typeRef->definition;
-            }
-
-            if (!genericDefinition)
-            {
-                report_error(generic, "Base type '" + baseType->get_name() + "' is not a generic type definition.");
-                return typeSystem.get_unresolved_type();
-            }
-
-            // Resolve type arguments
-            std::vector<TypePtr> typeArgs;
-            for (auto argExpr : generic->typeArguments)
-            {
-                TypePtr argType = resolve_expr_type(argExpr, scope);
-                if (!argType)
-                    return typeSystem.get_unresolved_type();
-                typeArgs.push_back(argType);
-            }
-
-            // Create generic instantiation
-            return typeSystem.get_generic_type(genericDefinition, typeArgs);
-        }
-        else if (auto pointer = type_expr->as<PointerTypeExpr>())
+        else if (auto pointer = type_expr->as<PointerTypeSyntax>())
         {
             TypePtr baseType = resolve_expr_type(pointer->baseType, scope);
             if (!baseType)
@@ -403,7 +318,7 @@ namespace Bryo
         return typeSystem.get_unresolved_type();
     }
 
-    TypePtr TypeResolver::infer_function_return_type(Block *body)
+    TypePtr TypeResolver::infer_function_return_type(BlockSyntax *body)
     {
         if (!body)
             return typeSystem.get_primitive_type("void");
@@ -758,12 +673,8 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(NameExpr *node)
+    void TypeResolver::visit(BaseNameExprSyntax *node)
     {
-        // Visit children
-        if (node->name)
-            node->name->accept(this);
-
         std::string name = node->get_name();
         auto scope = get_containing_scope(node);
         if (!scope)
@@ -785,7 +696,7 @@ namespace Bryo
         else if (auto func_group = symbol->as<FunctionGroupSymbol>())
         {
             // For function groups, we can't determine the exact type without call context
-            // Mark as a special function reference type or handle in CallExpr
+            // Mark as a special function reference type or handle in CallExprSyntax
             annotate_expression(node, typeSystem.get_unresolved_type(), symbol);
         }
         else
@@ -795,7 +706,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(BinaryExpr *node)
+    void TypeResolver::visit(BinaryExprSyntax *node)
     {
         // Visit children
         node->left->accept(this);
@@ -881,7 +792,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(AssignmentExpr *node)
+    void TypeResolver::visit(AssignmentExprSyntax *node)
     {
         // Visit children manually
         node->target->accept(this);
@@ -913,7 +824,7 @@ namespace Bryo
         annotate_expression(node, canonicalTarget);
     }
 
-    void TypeResolver::visit(CallExpr *node)
+    void TypeResolver::visit(CallExprSyntax *node)
     {
         // Visit children manually
         node->callee->accept(this);
@@ -938,7 +849,7 @@ namespace Bryo
         }
 
         // Handle simple name function calls (e.g., foo())
-        if (auto name = node->callee->as<NameExpr>())
+        if (auto name = node->callee->as<BaseNameExprSyntax>())
         {
             auto scope = get_containing_scope(name);
             if (!scope)
@@ -1100,7 +1011,7 @@ namespace Bryo
         annotate_expression(node, typeSystem.get_unresolved_type());
     }
 
-    void TypeResolver::visit(NewExpr *node)
+    void TypeResolver::visit(NewExprSyntax *node)
     {
         // Visit constructor arguments
         for (auto arg : node->arguments)
@@ -1249,7 +1160,7 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(UnaryExpr *node)
+    void TypeResolver::visit(UnaryExprSyntax *node)
     {
         // Visit operand
         if (node->operand)
@@ -1350,7 +1261,7 @@ namespace Bryo
         // No symbol for indexing
     }
 
-    void TypeResolver::visit(ConditionalExpr *node)
+    void TypeResolver::visit(ConditionalExprSyntax *node)
     {
         // Visit children
         if (node->condition)
@@ -1381,7 +1292,7 @@ namespace Bryo
         // No symbol for conditionals
     }
 
-    void TypeResolver::visit(IfStmt *node)
+    void TypeResolver::visit(IfStmtSyntax *node)
     {
         // Visit children manually
         if (node->condition)
@@ -1404,7 +1315,7 @@ namespace Bryo
         unify(canonicalCondition, typeSystem.get_primitive_type("bool"), node, "if expression condition");
     }
 
-    void TypeResolver::visit(CastExpr *node)
+    void TypeResolver::visit(CastExprSyntax *node)
     {
         // Visit expression
         if (node->expression)
@@ -1432,7 +1343,7 @@ namespace Bryo
         annotate_expression(node, targetType);
     }
 
-    void TypeResolver::visit(ThisExpr *node)
+    void TypeResolver::visit(ThisExprSyntax *node)
     {
         // Find enclosing type
         auto scope = get_containing_scope(node);
@@ -1850,7 +1761,7 @@ namespace Bryo
             if (*expr)
                 (*expr)->accept(this);
         }
-        else if (auto block = std::get_if<Block *>(&node->body))
+        else if (auto block = std::get_if<BlockSyntax *>(&node->body))
         {
             if (*block)
                 (*block)->accept(this);
@@ -1866,35 +1777,13 @@ namespace Bryo
         }
     }
 
-    void TypeResolver::visit(GenericTypeExpr *node)
-    {
-        // Visit children to ensure proper traversal
-        if (node->baseType)
-            node->baseType->accept(this);
-
-        for (auto arg : node->typeArguments)
-        {
-            if (arg)
-                arg->accept(this);
-        }
-
-        // GenericTypeExpr nodes should always be resolved when visited
-        // They only appear in type contexts, so we always resolve them
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        TypePtr resolvedType = resolve_expr_type(node, scope);
-        annotate_expression(node, resolvedType);
-    }
-
-    void TypeResolver::visit(PointerTypeExpr *node)
+    void TypeResolver::visit(PointerTypeSyntax *node)
     {
         // Visit the pointee type to ensure proper traversal
         if (node->baseType)
             node->baseType->accept(this);
 
-        // PointerTypeExpr nodes should always be resolved when visited
+        // PointerTypeSyntax nodes should always be resolved when visited
         // They only appear in type contexts, so we always resolve them
         auto scope = get_containing_scope(node);
         if (!scope)
