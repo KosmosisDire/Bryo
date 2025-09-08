@@ -14,7 +14,7 @@
             "binaryDir": "${sourceDir}/build/Debug",
             "condition": {
                 "type": "notEquals",
-                "lhs": "${env:CI}",
+                "lhs": "$env{CI}",
                 "rhs": "true"
             },
             "cacheVariables": {
@@ -34,7 +34,7 @@
             "binaryDir": "${sourceDir}/build/Release",
             "condition": {
                 "type": "notEquals",
-                "lhs": "${env:CI}",
+                "lhs": "$env{CI}",
                 "rhs": "true"
             },
             "cacheVariables": {
@@ -76,7 +76,7 @@
             "binaryDir": "${sourceDir}/build",
             "condition": {
                 "type": "equals",
-                "lhs": "${env:CI}",
+                "lhs": "$env{CI}",
                 "rhs": "true"
             },
             "cacheVariables": {
@@ -92,7 +92,7 @@
             "binaryDir": "${sourceDir}/build/Release",
             "condition": {
                 "type": "equals",
-                "lhs": "${env:CI}",
+                "lhs": "$env{CI}",
                 "rhs": "true"
             },
             "cacheVariables": {
