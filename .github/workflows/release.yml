@@ -16,10 +16,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install Linux dependencies
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "19.0"
+        directory: ${{ runner.temp }}/llvm
+
+    - name: Install Linux system dependencies
       run: |
         sudo apt update
-        sudo apt install -y zlib1g-dev libcurl4-openssl-dev libedit-dev libzstd-dev llvm-19 llvm-19-dev
+        sudo apt install -y zlib1g-dev libcurl4-openssl-dev libedit-dev libzstd-dev
 
     - name: Configure CMake (Linux)
       run: |
