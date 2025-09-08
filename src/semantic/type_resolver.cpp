@@ -190,7 +190,7 @@ namespace Bryo
             return;
 
         // Use is() and as() to set the appropriate symbol field
-        if (auto baseName = expr->as<BaseNameExprSyntax>())
+        if (auto baseName = expr->as<SimpleNameSyntax>())
         {
             baseName->resolvedSymbol = symbol->handle;
         }
@@ -849,7 +849,7 @@ namespace Bryo
         }
 
         // Handle simple name function calls (e.g., foo())
-        if (auto name = node->callee->as<BaseNameExprSyntax>())
+        if (auto name = node->callee->as<SimpleNameSyntax>())
         {
             auto scope = get_containing_scope(name);
             if (!scope)
@@ -1002,6 +1002,13 @@ namespace Bryo
                                 return;
                             }
                         }
+                        else
+                        {
+                            // Method not found - report specific error
+                            report_error(node, "Method '" + methodName + "' not found in type");
+                            annotate_expression(node, typeSystem.get_unresolved_type());
+                            return;
+                        }
                     }
                 }
             }
@@ -1074,11 +1081,10 @@ namespace Bryo
 
     void TypeResolver::visit(QualifiedNameSyntax *node)
     {
-        // Visit children
+        // Visit only the left side - the right side is a member name, not a standalone identifier
         if (node->left)
             node->left->accept(this);
-        if (node->right)
-            node->right->accept(this);
+        // Don't visit node->right - it's resolved as a member, not a standalone identifier
 
         TypePtr objectType = get_node_type(node->left);
         if (!objectType)

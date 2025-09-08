@@ -241,8 +241,8 @@ namespace Bryo
 
     struct QualifiedNameSyntax : BaseNameExprSyntax
     {
-        BaseNameExprSyntax *left;  // The qualifier (recursive)
-        BaseNameExprSyntax *right; // Not just Token!
+        BaseExprSyntax *left;      // The qualifier (can be any expression to allow complex types)
+        BaseNameExprSyntax *right; // The member name
         ACCEPT_VISITOR
     };
 
@@ -259,17 +259,23 @@ namespace Bryo
 
         if (auto qualified = this->as<QualifiedNameSyntax>())
         {
-            // Recursively build qualified name: left.right
-            std::string left_name = qualified->left->get_name();
+            // For qualified names, try to get name from left if it's a BaseNameExprSyntax
+            // Otherwise just return the right side name
+            std::string left_name;
+            if (auto leftName = qualified->left->as<BaseNameExprSyntax>())
+            {
+                left_name = leftName->get_name();
+            }
+            
             std::string right_name = qualified->right->get_name();
 
             if (!left_name.empty() && !right_name.empty())
             {
-            result = left_name + "." + right_name;
+                result = left_name + "." + right_name;
             }
             else if (!right_name.empty())
             {
-            result = right_name;
+                result = right_name;
             }
         }
         else if (auto simple = this->as<SimpleNameSyntax>())

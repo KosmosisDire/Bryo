@@ -1,20 +1,32 @@
-
 type Test
 {
-    var x = 5;
+    bool stuff = true
+}
 
-    fn Run()
+fn RunTest(bool* test)
+{
+    Print("Running test...\n")
+    if (test[0])
     {
-        PrintLn("Test Run");
-        PrintLn(x);
+        Print("Test stuff is true\n")
+        test[0] = false
+    }
+    else
+    {
+        Print("Test stuff is false\n")
     }
 }
 
-fn Main()
+fn RunTests(Test* test)
 {
-    var t = new Test();
-    t.x = 10;
-    t.Run();
+    test[0].stuff = true
+    RunTest(&test[0].stuff)
+    RunTest(&test[0].stuff)
+}
 
-    return 0.0;
+fn Main
+{
+    Test test = new Test(true)
+    RunTests(&test)
+    return 0.0
 }

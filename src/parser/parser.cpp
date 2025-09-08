@@ -422,8 +422,50 @@ namespace Bryo
 
         consume(TokenKind::Fn);
         decl->name = parseIdentifier();
-        decl->parameters = parseParameterList();
 
+        // Check if we have parentheses for parameters
+        if (check(TokenKind::LeftParen))
+        {
+            // Traditional parameter list with parentheses
+            decl->parameters = parseParameterList();
+        }
+        else if (check(TokenKind::Colon))
+        {
+            // No parentheses, but we have a return type - assume no parameters
+            decl->parameters = arena.emptyList<ParameterDeclSyntax *>();
+        }
+        else if (check(TokenKind::LeftBrace))
+        {
+            // No parentheses, no return type - assume no parameters
+            decl->parameters = arena.emptyList<ParameterDeclSyntax *>();
+        }
+        else
+        {
+            // Ambiguous case - could be parameters or return type
+            // Look ahead to disambiguate
+            auto checkpoint = tokens.checkpoint();
+            
+            // Try to parse as type expression (for return type)
+            auto potentialReturnType = parseTypeExpression();
+            
+            if (potentialReturnType && (check(TokenKind::LeftBrace) || check(TokenKind::Semicolon)))
+            {
+                // Successfully parsed a type and found function body/end
+                // This is a return type, not parameters
+                tokens.restore(checkpoint);
+                decl->parameters = arena.emptyList<ParameterDeclSyntax *>();
+            }
+            else
+            {
+                // Couldn't parse as return type, or ambiguous
+                // Default to requiring parentheses for clarity
+                tokens.restore(checkpoint);
+                error("Expected '(' for parameter list, ':' for return type, or '{' for function body");
+                decl->parameters = arena.emptyList<ParameterDeclSyntax *>();
+            }
+        }
+
+        // Parse return type if present
         if (consume(TokenKind::Colon))
         {
             decl->returnType = parseTypeExpression();
@@ -437,10 +479,11 @@ namespace Bryo
             decl->returnType = nullptr; // void
         }
 
+        // Parse function body
         if (check(TokenKind::LeftBrace))
         {
             decl->body = withContext(Context::FUNCTION, [this]()
-                                     { return parseBlock(); });
+                                    { return parseBlock(); });
         }
         else if (consume(TokenKind::Semicolon))
         {
@@ -1350,7 +1393,7 @@ namespace Bryo
             {
                 tokens.advance();
                 auto member = arena.make<QualifiedNameSyntax>();
-                member->left = expr->as<BaseNameExprSyntax>();
+                member->left = expr; 
                 member->right = parseIdentifier();
                 member->location = SourceRange(expr->location.start, member->right->location.end());
                 expr = member;
