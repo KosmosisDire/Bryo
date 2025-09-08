@@ -30,8 +30,6 @@ jobs:
     - name: Configure CMake (Linux)
       run: |
         cmake --preset github-actions-linux
-      env:
-        VCPKG_ROOT: /dev/null
         
     - name: Build (Linux)
       run: |
@@ -65,8 +63,6 @@ jobs:
     - name: Configure CMake (Windows)
       run: |
         cmake --preset github-actions-windows
-      env:
-        VCPKG_ROOT: C:\dev\null
         
     - name: Build (Windows)
       run: |

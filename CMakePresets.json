@@ -12,16 +12,18 @@
             "description": "Debug build using Ninja generator with vcpkg toolchain.",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/Debug",
+            "condition": {
+                "type": "notEquals",
+                "lhs": "${env:VCPKG_ROOT}",
+                "rhs": ""
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE",
                 "CMAKE_TOOLCHAIN_FILE": {
                     "type": "FILEPATH",
-                    "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
+                    "value": "${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
                 }
-            },
-            "environment": {
-                "VCPKG": "$env{VCPKG_ROOT}"
             }
         },
         {
@@ -30,16 +32,18 @@
             "description": "Release build using Ninja generator with vcpkg toolchain.",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/Release",
+            "condition": {
+                "type": "notEquals",
+                "lhs": "${env:VCPKG_ROOT}",
+                "rhs": ""
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "TRUE",
                 "CMAKE_TOOLCHAIN_FILE": {
                     "type": "FILEPATH",
-                    "value": "${env:VCPKG}/scripts/buildsystems/vcpkg.cmake"
+                    "value": "${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
                 }
-            },
-            "environment": {
-                "VCPKG": "$env{VCPKG_ROOT}"
             }
         },
         {
