@@ -16,25 +16,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v2
-      with:
-        version: "19.1.7"
-        directory: ${{ runner.temp }}/llvm
-
-    - name: Install Linux system dependencies
+    - name: Install LLVM and system dependencies
       run: |
         sudo apt update
-        sudo apt install -y zlib1g-dev libcurl4-openssl-dev libedit-dev libzstd-dev
-
-    - name: Debug LLVM Installation
-      run: |
-        echo "LLVM_PATH: $LLVM_PATH"
-        echo "Checking LLVM libraries:"
-        file $LLVM_PATH/lib/libLLVMCore.a || true
-        ls -la $LLVM_PATH/lib/*.a | head -10
-        echo "Checking for shared libraries:"
-        ls -la $LLVM_PATH/lib/*.so* | head -10 || true
+        sudo apt install -y zlib1g-dev libcurl4-openssl-dev libedit-dev libzstd-dev llvm-19 llvm-19-dev
 
     - name: Configure CMake (Linux)
       run: |
