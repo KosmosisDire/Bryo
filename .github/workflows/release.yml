@@ -57,7 +57,7 @@ jobs:
     - name: Download LLVM with development headers
       run: |
         # Download LLVM 18.1.8 from vovkos/llvm-package-windows which includes headers
-        $llvmUrl = "https://github.com/vovkos/llvm-package-windows/releases/download/llvm-18.1.8/llvm-18.1.8-windows-amd64-msvc17-mt.7z"
+        $llvmUrl = "https://github.com/vovkos/llvm-package-windows/releases/download/llvm-18.1.8/llvm-18.1.8-windows-amd64-msvc17-msvcrt.7z"
         $llvmPath = "${{ runner.temp }}/llvm"
         
         Write-Host "Downloading LLVM 18.1.8 with development headers..."
@@ -69,7 +69,7 @@ jobs:
         Write-Host "LLVM extracted to: $llvmPath"
         
         # Set environment variable for subsequent steps
-        echo "LLVM_PATH=$llvmPath/llvm-18.1.8-windows-amd64-msvc17-mt" >> $env:GITHUB_ENV
+        echo "LLVM_PATH=$llvmPath/llvm-18.1.8-windows-amd64-msvc17-msvcrt" >> $env:GITHUB_ENV
       shell: pwsh
 
     - name: Configure CMake (Windows)
