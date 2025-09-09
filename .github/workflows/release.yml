@@ -72,9 +72,12 @@ jobs:
         echo "LLVM_PATH=$llvmPath/llvm-18.1.8-windows-amd64-msvc17-msvcrt" >> $env:GITHUB_ENV
       shell: pwsh
 
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      
     - name: Configure CMake (Windows)
       run: |
-        cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm"
+        cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm" -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
       env:
         VCPKG_ROOT: C:\dev\null
         
