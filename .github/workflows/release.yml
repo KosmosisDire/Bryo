@@ -54,40 +54,27 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v2
-      with:
-        version: "19.1.7"
-        directory: ${{ runner.temp }}/llvm
-
-    - name: Debug LLVM Installation
+    - name: Download LLVM with development headers
       run: |
-        Write-Host "LLVM_PATH: ${env:LLVM_PATH}"
-        Write-Host "Checking LLVM directory structure:"
-        if (Test-Path "${env:LLVM_PATH}") {
-          Get-ChildItem "${env:LLVM_PATH}" -Directory | Select-Object -First 10
-          Write-Host "`nChecking lib directory:"
-          if (Test-Path "${env:LLVM_PATH}/lib") {
-            Get-ChildItem "${env:LLVM_PATH}/lib" -Directory | Select-Object -First 10
-            Write-Host "`nChecking cmake directory:"
-            if (Test-Path "${env:LLVM_PATH}/lib/cmake") {
-              Get-ChildItem "${env:LLVM_PATH}/lib/cmake" | Select-Object -First 10
-            }
-          }
-          Write-Host "`nChecking for LLVMConfig.cmake:"
-          Get-ChildItem "${env:LLVM_PATH}" -Recurse -Filter "LLVMConfig.cmake" | Select-Object -First 5
-        }
+        # Download LLVM 18.1.8 from vovkos/llvm-package-windows which includes headers
+        $llvmUrl = "https://github.com/vovkos/llvm-package-windows/releases/download/llvm-18.1.8/llvm-18.1.8-windows-amd64-msvc17-mt.7z"
+        $llvmPath = "${{ runner.temp }}/llvm"
+        
+        Write-Host "Downloading LLVM 18.1.8 with development headers..."
+        Invoke-WebRequest -Uri $llvmUrl -OutFile "${{ runner.temp }}/llvm.7z"
+        
+        Write-Host "Extracting LLVM..."
+        7z x "${{ runner.temp }}/llvm.7z" -o"$llvmPath"
+        
+        Write-Host "LLVM extracted to: $llvmPath"
+        
+        # Set environment variable for subsequent steps
+        echo "LLVM_PATH=$llvmPath/llvm-18.1.8-windows-amd64-msvc17-mt" >> $env:GITHUB_ENV
+      shell: pwsh
 
     - name: Configure CMake (Windows)
       run: |
-        $llvmCmakeDir = Get-ChildItem "${env:LLVM_PATH}" -Recurse -Filter "LLVMConfig.cmake" | Select-Object -First 1 | ForEach-Object { $_.Directory.FullName }
-        if ($llvmCmakeDir) {
-          Write-Host "Found LLVM CMake config at: $llvmCmakeDir"
-          cmake --preset github-actions-windows -DLLVM_DIR="$llvmCmakeDir"
-        } else {
-          Write-Host "Warning: Could not find LLVMConfig.cmake, trying default path"
-          cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm"
-        }
+        cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm"
       env:
         VCPKG_ROOT: C:\dev\null
         
