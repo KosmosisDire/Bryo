@@ -27,6 +27,15 @@ jobs:
         sudo apt update
         sudo apt install -y zlib1g-dev libcurl4-openssl-dev libedit-dev libzstd-dev
 
+    - name: Debug LLVM Installation
+      run: |
+        echo "LLVM_PATH: $LLVM_PATH"
+        echo "Checking LLVM libraries:"
+        file $LLVM_PATH/lib/libLLVMCore.a || true
+        ls -la $LLVM_PATH/lib/*.a | head -10
+        echo "Checking for shared libraries:"
+        ls -la $LLVM_PATH/lib/*.so* | head -10 || true
+
     - name: Configure CMake (Linux)
       run: |
         cmake --preset github-actions-linux
