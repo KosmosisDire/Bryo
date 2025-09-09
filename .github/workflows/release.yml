@@ -62,7 +62,9 @@ jobs:
 
     - name: Configure CMake (Windows)
       run: |
-        cmake --preset github-actions-windows
+        cmake --preset github-actions-windows -DLLVM_DIR="$env:LLVM_PATH/lib/cmake/llvm"
+      env:
+        VCPKG_ROOT: C:\dev\null
         
     - name: Build (Windows)
       run: |
