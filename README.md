@@ -1,4 +1,4 @@
-<img src="https:--github.com/user-attachments/assets/f1536dce-0b26-4ecf-8cca-afe6584cc54a" width="200">
+<img width="250" alt="bryo-full-planet@4x" src="https://github.com/user-attachments/assets/5f68aa97-2d24-4ad2-8ee8-1b2faed55694" />
 
 # The Bryo Programming Language
 Bryo, (name from `Bryophyta` or `Bryo` meaning moss) is a general, object oriented, statically typed, embeddable language inspired by C#, Rust, Swift, and Python.
