@@ -24,9 +24,12 @@ fn RunTests(Test* test)
     RunTest(&test[0].stuff)
 }
 
-fn Main
+fn Main: f32
 {
     Test test = new Test(true)
     RunTests(&test)
+
+    f32 stuff = 1.0;
+    
     return 0.0
 }

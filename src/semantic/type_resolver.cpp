@@ -1506,9 +1506,6 @@ namespace Bryo
                 param->accept(this);
         }
 
-        if (node->returnType)
-            node->returnType->accept(this);
-
         if (node->body)
             node->body->accept(this);
 
