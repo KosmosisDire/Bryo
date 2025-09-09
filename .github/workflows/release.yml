@@ -60,9 +60,34 @@ jobs:
         version: "19.1.7"
         directory: ${{ runner.temp }}/llvm
 
+    - name: Debug LLVM Installation
+      run: |
+        Write-Host "LLVM_PATH: ${env:LLVM_PATH}"
+        Write-Host "Checking LLVM directory structure:"
+        if (Test-Path "${env:LLVM_PATH}") {
+          Get-ChildItem "${env:LLVM_PATH}" -Directory | Select-Object -First 10
+          Write-Host "`nChecking lib directory:"
+          if (Test-Path "${env:LLVM_PATH}/lib") {
+            Get-ChildItem "${env:LLVM_PATH}/lib" -Directory | Select-Object -First 10
+            Write-Host "`nChecking cmake directory:"
+            if (Test-Path "${env:LLVM_PATH}/lib/cmake") {
+              Get-ChildItem "${env:LLVM_PATH}/lib/cmake" | Select-Object -First 10
+            }
+          }
+          Write-Host "`nChecking for LLVMConfig.cmake:"
+          Get-ChildItem "${env:LLVM_PATH}" -Recurse -Filter "LLVMConfig.cmake" | Select-Object -First 5
+        }
+
     - name: Configure CMake (Windows)
       run: |
-        cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm"
+        $llvmCmakeDir = Get-ChildItem "${env:LLVM_PATH}" -Recurse -Filter "LLVMConfig.cmake" | Select-Object -First 1 | ForEach-Object { $_.Directory.FullName }
+        if ($llvmCmakeDir) {
+          Write-Host "Found LLVM CMake config at: $llvmCmakeDir"
+          cmake --preset github-actions-windows -DLLVM_DIR="$llvmCmakeDir"
+        } else {
+          Write-Host "Warning: Could not find LLVMConfig.cmake, trying default path"
+          cmake --preset github-actions-windows -DLLVM_DIR="${env:LLVM_PATH}/lib/cmake/llvm"
+        }
       env:
         VCPKG_ROOT: C:\dev\null
         
