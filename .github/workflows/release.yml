@@ -23,7 +23,7 @@ jobs:
 
     - name: Configure CMake (Linux)
       run: |
-        cmake --preset github-actions-linux
+        cmake --preset github-actions-linux -DLLVM_DIR=/usr/lib/llvm-19/lib/cmake/llvm
         
     - name: Build (Linux)
       run: |
