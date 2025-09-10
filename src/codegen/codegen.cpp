@@ -2480,29 +2480,31 @@ namespace Bryo
             func_name = callee_symbol->get_mangled_name();
             callee_func = module->getFunction(func_name);
 
-            // If not found as a global function, check if it's an implicit method call
-            if (!callee_func && current_function)
+            if (callee_func && !this_ptr)
             {
-                // Check if we're inside a method (function has 'this' as first parameter)
-                if (current_function->arg_size() > 0)
+                // Check if this function is actually a method (expects 'this' as first param)
+                if (callee_func->arg_size() > 0)
                 {
-                    auto first_param = current_function->arg_begin();
+                    auto first_param = callee_func->arg_begin();
                     if (first_param->getName() == "this")
                     {
-                        // We're in a method - try to find the function as a method of the same type
-                        std::string current_func_name = current_function->getName().str();
-                        size_t dot_pos = current_func_name.find('.');
-                        if (dot_pos != std::string::npos)
+                        // This is a method call, we need to provide 'this'
+                        // Check if we're currently inside a method
+                        if (current_function && current_function->arg_size() > 0)
                         {
-                            std::string type_name = current_func_name.substr(0, dot_pos);
-                            std::string method_name = type_name + "." + func_name;
-
-                            callee_func = module->getFunction(method_name);
-                            if (callee_func)
+                            auto current_first_param = current_function->arg_begin();
+                            if (current_first_param->getName() == "this")
                             {
-                                // Use the current function's 'this' parameter
-                                this_ptr = first_param;
+                                // Use the current method's 'this' for the call
+                                this_ptr = current_first_param;
                             }
+                        }
+                        
+                        if (!this_ptr)
+                        {
+                            report_error(node, "Cannot call method '" + callee_func->getName().str() + 
+                                    "' without an object instance");
+                            return;
                         }
                     }
                 }
