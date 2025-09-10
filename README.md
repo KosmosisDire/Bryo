@@ -1,3 +1,6 @@
+# Please note this is a work in progress and is not near finished or ready for use
+
+
 <img width="250" alt="bryo-full-planet@4x" src="https://github.com/user-attachments/assets/5f68aa97-2d24-4ad2-8ee8-1b2faed55694" />
 
 # The Bryo Programming Language
