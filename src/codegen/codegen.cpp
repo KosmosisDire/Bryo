@@ -277,7 +277,7 @@ namespace Bryo
     llvm::Value *CodeGenerator::castPrimitive(llvm::Value *value, PrimitiveType::Kind sourceKind, PrimitiveType::Kind targetKind, BaseSyntax *node)
     {
         // Get the conversion kind
-        auto convKind = Conversions::ClassifyConversion(sourceKind, targetKind);
+        auto convKind = Conversions::classify_conversion(sourceKind, targetKind);
 
         if (convKind == ConversionKind::NoConversion)
         {

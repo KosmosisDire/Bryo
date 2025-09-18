@@ -1,73 +1,65 @@
 #include "semantic/type_resolver.hpp"
+#include <sstream>
 
 namespace Bryo
 {
+    // === Main Resolution Entry Point ===
 
-    // ============================================================================
-    // --- TypeResolver Implementation ---
-    // ============================================================================
-    bool TypeResolver::resolve(CompilationUnitSyntax *unit)
+    bool TypeResolver::resolve(BoundCompilationUnit *unit)
     {
-        nodeTypes.clear();
+        errors.clear();
         substitution.clear();
         pendingConstraints.clear();
-        currentTypeParameters.clear();
 
-        // Phase 1: Repeatedly traverse the AST to gather constraints and solve for
-        // inferred types until no more progress can be made.
-        int pass = 0;
-        while (pass < passes_to_run)
+        // Multiple passes for type inference
+        for (int pass = 0; pass < MAX_PASSES; ++pass)
         {
-            errors.clear();
-            pass++;
-            size_t errors_before_pass = errors.size();
-            size_t constraints_before_pass = pendingConstraints.size();
+            size_t errorsBefore = errors.size();
+            size_t constraintsBefore = pendingConstraints.size();
 
-            unit->accept(this); // Run a full traversal
+            // Visit the entire tree
+            unit->accept(this);
 
-            // Check if we made progress: either resolved constraints or found new errors
-            bool made_progress = (errors.size() > errors_before_pass) ||
-                                 (pendingConstraints.size() < constraints_before_pass);
+            // Check if we made progress
+            bool madeProgress = (errors.size() > errorsBefore) ||
+                                (pendingConstraints.size() < constraintsBefore);
 
-            // if (!made_progress || pendingConstraints.empty())
-            // {
-            //     break;
-            // }
+            if (!madeProgress || pendingConstraints.empty())
+            {
+                break;
+            }
         }
 
-        // Phase 2: Report any constraints that are still unresolved.
+        // Report any remaining unresolved types
         report_final_errors();
-
-        // Phase 3: Final pass to update all AST nodes with canonical types
-        update_ast_with_final_types(unit);
 
         return errors.empty();
     }
+
+    // === Core Type Resolution ===
 
     TypePtr TypeResolver::apply_substitution(TypePtr type)
     {
         if (!type)
             return nullptr;
+
         auto it = substitution.find(type);
         if (it == substitution.end())
         {
-            return type; // It's a canonical type (concrete or unresolved root)
+            return type; // Already canonical
         }
-        // Path compression for efficiency
+
+        // Path compression
         TypePtr root = apply_substitution(it->second);
         substitution[type] = root;
         return root;
     }
 
-    bool TypeResolver::has_pending_constraints()
-    {
-        return !pendingConstraints.empty();
-    }
-
-    void TypeResolver::unify(TypePtr t1, TypePtr t2, BaseSyntax *error_node, const std::string &context)
+    void TypeResolver::unify(TypePtr t1, TypePtr t2, BoundNode *error_node, const std::string &context)
     {
         if (!t1 || !t2)
             return;
+
         TypePtr root1 = apply_substitution(t1);
         TypePtr root2 = apply_substitution(t2);
 
@@ -80,342 +72,278 @@ namespace Bryo
         if (root1_is_var)
         {
             substitution[root1] = root2;
+            pendingConstraints.erase(root1);
         }
         else if (root2_is_var)
         {
             substitution[root2] = root1;
+            pendingConstraints.erase(root2);
         }
         else if (root1->get_name() != root2->get_name())
         {
-            report_error(error_node, "'" + root1->get_name() + "' and '" + root2->get_name() + "' are not compatible types.");
+            report_error(error_node, context + ": Type mismatch - '" + root1->get_name() +
+                                         "' and '" + root2->get_name() + "' are incompatible");
         }
     }
 
-    void TypeResolver::report_final_errors()
-    {
-        for (auto &[node, type] : nodeTypes)
-        {
-            TypePtr canonical = apply_substitution(type);
-            if (canonical->is<UnresolvedType>())
-            {
-                // errors.push_back("Could not infer type for expression at line " + node->location.start.to_string());
-            }
-        }
-    }
-
-    void TypeResolver::report_error(BaseSyntax *error_node, const std::string &message)
-    {
-        if (error_node)
-        {
-            errors.push_back("Error at " + error_node->location.start.to_string() + ": " + message);
-        }
-        else
-        {
-            errors.push_back("Error: " + message);
-        }
-    }
-
-    void TypeResolver::update_ast_with_final_types(CompilationUnitSyntax *unit)
-    {
-        class TypeUpdateVisitor : public DefaultVisitor
-        {
-            TypeResolver *resolver;
-
-        public:
-            TypeUpdateVisitor(TypeResolver *res) : resolver(res) {}
-
-            void visit(BaseExprSyntax *node) override
-            {
-                if (node && node->resolvedType)
-                {
-                    // Update with the final canonical type
-                    node->resolvedType = resolver->apply_substitution(node->resolvedType);
-                }
-                // Continue visiting children
-                DefaultVisitor::visit(node);
-            }
-        };
-
-        TypeUpdateVisitor updater(this);
-        unit->accept(&updater);
-    }
-
-    TypePtr TypeResolver::get_node_type(BaseSyntax *node)
-    {
-        auto it = nodeTypes.find(node);
-        return (it != nodeTypes.end()) ? it->second : nullptr;
-    }
-
-    void TypeResolver::set_node_type(BaseSyntax *node, TypePtr type)
-    {
-        if (node && type)
-        {
-            nodeTypes[node] = type;
-        }
-    }
-
-    void TypeResolver::annotate_expression(BaseExprSyntax *expr, TypePtr type, Symbol *symbol)
+    void TypeResolver::annotate_expression(BoundExpression *expr, TypePtr type, Symbol *symbol)
     {
         if (!expr || !type)
             return;
 
-        // 1. Type annotation (always happens)
-        set_node_type(expr, type);
         TypePtr canonical = apply_substitution(type);
-        expr->resolvedType = canonical;
+        expr->type = canonical;
 
-        // 2. Set expression-specific symbol fields using is() and as()
-        if (symbol)
-        {
-            set_expression_symbol(expr, symbol);
-        }
+        // Update value category
+        expr->valueCategory = compute_value_category(expr, symbol);
 
-        // 3. Lvalue/rvalue determination (uses both expression type and symbol)
-        expr->isLValue = compute_lvalue_status(expr, symbol);
-
-        // 4. Constraint tracking
+        // Track unresolved types
         if (canonical->is<UnresolvedType>())
         {
             pendingConstraints.insert(canonical);
         }
-        else
-        {
-            pendingConstraints.erase(canonical);
-        }
     }
 
-    void TypeResolver::set_expression_symbol(BaseExprSyntax *expr, Symbol *symbol)
-    {
-        if (!expr || !symbol)
-            return;
+    // === Symbol Resolution ===
 
-        // Use is() and as() to set the appropriate symbol field
-        if (auto baseName = expr->as<SimpleNameSyntax>())
-        {
-            baseName->resolvedSymbol = symbol->handle;
-        }
-        else if (auto qualified = expr->as<QualifiedNameSyntax>())
-        {
-            qualified->resolvedSymbol = symbol->handle;
-        }
-        else if (expr->is<CallExprSyntax>())
-        {
-            expr->as<CallExprSyntax>()->resolvedCallee = symbol->handle;
-        }
-        // Other expression types don't have symbol fields
-    }
-
-    Scope *TypeResolver::get_containing_scope(BaseSyntax *node)
+    Symbol *TypeResolver::resolve_qualified_name(const std::vector<std::string> &parts)
     {
-        if (!node || node->containingScope.id == 0)
+        if (parts.empty())
             return nullptr;
-        auto sym = symbolTable.lookup_handle(node->containingScope)->as<Scope>();
 
-        if (!sym)
+        // TODO: Add this method to SymbolTable
+        // For now, we'll handle single names and report an error for qualified names
+        if (parts.size() == 1)
         {
-            report_error(node, "Internal Error: Expression has no containing scope.");
-            if (auto exp = node->as<BaseExprSyntax>())
-                annotate_expression(exp, typeSystem.get_unresolved_type());
+            return symbolTable.resolve(parts[0]);
         }
 
-        return sym;
+        // For qualified names, we need to navigate the symbol hierarchy
+        // This should be added to SymbolTable as resolve_qualified()
+        Symbol *current = symbolTable.get_global_namespace();
+
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            auto container = current->as<ContainerSymbol>();
+            if (!container)
+                return nullptr;
+
+            auto members = container->get_member(parts[i]);
+            if (members.empty())
+                return nullptr;
+
+            current = members[0]; // TODO: Handle ambiguity
+        }
+
+        return current;
     }
 
-    bool TypeResolver::compute_lvalue_status(BaseExprSyntax *expr, Symbol *symbol)
+    FunctionSymbol *TypeResolver::resolve_overload(const std::vector<FunctionSymbol *> &overloads,
+                                                        const std::vector<TypePtr> &argTypes)
     {
-        if (!expr)
-            return false;
+        if (overloads.empty())
+            return nullptr;
 
-        // Array indexing is always an lvalue
-        if (expr->is<IndexerExprSyntax>())
+        // Single overload - check compatibility
+        if (overloads.size() == 1)
         {
-            return true;
-        }
+            FunctionSymbol *func = overloads[0];
+            if (func->parameters.size() != argTypes.size())
+                return nullptr;
 
-        // 'this' is always an lvalue
-        if (expr->is<ThisExprSyntax>())
-        {
-            return true;
-        }
-
-        // Dereference produces lvalue
-        if (expr->is<UnaryExprSyntax>())
-        {
-            auto unary = expr->as<UnaryExprSyntax>();
-            if (unary->op == UnaryOperatorKind::Dereference)
+            // Check if all arguments can convert
+            for (size_t i = 0; i < argTypes.size(); ++i)
             {
-                return true;
+                TypePtr paramType = apply_substitution(func->parameters[i]->type);
+
+                // Handle unresolved parameter types
+                if (paramType->is<UnresolvedType>())
+                {
+                    unify(paramType, argTypes[i], nullptr, "parameter inference");
+                    continue;
+                }
+
+                ConversionKind conv = check_conversion(argTypes[i], paramType);
+                if (!Conversions::is_implicit_conversion(conv))
+                    return nullptr;
+            }
+            return func;
+        }
+
+        // Multiple overloads - find best match
+        FunctionSymbol *bestMatch = nullptr;
+        int bestScore = -1;
+
+        for (auto func : overloads)
+        {
+            if (func->parameters.size() != argTypes.size())
+                continue;
+
+            int score = 0;
+            bool viable = true;
+
+            for (size_t i = 0; i < argTypes.size(); ++i)
+            {
+                TypePtr paramType = apply_substitution(func->parameters[i]->type);
+                ConversionKind conv = check_conversion(argTypes[i], paramType);
+
+                if (!Conversions::is_implicit_conversion(conv))
+                {
+                    viable = false;
+                    break;
+                }
+
+                // Prefer identity conversions
+                if (conv == ConversionKind::Identity)
+                    score += 2;
+                else if (conv == ConversionKind::ImplicitNumeric)
+                    score += 1;
+            }
+
+            if (viable && score > bestScore)
+            {
+                bestMatch = func;
+                bestScore = score;
             }
         }
 
-        // For expressions with symbols, check the symbol type
-        if (symbol)
-        {
-            // Variables and parameters are lvalues
-            if (symbol->is<VariableSymbol>() || symbol->is<ParameterSymbol>())
-            {
-                return true;
-            }
-
-            // Properties with setters are lvalues
-            if (symbol->is<PropertySymbol>())
-            {
-                auto prop = symbol->as<PropertySymbol>();
-                return prop->has_setter();
-            }
-        }
-
-        // Everything else is an rvalue
-        return false;
+        return bestMatch;
     }
 
-    TypePtr TypeResolver::resolve_expr_type(BaseExprSyntax *type_expr, Scope *scope)
+    // === Type Utilities ===
+    TypePtr TypeResolver::resolve_type_expression(BoundExpression *typeExpr)
     {
-        if (!type_expr || !scope)
-            return typeSystem.get_unresolved_type();
+        if (!typeExpr)
+            return typeSystem.get_unresolved();
 
-        // Single identifier (like "i32", "String", "T")
-        if (auto name = type_expr->as<BaseNameExprSyntax>())
+        // Handle BoundTypeExpression
+        if (auto boundType = typeExpr->as<BoundTypeExpression>())
         {
-            std::string typeName = name->get_name();
+            // Look up the type symbol
+            Symbol *symbol = resolve_qualified_name(boundType->parts);
 
-            // Check for primitive types first
-            TypePtr primType = typeSystem.get_primitive_type(typeName);
-            if (primType)
+            if (symbol)
             {
-                return primType;
+                if (auto typeSymbol = symbol->as<TypeSymbol>())
+                {
+                    return typeSymbol->type;
+                }
             }
 
-            // Check if this is a type parameter in the current generic context
-            auto typeParamIt = currentTypeParameters.find(typeName);
-            if (typeParamIt != currentTypeParameters.end())
+            // Check for primitive types
+            if (boundType->parts.size() == 1)
             {
-                return typeParamIt->second;
+                TypePtr primitive = typeSystem.get_primitive(boundType->parts[0]);
+                if (primitive)
+                    return primitive;
             }
-
-            // Otherwise look up in symbol table
-            return symbolTable.resolve_type_name(typeName, scope->as_scope_node());
-        }
-        // Array type (like "i32[]")
-        else if (auto array = type_expr->as<ArrayTypeSyntax>())
-        {
-            TypePtr elemType = resolve_expr_type(array->baseType, scope);
-            int arrSize = -1;
-            if (array->size)
-            {
-                arrSize = std::stoi(std::string(array->size->value));
-            }
-            return typeSystem.get_array_type(elemType, arrSize);
-        }
-        else if (auto pointer = type_expr->as<PointerTypeSyntax>())
-        {
-            TypePtr baseType = resolve_expr_type(pointer->baseType, scope);
-            if (!baseType)
-                return typeSystem.get_unresolved_type();
-            return typeSystem.get_pointer_type(baseType);
         }
 
-        return typeSystem.get_unresolved_type();
+        return typeSystem.get_unresolved();
     }
 
-    TypePtr TypeResolver::infer_function_return_type(BlockSyntax *body)
+    TypePtr TypeResolver::infer_return_type(BoundStatement *body)
     {
         if (!body)
-            return typeSystem.get_primitive_type("void");
+            return typeSystem.get_void();
 
-        // Helper class to find return statements and check their types
-        class ReturnTypeFinder : public DefaultVisitor
+        // Find all return statements in the body
+        class ReturnTypeFinder : public DefaultBoundVisitor
         {
         public:
-            TypePtr commonReturnType = nullptr;
             TypeResolver *resolver;
+            TypePtr commonType = nullptr;
             bool hasVoidReturn = false;
-            bool hasInvalidVoidReturn = false;
-            BaseSyntax *invalidVoidReturnNode = nullptr;
 
-            ReturnTypeFinder(TypeResolver *res) : resolver(res) {}
+            ReturnTypeFinder(TypeResolver *r) : resolver(r) {}
 
-            void visit(ReturnStmtSyntax *node) override
+            void visit(BoundReturnStatement *node) override
             {
                 if (node->value)
                 {
-                    // Return with value
-                    TypePtr valueType = resolver->get_node_type(node->value);
-                    if (valueType)
+                    TypePtr valueType = resolver->apply_substitution(node->value->type);
+
+                    if (valueType && !valueType->is<UnresolvedType>() && valueType->is_void())
                     {
-                        TypePtr canonicalValue = resolver->apply_substitution(valueType);
+                        resolver->report_error(node, "Cannot return void expression");
+                        return;
+                    }
 
-                        // Check if trying to return void expression (which is invalid)
-                        if (canonicalValue && !canonicalValue->is<UnresolvedType>() &&
-                            canonicalValue->is_void())
-                        {
-                            hasInvalidVoidReturn = true;
-                            invalidVoidReturnNode = node;
-                            // Don't include this in type inference - it's an error
-                            return;
-                        }
-
-                        // Valid non-void return value
-                        if (!commonReturnType)
-                        {
-                            commonReturnType = valueType;
-                        }
-                        else
-                        {
-                            // Try to unify with existing return type
-                            resolver->unify(commonReturnType, valueType, node, "return type inference");
-                            commonReturnType = resolver->apply_substitution(commonReturnType);
-                        }
+                    if (!commonType)
+                    {
+                        commonType = valueType;
+                    }
+                    else
+                    {
+                        resolver->unify(commonType, valueType, node, "return type inference");
+                        commonType = resolver->apply_substitution(commonType);
                     }
                 }
                 else
                 {
-                    // Return without value (valid for void functions)
                     hasVoidReturn = true;
                 }
             }
 
-            void visit(FunctionDeclSyntax *node) override
+            void visit(BoundFunctionDeclaration *node) override
             {
-                // Don't visit nested functions - their return statements don't affect outer function
+                // Don't visit nested functions
             }
         };
 
         ReturnTypeFinder finder(this);
         body->accept(&finder);
 
-        // Report error if we found invalid void returns
-        if (finder.hasInvalidVoidReturn && finder.invalidVoidReturnNode)
+        if (finder.commonType && !finder.hasVoidReturn)
+            return finder.commonType;
+        else if (finder.hasVoidReturn && !finder.commonType)
+            return typeSystem.get_void();
+        else if (finder.commonType && finder.hasVoidReturn)
         {
-            report_error(finder.invalidVoidReturnNode, "Cannot return void expression");
-            // Continue with inference anyway to find other errors
-        }
-
-        // Determine final return type
-        if (finder.commonReturnType && !finder.hasVoidReturn)
-        {
-            // All valid returns have values and consistent type
-            return finder.commonReturnType;
-        }
-        else if (finder.hasVoidReturn && !finder.commonReturnType)
-        {
-            // All returns are void (no value)
-            return typeSystem.get_primitive_type("void");
-        }
-        else if (finder.commonReturnType && finder.hasVoidReturn)
-        {
-            // Mixed return types - some with value, some without
-            // This is an error - a function can't sometimes return void and sometimes return a value
-            // For now, prefer the non-void type to continue analysis
-            report_error(body, "Inconsistent return types: function has both void and non-void returns");
-            return finder.commonReturnType;
+            report_error(body, "Inconsistent return types: both void and non-void returns");
+            return finder.commonType;
         }
         else
-        {
-            // No return statements found - default to void
-            return typeSystem.get_primitive_type("void");
-        }
+            return typeSystem.get_void();
     }
+
+    ValueCategory TypeResolver::compute_value_category(BoundExpression *expr, Symbol *symbol)
+    {
+        if (!expr)
+            return ValueCategory::RValue;
+
+        // Indexing is always lvalue
+        if (expr->is<BoundIndexExpression>())
+            return ValueCategory::LValue;
+
+        // 'this' is always lvalue
+        if (expr->is<BoundThisExpression>())
+            return ValueCategory::LValue;
+
+        // Dereference produces lvalue
+        if (auto unary = expr->as<BoundUnaryExpression>())
+        {
+            if (unary->operatorKind == UnaryOperatorKind::Dereference)
+                return ValueCategory::LValue;
+        }
+
+        // Check symbol type
+        if (symbol)
+        {
+            if (symbol->is<VariableSymbol>() || symbol->is<ParameterSymbol>() || symbol->is<FieldSymbol>())
+                return ValueCategory::LValue;
+
+            if (auto prop = symbol->as<PropertySymbol>())
+            {
+                if (prop->setter)
+                    return ValueCategory::LValue;
+            }
+        }
+
+        return ValueCategory::RValue;
+    }
+
+    // === Conversion Checking ===
 
     ConversionKind TypeResolver::check_conversion(TypePtr from, TypePtr to)
     {
@@ -425,307 +353,174 @@ namespace Bryo
         TypePtr canonicalFrom = apply_substitution(from);
         TypePtr canonicalTo = apply_substitution(to);
 
-        // Check for unresolved types
+        // Can't determine conversion for unresolved types
         if (canonicalFrom->is<UnresolvedType>() || canonicalTo->is<UnresolvedType>())
-        {
-            // Can't determine conversion for unresolved types yet
             return ConversionKind::NoConversion;
-        }
 
-        return Conversions::ClassifyConversion(canonicalFrom, canonicalTo);
+        return Conversions::classify_conversion(canonicalFrom, canonicalTo);
     }
 
-    bool TypeResolver::check_implicit_conversion(TypePtr from, TypePtr to, BaseSyntax *error_node, const std::string &context)
+    bool TypeResolver::check_implicit_conversion(TypePtr from, TypePtr to, BoundNode *node, const std::string &context)
     {
         ConversionKind kind = check_conversion(from, to);
 
-        if (Conversions::IsImplicitConversion(kind))
+        if (Conversions::is_implicit_conversion(kind))
         {
             return true;
         }
-        else if (Conversions::IsExplicitConversion(kind))
+        else if (Conversions::is_explicit_conversion(kind))
         {
-            report_error(error_node, "Cannot implicitly convert '" + from->get_name() +
-                                         "' to '" + to->get_name() + "' - explicit cast required");
+            report_error(node, context + ": Implicit conversion from '" + from->get_name() +
+                                   "' to '" + to->get_name() + "' not allowed - explicit cast required");
             return false;
         }
         else
         {
-            report_error(error_node, "Cannot convert '" + from->get_name() +
-                                         "' to '" + to->get_name() + "'");
+            report_error(node, context + ": Cannot convert '" + from->get_name() +
+                                   "' to '" + to->get_name() + "'");
             return false;
         }
     }
 
-    bool TypeResolver::check_explicit_conversion(TypePtr from, TypePtr to, BaseSyntax *error_node, const std::string &context)
+    bool TypeResolver::check_explicit_conversion(TypePtr from, TypePtr to, BoundNode *node, const std::string &context)
     {
         ConversionKind kind = check_conversion(from, to);
 
-        if (Conversions::IsConversionPossible(kind))
+        if (Conversions::is_conversion_possible(kind))
         {
             return true;
         }
         else
         {
-            report_error(error_node, "Cannot convert '" + from->get_name() + "' to '" + to->get_name() + "'");
+            report_error(node, context + ": Cannot convert '" + from->get_name() +
+                                   "' to '" + to->get_name() + "' even with explicit cast");
             return false;
         }
     }
 
-    FunctionSymbol *TypeResolver::resolve_overload(const std::vector<FunctionSymbol *> &overloads, const std::vector<TypePtr> &argTypes)
+    // === Error Reporting ===
+
+    void TypeResolver::report_error(BoundNode *node, const std::string &message)
     {
-        if (overloads.empty())
-            return nullptr;
-
-        // Single overload - no resolution needed
-        if (overloads.size() == 1)
+        std::stringstream ss;
+        if (node)
         {
-            FunctionSymbol *func = overloads[0];
-            if (func->parameters().size() == argTypes.size())
-            {
-                // Check if all arguments can convert to parameters
-                for (size_t i = 0; i < argTypes.size(); ++i)
-                {
-                    auto paramSymbol = func->parameters()[i];
-                    if (!paramSymbol)
-                        return nullptr;
-
-                    TypePtr paramType = apply_substitution(paramSymbol->type());
-
-                    // IMPORTANT: Handle unresolved parameter types
-                    if (paramType->is<UnresolvedType>())
-                    {
-                        // If parameter type is unresolved, unify it with the argument type
-                        // This allows type inference to work during overload resolution
-                        unify(paramType, argTypes[i], nullptr, "parameter inference");
-                        continue; // Accept this parameter for now
-                    }
-
-                    ConversionKind conv = check_conversion(argTypes[i], paramType);
-
-                    // Only allow Identity and ImplicitNumeric for function calls
-                    if (!Conversions::IsImplicitConversion(conv))
-                        return nullptr;
-                }
-                return func;
-            }
-            return nullptr;
+            ss << "Error at " << node->location.start.to_string() << ": " << message;
         }
-
-        // Multiple overloads - need resolution
-        std::vector<FunctionSymbol *> viable;
-        std::vector<std::vector<ConversionKind>> viableConversions;
-
-        // Phase 1: Find viable candidates
-        for (auto func : overloads)
+        else
         {
-            // Check parameter count
-            if (func->parameters().size() != argTypes.size())
-                continue;
-
-            std::vector<ConversionKind> conversions;
-            bool is_viable = true;
-
-            // Check each argument
-            for (size_t i = 0; i < argTypes.size(); ++i)
-            {
-                auto paramSymbol = func->parameters()[i];
-                if (!paramSymbol)
-                {
-                    is_viable = false;
-                    break;
-                }
-
-                TypePtr paramType = apply_substitution(paramSymbol->type());
-
-                // IMPORTANT: Handle unresolved parameter types
-                if (paramType->is<UnresolvedType>())
-                {
-                    // If parameter type is unresolved, treat it as a potential match
-                    // and unify it with the argument type
-                    unify(paramType, argTypes[i], nullptr, "parameter inference");
-                    conversions.push_back(ConversionKind::Identity); // Treat as exact match after unification
-                    continue;
-                }
-
-                ConversionKind conv = check_conversion(argTypes[i], paramType);
-
-                // IMPORTANT: ExplicitNumeric conversions are NOT allowed for function calls
-                // Only Identity and ImplicitNumeric are viable
-                if (!Conversions::IsImplicitConversion(conv))
-                {
-                    is_viable = false;
-                    break;
-                }
-
-                conversions.push_back(conv);
-            }
-
-            if (is_viable)
-            {
-                viable.push_back(func);
-                viableConversions.push_back(conversions);
-            }
+            ss << "Error: " << message;
         }
-
-        if (viable.empty())
-            return nullptr;
-
-        if (viable.size() == 1)
-            return viable[0];
-
-        // Phase 2: Find best match among viable candidates
-        // Prefer functions with more Identity conversions over ImplicitNumeric
-        int bestIndex = 0;
-        int bestIdentityCount = count_conversions(viableConversions[0], ConversionKind::Identity);
-
-        for (size_t i = 1; i < viable.size(); ++i)
-        {
-            int identityCount = count_conversions(viableConversions[i], ConversionKind::Identity);
-
-            if (identityCount > bestIdentityCount)
-            {
-                bestIndex = i;
-                bestIdentityCount = identityCount;
-            }
-            else if (identityCount == bestIdentityCount)
-            {
-                // Ambiguity - both have same number of exact matches
-                // Could report ambiguity error here
-                // For now, we could use additional criteria like:
-                // - Prefer narrower implicit conversions (i32->i64 over i32->f64)
-                // - Or just report ambiguity
-            }
-        }
-
-        return viable[bestIndex];
+        errors.push_back(ss.str());
     }
 
-    int TypeResolver::count_conversions(const std::vector<ConversionKind> &conversions, ConversionKind kind)
+    void TypeResolver::report_final_errors()
     {
-        int count = 0;
-        for (auto conv : conversions)
+        for (auto constraint : pendingConstraints)
         {
-            if (conv == kind)
-                count++;
+            errors.push_back("Could not infer type: " + constraint->get_name());
         }
-        return count;
     }
 
-    // --- Visitor Implementations ---
+    // === Expression Visitors ===
 
-    void TypeResolver::visit(LiteralExprSyntax *node)
+    void TypeResolver::visit(BoundLiteralExpression *node)
     {
-        std::string type_name = std::string(to_string(node->kind));
-        annotate_expression(node, typeSystem.get_primitive_type(type_name));
+        // Determine type from literal kind
+        TypePtr type = nullptr;
+        switch (node->literalKind)
+        {
+        case LiteralKind::I32:
+            type = typeSystem.get_i32();
+            break;
+        case LiteralKind::I64:
+            type = typeSystem.get_i64();
+            break;
+        case LiteralKind::F32:
+            type = typeSystem.get_f32();
+            break;
+        case LiteralKind::F64:
+            type = typeSystem.get_f64();
+            break;
+        case LiteralKind::Bool:
+            type = typeSystem.get_bool();
+            break;
+        case LiteralKind::Char:
+            type = typeSystem.get_primitive("char");
+            break;
+        case LiteralKind::String:
+            type = typeSystem.get_primitive("string");
+            break; // TODO: String type
+        default:
+            type = typeSystem.get_unresolved();
+            break;
+        }
+
+        annotate_expression(node, type);
     }
 
-    void TypeResolver::visit(ArrayLiteralExprSyntax *node)
+    void TypeResolver::visit(BoundNameExpression *node)
     {
-        // Visit all elements first
-        for (auto elem : node->elements)
+        // Resolve symbol if not already resolved
+        if (!node->symbol)
         {
-            if (elem)
-                elem->accept(this);
-        }
-
-        // Handle empty array
-        if (node->elements.empty())
-        {
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        // Unify element types
-        TypePtr elementType = nullptr;
-        for (auto elem : node->elements)
-        {
-            if (!elem)
-                continue;
-
-            TypePtr elemType = get_node_type(elem);
-            if (!elemType)
+            node->symbol = resolve_qualified_name(node->parts);
+            if (!node->symbol)
             {
-                annotate_expression(node, typeSystem.get_unresolved_type());
+                report_error(node, "Undefined symbol: " +
+                                       (node->parts.empty() ? "<empty>" : node->parts.back()));
+                annotate_expression(node, typeSystem.get_unresolved());
                 return;
             }
-
-            if (!elementType)
-            {
-                elementType = elemType;
-            }
-            else
-            {
-                unify(elementType, elemType, node, "array element types");
-                elementType = apply_substitution(elementType);
-            }
         }
 
-        // Create and annotate array type
-        if (elementType)
+        // Extract type from symbol
+        if (auto typed = node->symbol->as<VariableSymbol>())
         {
-            TypePtr arrayType = typeSystem.get_array_type(elementType, node->elements.size());
-            annotate_expression(node, arrayType);
+            annotate_expression(node, typed->type, node->symbol);
+        }
+        else if (auto function = node->symbol->as<FunctionSymbol>())
+        {
+            // Create a proper function type for this function reference
+            std::vector<TypePtr> paramTypes;
+            for (auto param : function->parameters)
+            {
+                if (param && param->type)
+                {
+                    paramTypes.push_back(apply_substitution(param->type));
+                }
+            }
+            TypePtr funcType = typeSystem.get_function(
+                apply_substitution(function->return_type), 
+                paramTypes
+            );
+            annotate_expression(node, funcType, node->symbol);
         }
         else
         {
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            annotate_expression(node, typeSystem.get_unresolved());
         }
     }
 
-    void TypeResolver::visit(BaseNameExprSyntax *node)
+    void TypeResolver::visit(BoundBinaryExpression *node)
     {
-        std::string name = node->get_name();
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
+        // Visit operands
+        if (node->left)
+            node->left->accept(this);
+        if (node->right)
+            node->right->accept(this);
 
-        auto symbol = scope->lookup(name);
-        if (!symbol)
-        {
-            report_error(node, "Identifier '" + name + "' not found");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        if (auto typed_symbol = symbol->as<TypedSymbol>())
-        {
-            // Single call to annotate_expression handles everything!
-            annotate_expression(node, typed_symbol->type(), symbol);
-        }
-        else if (auto func_group = symbol->as<FunctionGroupSymbol>())
-        {
-            // For function groups, we can't determine the exact type without call context
-            // Mark as a special function reference type or handle in CallExprSyntax
-            annotate_expression(node, typeSystem.get_unresolved_type(), symbol);
-        }
-        else
-        {
-            report_error(node, "'" + name + "' is not a value");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-        }
-    }
-
-    void TypeResolver::visit(BinaryExprSyntax *node)
-    {
-        // Visit children
-        node->left->accept(this);
-        node->right->accept(this);
-
-        TypePtr leftType = get_node_type(node->left);
-        TypePtr rightType = get_node_type(node->right);
+        TypePtr leftType = node->left ? apply_substitution(node->left->type) : nullptr;
+        TypePtr rightType = node->right ? apply_substitution(node->right->type) : nullptr;
 
         if (!leftType || !rightType)
         {
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            annotate_expression(node, typeSystem.get_unresolved());
             return;
         }
 
-        TypePtr canonicalLeft = apply_substitution(leftType);
-        TypePtr canonicalRight = apply_substitution(rightType);
-
-        // For comparison operators
-        switch (node->op)
+        // Handle comparison operators
+        switch (node->operatorKind)
         {
         case BinaryOperatorKind::Equals:
         case BinaryOperatorKind::NotEquals:
@@ -733,1102 +528,838 @@ namespace Bryo
         case BinaryOperatorKind::LessThanOrEqual:
         case BinaryOperatorKind::GreaterThan:
         case BinaryOperatorKind::GreaterThanOrEqual:
-            // Check if types can be compared (must have implicit conversion in at least one direction)
-            if (!canonicalLeft->is<UnresolvedType>() && !canonicalRight->is<UnresolvedType>())
+        {
+            // Check if types are comparable
+            if (!leftType->is<UnresolvedType>() && !rightType->is<UnresolvedType>())
             {
-                ConversionKind leftToRight = check_conversion(canonicalLeft, canonicalRight);
-                ConversionKind rightToLeft = check_conversion(canonicalRight, canonicalLeft);
+                ConversionKind ltr = check_conversion(leftType, rightType);
+                ConversionKind rtl = check_conversion(rightType, leftType);
 
-                if (!Conversions::IsImplicitConversion(leftToRight) &&
-                    !Conversions::IsImplicitConversion(rightToLeft))
+                if (!Conversions::is_implicit_conversion(ltr) &&
+                    !Conversions::is_implicit_conversion(rtl))
                 {
-                    report_error(node, "Cannot compare '" + canonicalLeft->get_name() + "' and '" + canonicalRight->get_name() + "'");
+                    report_error(node, "Cannot compare '" + leftType->get_name() +
+                                           "' and '" + rightType->get_name() + "'");
                 }
             }
             else
             {
-                // Fall back to unification for unresolved types
                 unify(leftType, rightType, node, "comparison");
             }
-            annotate_expression(node, typeSystem.get_primitive_type("bool"));
+            annotate_expression(node, typeSystem.get_bool());
             break;
+        }
 
         default: // Arithmetic operators
-            // Check if implicit conversion exists in either direction
-            if (!canonicalLeft->is<UnresolvedType>() && !canonicalRight->is<UnresolvedType>())
-            {
-                ConversionKind leftToRight = check_conversion(canonicalLeft, canonicalRight);
-                ConversionKind rightToLeft = check_conversion(canonicalRight, canonicalLeft);
+        {
+            // Determine result type
+            TypePtr resultType = nullptr;
 
-                // Determine result type based on implicit conversions
-                TypePtr resultType = nullptr;
-                if (Conversions::IsImplicitConversion(rightToLeft))
-                {
-                    resultType = canonicalLeft; // Left type is "wider"
-                }
-                else if (Conversions::IsImplicitConversion(leftToRight))
-                {
-                    resultType = canonicalRight; // Right type is "wider"
-                }
-                else if (leftToRight == ConversionKind::Identity)
-                {
-                    resultType = canonicalLeft; // Same type
-                }
+            if (!leftType->is<UnresolvedType>() && !rightType->is<UnresolvedType>())
+            {
+                ConversionKind ltr = check_conversion(leftType, rightType);
+                ConversionKind rtl = check_conversion(rightType, leftType);
+
+                if (Conversions::is_implicit_conversion(rtl))
+                    resultType = leftType; // Left is wider
+                else if (Conversions::is_implicit_conversion(ltr))
+                    resultType = rightType; // Right is wider
+                else if (ltr == ConversionKind::Identity)
+                    resultType = leftType; // Same type
                 else
                 {
-                    report_error(node, "Cannot apply binary operator to incompatible types '" +
-                                           canonicalLeft->get_name() + "' and '" + canonicalRight->get_name() + "'");
-                    resultType = typeSystem.get_unresolved_type();
+                    report_error(node, "Incompatible types for binary operator: '" +
+                                           leftType->get_name() + "' and '" + rightType->get_name() + "'");
+                    resultType = typeSystem.get_unresolved();
                 }
-                annotate_expression(node, resultType);
             }
             else
             {
-                // Fall back to unification for unresolved types
-                unify(leftType, rightType, node, "binary expression");
-                annotate_expression(node, apply_substitution(leftType));
+                unify(leftType, rightType, node, "binary operation");
+                resultType = apply_substitution(leftType);
             }
+
+            annotate_expression(node, resultType);
             break;
         }
-    }
-
-    void TypeResolver::visit(AssignmentExprSyntax *node)
-    {
-        // Visit children manually
-        node->target->accept(this);
-        node->value->accept(this);
-        TypePtr targetType = get_node_type(node->target);
-        TypePtr valueType = get_node_type(node->value);
-
-        if (!targetType || !valueType)
-        {
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        // Check if implicit conversion is possible
-        TypePtr canonicalTarget = apply_substitution(targetType);
-        TypePtr canonicalValue = apply_substitution(valueType);
-
-        // If both types are resolved, check conversion
-        if (!canonicalTarget->is<UnresolvedType>() && !canonicalValue->is<UnresolvedType>())
-        {
-            check_implicit_conversion(canonicalValue, canonicalTarget, node, "assignment");
-        }
-        else
-        {
-            // Fall back to unification for unresolved types
-            unify(targetType, valueType, node, "assignment");
-        }
-
-        annotate_expression(node, canonicalTarget);
-    }
-
-    void TypeResolver::visit(CallExprSyntax *node)
-    {
-        // Visit children manually
-        node->callee->accept(this);
-        for (auto arg : node->arguments)
-        {
-            if (arg)
-                arg->accept(this);
-        }
-
-        // Collect argument types for overload resolution
-        std::vector<TypePtr> argTypes;
-        for (auto arg : node->arguments)
-        {
-            if (arg)
-            {
-                TypePtr argType = get_node_type(arg);
-                if (argType)
-                {
-                    argTypes.push_back(apply_substitution(argType));
-                }
-            }
-        }
-
-        // Handle simple name function calls (e.g., foo())
-        if (auto name = node->callee->as<SimpleNameSyntax>())
-        {
-            auto scope = get_containing_scope(name);
-            if (!scope)
-                return;
-
-            // Collect all visible overloads
-            std::vector<FunctionSymbol *> overloads = scope->lookup_functions(name->get_name());
-
-            if (!overloads.empty())
-            {
-                // Resolve best overload
-                FunctionSymbol *best = resolve_overload(overloads, argTypes);
-                if (best)
-                {
-                    annotate_expression(node, best->return_type());
-                    node->resolvedCallee = best->handle;
-                    return;
-                }
-                else
-                {
-                    // Build argument types string for error message
-                    std::string argTypesStr = "(";
-                    for (size_t i = 0; i < argTypes.size(); ++i)
-                    {
-                        if (i > 0)
-                            argTypesStr += ", ";
-                        argTypesStr += argTypes[i]->get_name();
-                    }
-                    argTypesStr += ")";
-
-                    // Find the closest matching overload for better error message
-                    std::string closestMatch = "";
-                    if (!overloads.empty())
-                    {
-                        // Find overload with matching parameter count
-                        for (auto func : overloads)
-                        {
-                            if (func->parameters().size() == argTypes.size())
-                            {
-                                std::string paramTypesStr = "(";
-                                for (size_t i = 0; i < func->parameters().size(); ++i)
-                                {
-                                    if (i > 0)
-                                        paramTypesStr += ", ";
-                                    TypePtr paramType = apply_substitution(func->parameters()[i]->type());
-                                    paramTypesStr += paramType->get_name();
-                                }
-                                paramTypesStr += ")";
-                                closestMatch = paramTypesStr;
-                                break;
-                            }
-                        }
-
-                        // If no matching parameter count, show first overload
-                        if (closestMatch.empty() && !overloads.empty())
-                        {
-                            auto func = overloads[0];
-                            std::string paramTypesStr = "(";
-                            for (size_t i = 0; i < func->parameters().size(); ++i)
-                            {
-                                if (i > 0)
-                                    paramTypesStr += ", ";
-                                TypePtr paramType = apply_substitution(func->parameters()[i]->type());
-                                paramTypesStr += paramType->get_name();
-                            }
-                            paramTypesStr += ")";
-                            closestMatch = paramTypesStr;
-                        }
-                    }
-
-                    // Only report error if we have resolved argument types
-                    // If argument types are still unresolved, don't report an error yet
-                    bool hasUnresolvedArgs = false;
-                    for (auto argType : argTypes)
-                    {
-                        if (argType->is<UnresolvedType>())
-                        {
-                            hasUnresolvedArgs = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasUnresolvedArgs)
-                    {
-                        std::string errorMsg = "No matching overload for '" + name->get_name() +
-                                               "' with argument types " + argTypesStr;
-                        if (!closestMatch.empty())
-                        {
-                            errorMsg += ". Available overload expects: " + closestMatch;
-                        }
-
-                        report_error(node, errorMsg);
-                    }
-
-                    annotate_expression(node, typeSystem.get_unresolved_type());
-                    return;
-                }
-            }
-        }
-
-        // Handle member access function calls (e.g., obj.method())
-        else if (auto memberAccess = node->callee->as<QualifiedNameSyntax>())
-        {
-            TypePtr objectType = get_node_type(memberAccess->left);
-            if (objectType)
-            {
-                TypePtr canonicalType = apply_substitution(objectType);
-
-                // Check if the object type has the called method
-                if (auto typeRef = std::get_if<TypeReference>(&canonicalType->value))
-                {
-                    TypeLikeSymbol *typeSymbol = typeRef->definition;
-                    if (auto scope = typeSymbol->as<Scope>())
-                    {
-                        std::string methodName = memberAccess->right->get_name();
-
-                        // Collect overloads for this method
-                        std::vector<FunctionSymbol *> overloads = scope->lookup_functions_local(methodName);
-
-                        if (!overloads.empty())
-                        {
-                            // Resolve best overload
-                            FunctionSymbol *best = resolve_overload(overloads, argTypes);
-                            if (best)
-                            {
-                                annotate_expression(node, best->return_type());
-                                node->resolvedCallee = best->handle;
-                                memberAccess->resolvedSymbol = best->handle;
-                                return;
-                            }
-                            else
-                            {
-                                // Only report error if we have resolved argument types
-                                bool hasUnresolvedArgs = false;
-                                for (auto argType : argTypes)
-                                {
-                                    if (argType->is<UnresolvedType>())
-                                    {
-                                        hasUnresolvedArgs = true;
-                                        break;
-                                    }
-                                }
-
-                                if (!hasUnresolvedArgs)
-                                {
-                                    report_error(node, "No matching overload for method '" +
-                                                           methodName + "' with argument types");
-                                }
-                                annotate_expression(node, typeSystem.get_unresolved_type());
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            // Method not found - report specific error
-                            report_error(node, "Method '" + methodName + "' not found in type");
-                            annotate_expression(node, typeSystem.get_unresolved_type());
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        report_error(node, "Expression is not callable");
-        annotate_expression(node, typeSystem.get_unresolved_type());
-    }
-
-    void TypeResolver::visit(NewExprSyntax *node)
-    {
-        // Visit constructor arguments
-        for (auto arg : node->arguments)
-        {
-            if (arg)
-                arg->accept(this);
-        }
-
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        annotate_expression(node, resolve_expr_type(node->type, scope));
-    }
-
-    void TypeResolver::visit(VariableDeclSyntax *node)
-    {
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        auto symbol = scope->lookup(node->variable->name->get_name());
-        auto var_symbol = symbol ? symbol->as<TypedSymbol>() : nullptr;
-
-        if (var_symbol)
-        {
-            TypePtr varType = var_symbol->type();
-
-            if (node->variable->type)
-            {
-                TypePtr resolvedType = resolve_expr_type(node->variable->type, scope);
-                if (!resolvedType->is<UnresolvedType>())
-                {
-                    var_symbol->set_type(resolvedType);
-                    varType = resolvedType;
-                    symbolTable.mark_symbol_resolved(symbol);
-                }
-            }
-
-            // Handle initializer
-            if (node->initializer)
-            {
-                node->initializer->accept(this);
-                TypePtr initType = get_node_type(node->initializer);
-                if (initType)
-                {
-                    unify(varType, initType, node, "variable initialization");
-
-                    // If unification resolved the variable's type, update the symbol
-                    TypePtr finalType = apply_substitution(varType);
-                    if (!finalType->is<UnresolvedType>())
-                    {
-                        var_symbol->set_type(finalType);
-                        symbolTable.mark_symbol_resolved(symbol);
-                    }
-                }
-            }
         }
     }
 
-    void TypeResolver::visit(QualifiedNameSyntax *node)
+    void TypeResolver::visit(BoundUnaryExpression *node)
     {
-        // Visit only the left side - the right side is a member name, not a standalone identifier
-        if (node->left)
-            node->left->accept(this);
-        // Don't visit node->right - it's resolved as a member, not a standalone identifier
-
-        TypePtr objectType = get_node_type(node->left);
-        if (!objectType)
-        {
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        TypePtr canonicalType = apply_substitution(objectType);
-
-        // Extract type symbol
-        TypeLikeSymbol *typeSymbol = nullptr;
-        std::vector<TypePtr> typeArguments;
-
-        if (auto typeRef = std::get_if<TypeReference>(&canonicalType->value))
-        {
-            typeSymbol = typeRef->definition;
-        }
-        else if (auto genericType = std::get_if<GenericType>(&canonicalType->value))
-        {
-            typeSymbol = genericType->genericDefinition;
-            typeArguments = genericType->typeArguments;
-        }
-
-        if (!typeSymbol)
-        {
-            report_error(node, "Cannot access members of non-type expression");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        auto scope = typeSymbol->as<Scope>();
-        if (!scope)
-        {
-            report_error(node, "Type is not a scoped type");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        // Look up member
-        std::string memberName = node->right->get_name();
-        auto member = scope->lookup_local(memberName);
-
-        if (!member)
-        {
-            report_error(node, "Member '" + memberName + "' not found");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
-        }
-
-        if (auto typed_member = member->as<TypedSymbol>())
-        {
-            TypePtr memberType = typed_member->type();
-
-            // Handle generic type parameter substitution
-            if (!typeArguments.empty() && memberType->is<TypeParameter>())
-            {
-                auto &typeParam = memberType->as<TypeParameter>();
-                if (typeParam.parameterId >= 0 && typeParam.parameterId < typeArguments.size())
-                {
-                    memberType = typeArguments[typeParam.parameterId];
-                }
-            }
-
-            // Single annotation call handles everything!
-            annotate_expression(node, memberType, member);
-        }
-        else if (auto func_group = member->as<FunctionGroupSymbol>())
-        {
-            // For function groups (methods), we can't determine the exact type without call context
-            // Mark with unresolved type but store the symbol for later overload resolution
-            annotate_expression(node, typeSystem.get_unresolved_type(), member);
-            node->resolvedSymbol = func_group->handle;
-        }
-        else
-        {
-            report_error(node, "Member '" + memberName + "' is not a value");
-            annotate_expression(node, typeSystem.get_unresolved_type());
-        }
-    }
-
-    void TypeResolver::visit(UnaryExprSyntax *node)
-    {
-        // Visit operand
         if (node->operand)
             node->operand->accept(this);
 
-        TypePtr operandType = get_node_type(node->operand);
+        TypePtr operandType = node->operand ? apply_substitution(node->operand->type) : nullptr;
         if (!operandType)
         {
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            annotate_expression(node, typeSystem.get_unresolved());
             return;
         }
 
-        TypePtr canonicalType = apply_substitution(operandType);
+        TypePtr resultType = nullptr;
 
-        switch (node->op)
+        switch (node->operatorKind)
         {
         case UnaryOperatorKind::Plus:
         case UnaryOperatorKind::Minus:
-            annotate_expression(node, canonicalType);
-            break;
-
-        case UnaryOperatorKind::Not:
-            unify(canonicalType, typeSystem.get_primitive_type("bool"), node, "logical not operand");
-            annotate_expression(node, typeSystem.get_primitive_type("bool"));
-            break;
-
         case UnaryOperatorKind::BitwiseNot:
         case UnaryOperatorKind::PreIncrement:
         case UnaryOperatorKind::PreDecrement:
         case UnaryOperatorKind::PostIncrement:
         case UnaryOperatorKind::PostDecrement:
-            annotate_expression(node, canonicalType);
+            resultType = operandType;
+            break;
+
+        case UnaryOperatorKind::Not:
+            unify(operandType, typeSystem.get_bool(), node, "logical not");
+            resultType = typeSystem.get_bool();
             break;
 
         case UnaryOperatorKind::AddressOf:
-            // Create pointer type
-            annotate_expression(node, typeSystem.get_pointer_type(canonicalType));
+            resultType = typeSystem.get_pointer(operandType);
             break;
 
         case UnaryOperatorKind::Dereference:
-            // Check if operand is a pointer
-            if (auto ptrType = std::get_if<PointerType>(&canonicalType->value))
+            if (operandType->is<PointerType>())
             {
-                annotate_expression(node, ptrType->pointeeType);
+                auto ptrType = operandType->as<PointerType>();
+                resultType = ptrType->pointee;
             }
             else
             {
-                report_error(node, "Cannot dereference non-pointer type '" + canonicalType->get_name() + "'");
-                annotate_expression(node, typeSystem.get_unresolved_type());
+                report_error(node, "Cannot dereference non-pointer type '" +
+                                       operandType->get_name() + "'");
+                resultType = typeSystem.get_unresolved();
             }
             break;
 
         default:
             report_error(node, "Unknown unary operator");
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            resultType = typeSystem.get_unresolved();
             break;
         }
-        // No symbol for unary operations
+
+        annotate_expression(node, resultType);
     }
-    void TypeResolver::visit(IndexerExprSyntax *node)
+
+    void TypeResolver::visit(BoundAssignmentExpression *node)
     {
-        // Visit children
+        if (node->target)
+            node->target->accept(this);
+        if (node->value)
+            node->value->accept(this);
+
+        TypePtr targetType = node->target ? apply_substitution(node->target->type) : nullptr;
+        TypePtr valueType = node->value ? apply_substitution(node->value->type) : nullptr;
+
+        if (!targetType || !valueType)
+        {
+            annotate_expression(node, typeSystem.get_unresolved());
+            return;
+        }
+
+        // Check lvalue
+        if (node->target && node->target->valueCategory != ValueCategory::LValue)
+        {
+            report_error(node, "Cannot assign to rvalue");
+        }
+
+        // Check type compatibility
+        if (!targetType->is<UnresolvedType>() && !valueType->is<UnresolvedType>())
+        {
+            check_implicit_conversion(valueType, targetType, node, "assignment");
+        }
+        else
+        {
+            unify(targetType, valueType, node, "assignment");
+        }
+
+        annotate_expression(node, targetType);
+    }
+
+    void TypeResolver::visit(BoundCallExpression *node)
+    {
+        // Visit callee and arguments
+        if (node->callee)
+            node->callee->accept(this);
+        for (auto arg : node->arguments)
+        {
+            if (arg)
+                arg->accept(this);
+        }
+
+        // Collect argument types
+        std::vector<TypePtr> argTypes;
+        for (auto arg : node->arguments)
+        {
+            if (arg)
+                argTypes.push_back(apply_substitution(arg->type));
+        }
+
+        // Resolve function based on callee type
+        if (!node->callee)
+        {
+            annotate_expression(node, typeSystem.get_unresolved());
+            return;
+        }
+
+        // Handle direct function calls
+        if (auto nameExpr = node->callee->as<BoundNameExpression>())
+        {
+            if (auto func = nameExpr->symbol->as<FunctionSymbol>())
+            {
+                node->method = func;
+
+                // Check parameter count
+                if (func->parameters.size() != argTypes.size())
+                {
+                    report_error(node, "Argument count mismatch: expected " +
+                                           std::to_string(func->parameters.size()) + ", got " +
+                                           std::to_string(argTypes.size()));
+                }
+                else
+                {
+                    // Check argument types
+                    for (size_t i = 0; i < argTypes.size(); ++i)
+                    {
+                        TypePtr paramType = apply_substitution(func->parameters[i]->type);
+                        check_implicit_conversion(argTypes[i], paramType, node,
+                                                  "argument " + std::to_string(i + 1));
+                    }
+                }
+
+                annotate_expression(node, apply_substitution(func->return_type));
+            }
+            else
+            {
+                // Check if it's a container with function overloads
+                if (auto container = nameExpr->symbol->as<ContainerSymbol>())
+                {
+                    auto overloads = container->get_functions(nameExpr->parts.back());
+                    node->method = resolve_overload(overloads, argTypes);
+
+                    if (!node->method)
+                    {
+                        std::stringstream ss;
+                        ss << "No matching overload for '" << nameExpr->parts.back() << "' with argument types (";
+                        for (size_t i = 0; i < argTypes.size(); ++i)
+                        {
+                            if (i > 0)
+                                ss << ", ";
+                            ss << argTypes[i]->get_name();
+                        }
+                        ss << ")";
+                        report_error(node, ss.str());
+                        annotate_expression(node, typeSystem.get_unresolved());
+                        return;
+                    }
+
+                    annotate_expression(node, apply_substitution(node->method->return_type));
+                }
+                else
+                {
+                    report_error(node, "Expression is not callable");
+                    annotate_expression(node, typeSystem.get_unresolved());
+                }
+            }
+        }
+        // TODO: Handle member function calls
+        else
+        {
+            report_error(node, "Complex call expressions not yet supported");
+            annotate_expression(node, typeSystem.get_unresolved());
+        }
+    }
+
+    void TypeResolver::visit(BoundMemberAccessExpression *node)
+    {
+        if (node->object)
+            node->object->accept(this);
+
+        TypePtr objectType = node->object ? apply_substitution(node->object->type) : nullptr;
+        if (!objectType)
+        {
+            annotate_expression(node, typeSystem.get_unresolved());
+            return;
+        }
+
+        // Get the type's symbol
+        TypeSymbol *typeSymbol = nullptr;
+        if (objectType->is<NamedType>())
+        {
+            auto namedType = objectType->as<NamedType>();
+            typeSymbol = namedType->symbol;
+        }
+
+        if (!typeSymbol)
+        {
+            report_error(node, "Cannot access members of type '" + objectType->get_name() + "'");
+            annotate_expression(node, typeSystem.get_unresolved());
+            return;
+        }
+
+        // Look up member
+        auto members = typeSymbol->get_member(node->memberName);
+        if (members.empty())
+        {
+            report_error(node, "Member '" + node->memberName + "' not found in type '" +
+                                   typeSymbol->name + "'");
+            annotate_expression(node, typeSystem.get_unresolved());
+            return;
+        }
+
+        node->member = members[0]; // TODO: Handle ambiguity
+
+        // Check actual symbol types to get the type
+        if (auto varSym = node->member->as<VariableSymbol>())
+        {
+            annotate_expression(node, varSym->type, node->member);
+        }
+        else if (auto funcSym = node->member->as<FunctionSymbol>())
+        {
+            // Method reference - type determined by call context
+            annotate_expression(node, typeSystem.get_unresolved(), node->member);
+        }
+        else
+        {
+            annotate_expression(node, typeSystem.get_unresolved());
+        }
+    }
+
+    void TypeResolver::visit(BoundIndexExpression *node)
+    {
         if (node->object)
             node->object->accept(this);
         if (node->index)
             node->index->accept(this);
 
-        TypePtr objectType = get_node_type(node->object);
-        TypePtr indexType = get_node_type(node->index);
+        TypePtr objectType = node->object ? apply_substitution(node->object->type) : nullptr;
+        TypePtr indexType = node->index ? apply_substitution(node->index->type) : nullptr;
 
         if (!objectType || !indexType)
         {
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            annotate_expression(node, typeSystem.get_unresolved());
             return;
         }
 
-        TypePtr canonicalObjectType = apply_substitution(objectType);
-        TypePtr canonicalIndexType = apply_substitution(indexType);
-
         // Check for array type
-        if (auto arrayType = std::get_if<ArrayType>(&canonicalObjectType->value))
+        if (objectType->is<ArrayType>())
         {
-            // Index should be integer
-            unify(canonicalIndexType, typeSystem.get_primitive_type("i32"), node, "array index");
-            annotate_expression(node, arrayType->elementType);
+            auto arrayType = objectType->as<ArrayType>();
+            unify(indexType, typeSystem.get_i32(), node, "array index");
+            annotate_expression(node, arrayType->element);
         }
         // Check for pointer type (pointer arithmetic)
-        else if (auto ptrType = std::get_if<PointerType>(&canonicalObjectType->value))
+        else if (objectType->is<PointerType>())
         {
-            unify(canonicalIndexType, typeSystem.get_primitive_type("i32"), node, "pointer index");
-            annotate_expression(node, ptrType->pointeeType);
+            auto ptrType = objectType->as<PointerType>();
+            unify(indexType, typeSystem.get_i32(), node, "pointer index");
+            annotate_expression(node, ptrType->pointee);
         }
         else
         {
-            report_error(node, "Cannot index type '" + canonicalObjectType->get_name() + "'");
-            annotate_expression(node, typeSystem.get_unresolved_type());
+            report_error(node, "Cannot index type '" + objectType->get_name() + "'");
+            annotate_expression(node, typeSystem.get_unresolved());
         }
-        // No symbol for indexing
     }
 
-    void TypeResolver::visit(ConditionalExprSyntax *node)
+    void TypeResolver::visit(BoundNewExpression *node)
     {
-        // Visit children
-        if (node->condition)
-            node->condition->accept(this);
-        if (node->thenExpr)
-            node->thenExpr->accept(this);
-        if (node->elseExpr)
-            node->elseExpr->accept(this);
-
-        TypePtr conditionType = get_node_type(node->condition);
-        TypePtr thenType = get_node_type(node->thenExpr);
-        TypePtr elseType = get_node_type(node->elseExpr);
-
-        if (!conditionType || !thenType || !elseType)
+        if (node->typeExpression)
+            node->typeExpression->accept(this);
+        for (auto arg : node->arguments)
         {
-            annotate_expression(node, typeSystem.get_unresolved_type());
-            return;
+            if (arg)
+                arg->accept(this);
         }
 
-        // Condition must be bool
-        unify(apply_substitution(conditionType), typeSystem.get_primitive_type("bool"),
-              node, "conditional expression condition");
+        TypePtr type = resolve_type_expression(node->typeExpression);
+        annotate_expression(node, type);
 
-        // Branches must have same type
-        unify(thenType, elseType, node, "conditional expression branches");
-
-        annotate_expression(node, apply_substitution(thenType));
-        // No symbol for conditionals
+        // TODO: Resolve constructor
     }
 
-    void TypeResolver::visit(IfStmtSyntax *node)
+    void TypeResolver::visit(BoundArrayCreationExpression *node)
     {
-        // Visit children manually
-        if (node->condition)
-            node->condition->accept(this);
-        if (node->thenBranch)
-            node->thenBranch->accept(this);
-        if (node->elseBranch)
-            node->elseBranch->accept(this);
-
-        TypePtr conditionType = get_node_type(node->condition);
-
-        if (!conditionType)
+        if (node->elementTypeExpression)
+            node->elementTypeExpression->accept(this);
+        if (node->size)
+            node->size->accept(this);
+        for (auto init : node->initializers)
         {
-            return; // Error already reported by child
+            if (init)
+                init->accept(this);
         }
 
-        TypePtr canonicalCondition = apply_substitution(conditionType);
+        TypePtr elementType = resolve_type_expression(node->elementTypeExpression);
 
-        // Condition must be bool
-        unify(canonicalCondition, typeSystem.get_primitive_type("bool"), node, "if expression condition");
+        // Check size is integer
+        if (node->size)
+        {
+            TypePtr sizeType = apply_substitution(node->size->type);
+            unify(sizeType, typeSystem.get_i32(), node, "array size");
+        }
+
+        // Check initializers match element type
+        for (auto init : node->initializers)
+        {
+            if (init)
+            {
+                TypePtr initType = apply_substitution(init->type);
+                check_implicit_conversion(initType, elementType, node, "array initializer");
+            }
+        }
+
+        int arraySize = node->size ? -1 : node->initializers.size(); // TODO: Evaluate constant size
+        TypePtr arrayType = typeSystem.get_array(elementType, arraySize);
+        annotate_expression(node, arrayType);
     }
 
-    void TypeResolver::visit(CastExprSyntax *node)
+    void TypeResolver::visit(BoundCastExpression *node)
     {
-        // Visit expression
         if (node->expression)
             node->expression->accept(this);
+        if (node->targetTypeExpression)
+            node->targetTypeExpression->accept(this);
 
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        TypePtr targetType = resolve_expr_type(node->targetType, scope);
-        TypePtr sourceType = get_node_type(node->expression);
+        TypePtr sourceType = node->expression ? apply_substitution(node->expression->type) : nullptr;
+        TypePtr targetType = resolve_type_expression(node->targetTypeExpression);
 
         if (sourceType && targetType)
         {
-            TypePtr canonicalSource = apply_substitution(sourceType);
-            TypePtr canonicalTarget = apply_substitution(targetType);
-
-            // Check if the cast is valid
-            if (!canonicalSource->is<UnresolvedType>() && !canonicalTarget->is<UnresolvedType>())
+            node->conversionKind = check_conversion(sourceType, targetType);
+            if (!sourceType->is<UnresolvedType>() && !targetType->is<UnresolvedType>())
             {
-                check_explicit_conversion(canonicalSource, canonicalTarget, node, "cast expression");
+                check_explicit_conversion(sourceType, targetType, node, "cast");
             }
         }
 
         annotate_expression(node, targetType);
     }
 
-    void TypeResolver::visit(ThisExprSyntax *node)
+    void TypeResolver::visit(BoundConditionalExpression *node)
     {
-        // Find enclosing type
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        ScopeNode *currentScopeNode = scope->as_scope_node();
-        while (currentScopeNode)
-        {
-            if (auto typeSymbol = currentScopeNode->as<TypeLikeSymbol>())
-            {
-                TypePtr thisType = typeSystem.get_type_reference(typeSymbol);
-                annotate_expression(node, thisType);
-                return;
-            }
-            currentScopeNode = currentScopeNode->parent;
-        }
-
-        report_error(node, "'this' is not within a type definition");
-        annotate_expression(node, typeSystem.get_unresolved_type());
-    }
-
-    void TypeResolver::visit(ReturnStmtSyntax *node)
-    {
-        // Visit children manually
-        if (node->value)
-            node->value->accept(this);
-
-        // Find the enclosing function to check return type compatibility
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        ScopeNode *currentScopeNode = scope->as_scope_node();
-        while (currentScopeNode)
-        {
-            if (auto funcSymbol = currentScopeNode->as<FunctionSymbol>())
-            {
-                TypePtr expectedReturnType = funcSymbol->return_type();
-
-                if (node->value)
-                {
-                    // Return with value
-                    TypePtr valueType = get_node_type(node->value);
-                    if (valueType)
-                    {
-                        TypePtr canonicalValue = apply_substitution(valueType);
-
-                        // CRITICAL CHECK: Cannot return a void expression
-                        if (canonicalValue && !canonicalValue->is<UnresolvedType>() &&
-                            canonicalValue->is_void())
-                        {
-                            report_error(node, "Cannot return void expression");
-                            return;
-                        }
-
-                        if (expectedReturnType)
-                        {
-                            TypePtr canonicalExpected = apply_substitution(expectedReturnType);
-
-                            // Check implicit conversion for return
-                            if (!canonicalValue->is<UnresolvedType>() &&
-                                !canonicalExpected->is<UnresolvedType>())
-                            {
-                                check_implicit_conversion(canonicalValue, canonicalExpected,
-                                                          node, "return statement");
-                            }
-                            else
-                            {
-                                // Fall back to unification for unresolved types
-                                unify(valueType, expectedReturnType, node, "return statement");
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // Return without value - should be void
-                    TypePtr voidType = typeSystem.get_primitive_type("void");
-                    if (expectedReturnType && !expectedReturnType->is<UnresolvedType>())
-                    {
-                        TypePtr canonicalExpected = apply_substitution(expectedReturnType);
-                        if (!canonicalExpected->is_void())
-                        {
-                            report_error(node, "Cannot return without value from non-void function");
-                        }
-                    }
-                    else
-                    {
-                        unify(voidType, expectedReturnType, node, "void return statement");
-                    }
-                }
-                return;
-            }
-            currentScopeNode = currentScopeNode->parent;
-        }
-
-        report_error(node, "Return statement not within a function");
-    }
-
-    void TypeResolver::visit(ForStmtSyntax *node)
-    {
-        // Visit children manually
-        if (node->initializer)
-            node->initializer->accept(this);
         if (node->condition)
             node->condition->accept(this);
-        for (auto update : node->updates)
+        if (node->thenExpression)
+            node->thenExpression->accept(this);
+        if (node->elseExpression)
+            node->elseExpression->accept(this);
+
+        TypePtr condType = node->condition ? apply_substitution(node->condition->type) : nullptr;
+        TypePtr thenType = node->thenExpression ? apply_substitution(node->thenExpression->type) : nullptr;
+        TypePtr elseType = node->elseExpression ? apply_substitution(node->elseExpression->type) : nullptr;
+
+        if (condType)
         {
-            if (update)
-                update->accept(this);
-        }
-        if (node->body)
-            node->body->accept(this);
-
-        // Type check the condition if present
-        if (node->condition)
-        {
-            TypePtr conditionType = get_node_type(node->condition);
-            if (conditionType)
-            {
-                TypePtr canonicalCondition = apply_substitution(conditionType);
-                unify(canonicalCondition, typeSystem.get_primitive_type("bool"), node, "for loop condition");
-            }
-        }
-    }
-
-    void TypeResolver::visit(WhileStmtSyntax *node)
-    {
-        // Visit children manually
-        if (node->condition)
-            node->condition->accept(this);
-        if (node->body)
-            node->body->accept(this);
-
-        // Condition must be bool
-        TypePtr conditionType = get_node_type(node->condition);
-        if (conditionType)
-        {
-            TypePtr canonicalCondition = apply_substitution(conditionType);
-            unify(canonicalCondition, typeSystem.get_primitive_type("bool"), node, "while loop condition");
-        }
-    }
-
-    void TypeResolver::visit(FunctionDeclSyntax *node)
-    {
-        // Visit children manually
-        if (node->name)
-            node->name->accept(this);
-
-        for (auto param : node->parameters)
-        {
-            if (param)
-                param->accept(this);
+            unify(condType, typeSystem.get_bool(), node, "conditional expression condition");
         }
 
-        if (node->body)
-            node->body->accept(this);
-
-        // Look up the function symbol to work with its type
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        auto symbol = scope->lookup_local(node->name->get_name());
-        FunctionSymbol *funcSymbol = nullptr;
-
-        // Handle both direct FunctionSymbol and FunctionGroupSymbol
-        if (auto directFunc = symbol ? symbol->as<FunctionSymbol>() : nullptr)
+        if (thenType && elseType)
         {
-            funcSymbol = directFunc;
-        }
-        else if (auto funcGroup = symbol ? symbol->as<FunctionGroupSymbol>() : nullptr)
-        {
-            // Find the exact overload that matches this declaration
-            auto overloads = funcGroup->get_overloads();
-
-            for (auto overload : overloads)
-            {
-                if (overload && overload->parameters().size() == node->parameters.size())
-                {
-                    // Check if all parameter types match exactly
-                    bool exact_match = true;
-
-                    for (size_t i = 0; i < node->parameters.size(); ++i)
-                    {
-                        auto paramDecl = node->parameters[i];
-                        auto paramSymbol = overload->parameters()[i];
-
-                        // Get the type from the declaration
-                        TypePtr declType = nullptr;
-                        if (paramDecl->param->type)
-                        {
-                            declType = resolve_expr_type(paramDecl->param->type, scope);
-                        }
-
-                        // Get the symbol's parameter type
-                        TypePtr symbolType = apply_substitution(paramSymbol->type());
-
-                        // For exact matching: both must be resolved and equal
-                        if (declType && !declType->is<UnresolvedType>() &&
-                            !symbolType->is<UnresolvedType>())
-                        {
-                            if (declType->get_name() != symbolType->get_name())
-                            {
-                                exact_match = false;
-                                break;
-                            }
-                        }
-                        // If either is unresolved, we can't determine exact match yet
-                        // This overload might still be the right one
-                    }
-
-                    if (exact_match)
-                    {
-                        funcSymbol = overload;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!funcSymbol)
-            return;
-
-        TypePtr returnType = funcSymbol->return_type();
-        if (returnType && !returnType->is<UnresolvedType>())
-        {
-            symbolTable.mark_symbol_resolved(funcSymbol);
+            unify(thenType, elseType, node, "conditional expression branches");
+            annotate_expression(node, apply_substitution(thenType));
         }
         else
         {
-            auto resolvedType = infer_function_return_type(node->body);
-            if (resolvedType && !resolvedType->is<UnresolvedType>())
-            {
-                funcSymbol->set_return_type(resolvedType);
-                symbolTable.mark_symbol_resolved(funcSymbol);
-            }
-        }
-
-        // Update parameter types after all parameters have been resolved
-        std::vector<TypePtr> resolvedParamTypes;
-        for (auto paramDecl : node->parameters)
-        {
-            if (paramDecl && paramDecl->param && paramDecl->param->name)
-            {
-                std::string paramName(paramDecl->param->name->get_name());
-                auto functionScope = static_cast<Scope *>(funcSymbol);
-                auto paramSymbol = functionScope->lookup_local(paramName);
-                if (auto typedParamSymbol = paramSymbol ? paramSymbol->as<TypedSymbol>() : nullptr)
-                {
-                    TypePtr paramType = typedParamSymbol->type();
-                    TypePtr resolvedType = apply_substitution(paramType);
-
-                    // Update the parameter symbol with resolved type if it's now concrete
-                    if (!resolvedType->is<UnresolvedType>())
-                    {
-                        typedParamSymbol->set_type(resolvedType);
-                        symbolTable.mark_symbol_resolved(paramSymbol);
-                    }
-
-                    resolvedParamTypes.push_back(resolvedType);
-                }
-                else
-                {
-                    // Fallback - use unresolved type to maintain vector size
-                    resolvedParamTypes.push_back(typeSystem.get_unresolved_type());
-                }
-            }
+            annotate_expression(node, typeSystem.get_unresolved());
         }
     }
 
-    void TypeResolver::visit(ParameterDeclSyntax *node)
+    void TypeResolver::visit(BoundThisExpression *node)
     {
-        // Visit children manually
-        if (node->param)
-            node->param->accept(this);
-        if (node->defaultValue)
-            node->defaultValue->accept(this);
-
-        // Look up the parameter symbol in the function's scope
-        // Parameters are defined in the function scope, not where the ParameterDeclSyntax node is annotated
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        // Parameters should be in the current scope (function scope)
-        auto symbol = scope->lookup_local(node->param->name->get_name());
-        if (!symbol)
+        if (!currentType)
         {
-            // If not found locally, try looking in parent scope (might be in function scope)
-            symbol = scope->lookup(node->param->name->get_name());
-        }
-        auto paramSymbol = symbol ? symbol->as<ParameterSymbol>() : nullptr;
-        if (!paramSymbol)
-        {
+            report_error(node, "'this' used outside of type context");
+            annotate_expression(node, typeSystem.get_unresolved());
             return;
         }
 
-        // Resolve explicit type annotations that were deferred during symbol building
-        TypePtr paramType = paramSymbol->type();
+        node->containingType = currentType;
+        annotate_expression(node, currentType->type);
+    }
 
-        if (paramType && paramType->is<UnresolvedType>())
+    void TypeResolver::visit(BoundTypeOfExpression *node)
+    {
+        if (node->typeExpression)
+            node->typeExpression->accept(this);
+
+        // typeof returns Type type (runtime type information)
+        // TODO: Implement proper Type type
+        annotate_expression(node, typeSystem.get_primitive("Type"));
+    }
+
+    void TypeResolver::visit(BoundSizeOfExpression *node)
+    {
+        if (node->typeExpression)
+            node->typeExpression->accept(this);
+
+        // sizeof returns size_t (u64)
+        annotate_expression(node, typeSystem.get_primitive("u64"));
+    }
+
+    void TypeResolver::visit(BoundParenthesizedExpression *node)
+    {
+        if (node->expression)
+            node->expression->accept(this);
+
+        TypePtr innerType = node->expression ? node->expression->type : nullptr;
+        annotate_expression(node, innerType);
+
+        // Inherit value category
+        if (node->expression)
         {
-            if (node->param->type)
+            node->valueCategory = node->expression->valueCategory;
+        }
+    }
+
+    void TypeResolver::visit(BoundConversionExpression *node)
+    {
+        if (node->expression)
+            node->expression->accept(this);
+
+        // Type should already be set by whoever created this node
+        if (!node->type)
+        {
+            annotate_expression(node, typeSystem.get_unresolved());
+        }
+    }
+
+    void TypeResolver::visit(BoundTypeExpression *node)
+    {
+        // Type expressions resolve to themselves
+        node->resolvedTypeReference = resolve_type_expression(node);
+        node->type = node->resolvedTypeReference;
+    }
+
+    // === Statement Visitors ===
+
+    void TypeResolver::visit(BoundBlockStatement *node)
+    {
+        for (auto stmt : node->statements)
+        {
+            if (stmt)
+                stmt->accept(this);
+        }
+    }
+
+    void TypeResolver::visit(BoundExpressionStatement *node)
+    {
+        if (node->expression)
+            node->expression->accept(this);
+    }
+
+    void TypeResolver::visit(BoundIfStatement *node)
+    {
+        if (node->condition)
+            node->condition->accept(this);
+
+        TypePtr condType = node->condition ? apply_substitution(node->condition->type) : nullptr;
+        if (condType)
+        {
+            unify(condType, typeSystem.get_bool(), node, "if condition");
+        }
+
+        if (node->thenStatement)
+            node->thenStatement->accept(this);
+        if (node->elseStatement)
+            node->elseStatement->accept(this);
+    }
+
+    void TypeResolver::visit(BoundWhileStatement *node)
+    {
+        if (node->condition)
+            node->condition->accept(this);
+
+        TypePtr condType = node->condition ? apply_substitution(node->condition->type) : nullptr;
+        if (condType)
+        {
+            unify(condType, typeSystem.get_bool(), node, "while condition");
+        }
+
+        if (node->body)
+            node->body->accept(this);
+    }
+
+    void TypeResolver::visit(BoundForStatement *node)
+    {
+        if (node->initializer)
+            node->initializer->accept(this);
+
+        if (node->condition)
+        {
+            node->condition->accept(this);
+            TypePtr condType = apply_substitution(node->condition->type);
+            if (condType)
             {
-                // Resolve the type expression now that all types are in symbol table
-                TypePtr resolvedType = resolve_expr_type(node->param->type, scope);
+                unify(condType, typeSystem.get_bool(), node, "for condition");
+            }
+        }
 
-                paramSymbol->set_type(resolvedType);
-                paramType = resolvedType;
-                symbolTable.mark_symbol_resolved(symbol);
+        for (auto inc : node->incrementors)
+        {
+            if (inc)
+                inc->accept(this);
+        }
+
+        if (node->body)
+            node->body->accept(this);
+    }
+
+    void TypeResolver::visit(BoundBreakStatement *node)
+    {
+        // Nothing to resolve
+    }
+
+    void TypeResolver::visit(BoundContinueStatement *node)
+    {
+        // Nothing to resolve
+    }
+
+    void TypeResolver::visit(BoundReturnStatement *node)
+    {
+        if (node->value)
+            node->value->accept(this);
+
+        if (!currentFunction)
+        {
+            report_error(node, "Return statement outside of function");
+            return;
+        }
+
+        TypePtr expectedType = apply_substitution(currentFunction->return_type);
+
+        if (node->value)
+        {
+            TypePtr valueType = apply_substitution(node->value->type);
+
+            // Check for void return
+            if (valueType && !valueType->is<UnresolvedType>() && valueType->is_void())
+            {
+                report_error(node, "Cannot return void expression");
+                return;
+            }
+
+            if (expectedType && !expectedType->is<UnresolvedType>())
+            {
+                check_implicit_conversion(valueType, expectedType, node, "return value");
             }
             else
             {
-                // Parameter with no explicit type (var parameter) - needs inference
-                // Create a fresh unresolved type for inference via unification
-                TypePtr inferredType = typeSystem.get_unresolved_type();
-                paramSymbol->set_type(inferredType);
-
-                // Track this type as needing resolution through unification
-                pendingConstraints.insert(inferredType);
+                unify(expectedType, valueType, node, "return type");
+            }
+        }
+        else
+        {
+            // Void return
+            if (expectedType && !expectedType->is<UnresolvedType>() && !expectedType->is_void())
+            {
+                report_error(node, "Cannot return without value from non-void function");
+            }
+            else
+            {
+                unify(expectedType, typeSystem.get_void(), node, "void return");
             }
         }
     }
 
-    void TypeResolver::visit(PropertyDeclSyntax *node)
+    void TypeResolver::visit(BoundUsingStatement *node)
     {
-        // Handle property symbol resolution in the property's own scope context
-        // Don't visit the nested VariableDeclSyntax - handle the property symbol directly
+        // TODO: Implement when adding using support
+    }
 
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
+    // === Declaration Visitors ===
 
-        if (!node->variable || !node->variable->variable || !node->variable->variable->name)
-            return;
-
-        std::string prop_name(node->variable->variable->name->get_name());
-        auto symbol = scope->lookup(prop_name);
-        auto prop_symbol = symbol ? symbol->as<TypedSymbol>() : nullptr;
-
-        if (prop_symbol)
+    void TypeResolver::visit(BoundVariableDeclaration *node)
+    {
+        // Resolve type if specified
+        if (node->typeExpression)
         {
-            TypePtr propType = prop_symbol->type();
+            node->typeExpression->accept(this);
 
-            // Resolve explicit type annotations that were deferred during symbol building
-            if (propType && propType->is<UnresolvedType>())
+            if (node->symbol)
             {
-                if (node->variable->variable->type)
+                if (auto varSym = node->symbol->as<VariableSymbol>())
                 {
-                    TypePtr resolvedType = resolve_expr_type(node->variable->variable->type, scope);
-
-                    // Remove the old unresolved type from pending constraints
-                    pendingConstraints.erase(propType);
-
-                    // Add substitution so expressions holding the old type can resolve
-                    substitution[propType] = resolvedType;
-
-                    prop_symbol->set_type(resolvedType);
-                    symbolTable.mark_symbol_resolved(symbol);
+                    varSym->type = resolve_type_expression(node->typeExpression);
                 }
             }
         }
 
-        // Visit accessors (they contain the expressions that need resolution)
+        // Process initializer
+        if (node->initializer)
+        {
+            node->initializer->accept(this);
+
+            if (node->symbol && node->symbol->as<VariableSymbol>())
+            {
+                auto varSym = node->symbol->as<VariableSymbol>();
+
+                if (!node->typeExpression || varSym->type->is<UnresolvedType>())
+                {
+                    // Type inference from initializer
+                    varSym->type = apply_substitution(node->initializer->type);
+                }
+                else
+                {
+                    // Check type compatibility
+                    check_implicit_conversion(node->initializer->type, varSym->type,
+                                              node, "variable initialization");
+                }
+            }
+        }
+    }
+
+    void TypeResolver::visit(BoundFunctionDeclaration *node)
+    {
+        // Save context
+        auto prevFunction = currentFunction;
+        auto prevScope = symbolTable.get_current_scope();
+
+        currentFunction = node->symbol ? node->symbol->as<FunctionSymbol>() : nullptr;
+
+        if (currentFunction)
+        {
+            // Set function as current scope
+            symbolTable.push_scope(currentFunction);
+
+            // Resolve return type
+            if (node->returnTypeExpression)
+            {
+                node->returnTypeExpression->accept(this);
+                currentFunction->return_type = resolve_type_expression(node->returnTypeExpression);
+            }
+
+            // Visit parameters
+            for (auto param : node->parameters)
+            {
+                if (param)
+                    param->accept(this);
+            }
+
+            // Visit body
+            if (node->body)
+            {
+                node->body->accept(this);
+
+                // Infer return type if needed
+                if (currentFunction->return_type->is<UnresolvedType>())
+                {
+                    currentFunction->return_type = infer_return_type(node->body);
+                }
+            }
+
+            // Restore scope
+            symbolTable.pop_scope();
+        }
+
+        // Restore context
+        currentFunction = prevFunction;
+    }
+
+    void TypeResolver::visit(BoundPropertyDeclaration *node)
+    {
+        if (node->typeExpression)
+        {
+            node->typeExpression->accept(this);
+
+            if (node->symbol)
+            {
+                if (auto propSym = node->symbol->as<PropertySymbol>())
+                {
+                    propSym->type = resolve_type_expression(node->typeExpression);
+                }
+            }
+        }
+
         if (node->getter)
-        {
             node->getter->accept(this);
-
-            // For type inference: if property type is unresolved, infer from getter
-            if (prop_symbol && prop_symbol->type()->is<UnresolvedType>())
-            {
-                // Get the type of the getter expression
-                TypePtr getterType = nullptr;
-                if (auto expr = std::get_if<BaseExprSyntax *>(&node->getter->body))
-                {
-                    if (*expr)
-                    {
-                        getterType = get_node_type(*expr);
-                    }
-                }
-
-                if (getterType && !getterType->is<UnresolvedType>())
-                {
-                    // Infer the property type from the getter
-                    TypePtr oldType = prop_symbol->type();
-
-                    // Remove old unresolved type from pending constraints
-                    pendingConstraints.erase(oldType);
-
-                    // Add substitution for type unification
-                    substitution[oldType] = getterType;
-
-                    // Update the symbol
-                    prop_symbol->set_type(getterType);
-                    symbolTable.mark_symbol_resolved(symbol);
-                }
-            }
-        }
         if (node->setter)
-        {
             node->setter->accept(this);
-        }
     }
 
-    void TypeResolver::visit(PropertyAccessorSyntax *node)
+    void TypeResolver::visit(BoundTypeDeclaration *node)
     {
-        // Visit the accessor body to resolve types in expressions
-        if (auto expr = std::get_if<BaseExprSyntax *>(&node->body))
+        // Save context
+        auto prevType = currentType;
+        auto prevScope = symbolTable.get_current_scope();
+
+        currentType = node->symbol ? node->symbol->as<TypeSymbol>() : nullptr;
+
+        if (currentType)
         {
-            if (*expr)
-                (*expr)->accept(this);
-        }
-        else if (auto block = std::get_if<BlockSyntax *>(&node->body))
-        {
-            if (*block)
-                (*block)->accept(this);
-        }
-    }
-
-    void TypeResolver::visit(TypedIdentifier *node)
-    {
-        // Visit the name
-        if (node->name)
-        {
-            node->name->accept(this);
-        }
-    }
-
-    void TypeResolver::visit(PointerTypeSyntax *node)
-    {
-        // Visit the pointee type to ensure proper traversal
-        if (node->baseType)
-            node->baseType->accept(this);
-
-        // PointerTypeSyntax nodes should always be resolved when visited
-        // They only appear in type contexts, so we always resolve them
-        auto scope = get_containing_scope(node);
-        if (!scope)
-            return;
-
-        TypePtr resolvedType = resolve_expr_type(node, scope);
-        annotate_expression(node, resolvedType);
-    }
-
-    void TypeResolver::visit(TypeParameterDeclSyntax *node)
-    {
-        // Type parameter declarations don't need type resolution
-        // They are handled during generic type definition processing
-        if (node->name)
-            node->name->accept(this);
-    }
-
-    void TypeResolver::visit(TypeDeclSyntax *node)
-    {
-        // Save current type parameters
-        auto savedTypeParameters = currentTypeParameters;
-
-        // Register type parameters for this generic type
-        int parameterId = 0;
-        for (auto typeParam : node->typeParameters)
-        {
-            if (typeParam && typeParam->name)
+            // This creates the self-referential structure where a type knows itself
+            if (currentType->type && currentType->type->is<UnresolvedType>())
             {
-                std::string paramName(typeParam->name->get_name());
-                TypePtr paramType = typeSystem.get_type_parameter(paramName, parameterId++);
-                currentTypeParameters[paramName] = paramType;
-
-                // Visit the type parameter declaration
-                typeParam->accept(this);
+                // Save the old unresolved type before we replace it
+                TypePtr oldUnresolved = currentType->type;
+                
+                // Replace the unresolved type with a proper NamedType pointing to this symbol
+                TypePtr namedType = typeSystem.get_named(currentType);
+                
+                // Update the symbol's type
+                currentType->type = namedType;
+                
+                // Also update the substitution map so all references get resolved
+                substitution[oldUnresolved] = namedType;
             }
+
+            // Set type as current scope
+            symbolTable.push_scope(currentType);
+
+            // Resolve base type
+            if (node->baseTypeExpression)
+            {
+                node->baseTypeExpression->accept(this);
+                // TODO: Set base class
+            }
+
+            // Visit members
+            for (auto member : node->members)
+            {
+                if (member)
+                    member->accept(this);
+            }
+
+            // Restore scope
+            symbolTable.pop_scope();
         }
 
-        // Visit the type's members with type parameters in scope
-        DefaultVisitor::visit(node);
-
-        // Restore previous type parameters
-        currentTypeParameters = savedTypeParameters;
+        // Restore context
+        currentType = prevType;
     }
 
-}
+    void TypeResolver::visit(BoundNamespaceDeclaration *node)
+    {
+        // Save current scope
+        auto prevScope = symbolTable.get_current_scope();
+
+        if (node->symbol)
+        {
+            // Set namespace as current scope
+            symbolTable.push_scope(node->symbol);
+
+            // Visit members
+            for (auto member : node->members)
+            {
+                if (member)
+                    member->accept(this);
+            }
+
+            // Restore scope
+            symbolTable.pop_scope();
+        }
+    }
+
+    void TypeResolver::visit(BoundCompilationUnit *node)
+    {
+        // Process all top-level statements
+        for (auto stmt : node->statements)
+        {
+            if (stmt)
+                stmt->accept(this);
+        }
+    }
+
+} // namespace Bryo

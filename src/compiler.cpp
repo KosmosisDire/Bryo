@@ -1,15 +1,20 @@
 #include "compiler.hpp"
 
 #include "common/logger.hpp"
-#include "codegen/codegen.hpp"
+// #include "codegen/codegen.hpp"
 #include "semantic/symbol_table.hpp"
 #include "parser/lexer.hpp"
 #include "parser/parser.hpp"
 #include "ast/ast.hpp"
 #include "ast/ast_printer.hpp"
 #include "ast/ast_code_printer.hpp"
+#include "binding/bound_tree_builder.hpp"
+#include "binding/bound_tree_printer.hpp"
+#include "binding/symbol_resolution_pass.hpp"
 #include "semantic/type_resolver.hpp"
 #include "semantic/symbol_table_builder.hpp"
+#include "hlir/hlir.hpp"
+#include "hlir/bound_to_hlir.hpp"
 
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
@@ -24,61 +29,61 @@
 namespace Bryo
 {
 
-    void Compiler::add_builtin_functions(SymbolTable& global_symbols)
-    {
-        auto& type_system = global_symbols.get_type_system();
+    // void Compiler::add_builtin_functions(SymbolTable& global_symbols)
+    // {
+    //     auto& type_system = global_symbols.get_type_system();
         
-        // Add Print function
-        {
-            global_symbols.set_current_scope(global_symbols.get_global_namespace());
-            auto print_function = global_symbols.enter_function("Print", type_system.get_primitive_type("void"));
+    //     // Add Print function
+    //     {
+    //         global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    //         auto print_function = global_symbols.enter_function("Print", type_system.get_primitive_type("void"));
 
-            auto print_param = global_symbols.define_parameter("message", type_system.get_pointer_type(type_system.get_primitive_type("char")));
-            print_function->set_parameters({print_param});
-        }
+    //         auto print_param = global_symbols.define_parameter("message", type_system.get_pointer_type(type_system.get_primitive_type("char")));
+    //         print_function->set_parameters({print_param});
+    //     }
 
-        // Add Malloc function - heap allocation
-        // Malloc(size: i32) -> *i8
-        {
-            global_symbols.set_current_scope(global_symbols.get_global_namespace());
-            auto malloc_function = global_symbols.enter_function("Malloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+    //     // Add Malloc function - heap allocation
+    //     // Malloc(size: i32) -> *i8
+    //     {
+    //         global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    //         auto malloc_function = global_symbols.enter_function("Malloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
 
-            auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
-            malloc_function->set_parameters({size_param});
-        }
+    //         auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
+    //         malloc_function->set_parameters({size_param});
+    //     }
 
-        // Add Alloc function - stack allocation
-        // Alloc(size: i32) -> *i8
-        {
-            global_symbols.set_current_scope(global_symbols.get_global_namespace());
-            auto alloc_function = global_symbols.enter_function("Alloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+    //     // Add Alloc function - stack allocation
+    //     // Alloc(size: i32) -> *i8
+    //     {
+    //         global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    //         auto alloc_function = global_symbols.enter_function("Alloc", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
 
-            auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
-            alloc_function->set_parameters({size_param});
-        }
+    //         auto size_param = global_symbols.define_parameter("size", type_system.get_primitive_type("i32"));
+    //         alloc_function->set_parameters({size_param});
+    //     }
 
-        // Add Free function - heap deallocation
-        // Free(ptr: *i8) -> void
-        {
-            global_symbols.set_current_scope(global_symbols.get_global_namespace());
-            auto free_function = global_symbols.enter_function("Free", type_system.get_primitive_type("void"));
+    //     // Add Free function - heap deallocation
+    //     // Free(ptr: *i8) -> void
+    //     {
+    //         global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    //         auto free_function = global_symbols.enter_function("Free", type_system.get_primitive_type("void"));
 
-            auto ptr_param = global_symbols.define_parameter("ptr", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
-            free_function->set_parameters({ptr_param});
-        }
+    //         auto ptr_param = global_symbols.define_parameter("ptr", type_system.get_pointer_type(type_system.get_primitive_type("i8")));
+    //         free_function->set_parameters({ptr_param});
+    //     }
 
-        // Add Input function
-        {
-            global_symbols.set_current_scope(global_symbols.get_global_namespace());
-            auto input_function = global_symbols.enter_function("Input", type_system.get_primitive_type("i32"));
+    //     // Add Input function
+    //     {
+    //         global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    //         auto input_function = global_symbols.enter_function("Input", type_system.get_primitive_type("i32"));
 
-            auto buffer_param = global_symbols.define_parameter("buffer", type_system.get_pointer_type(type_system.get_primitive_type("char")));
-            input_function->set_parameters({buffer_param});
-        }
+    //         auto buffer_param = global_symbols.define_parameter("buffer", type_system.get_pointer_type(type_system.get_primitive_type("char")));
+    //         input_function->set_parameters({buffer_param});
+    //     }
 
-        // Reset scope back to global namespace
-        global_symbols.set_current_scope(global_symbols.get_global_namespace());
-    }
+    //     // Reset scope back to global namespace
+    //     global_symbols.set_current_scope(global_symbols.get_global_namespace());
+    // }
 
     std::unique_ptr<CompiledModule> Compiler::compile(const std::vector<SourceFile> &source_files)
     {
@@ -90,8 +95,8 @@ namespace Bryo
         std::vector<std::string> all_errors;
         std::vector<FileCompilationState> file_states(source_files.size());
 
-        // === PHASE 1: Parse all files sequentially ===
-        LOG_HEADER("Phase 1: Sequential parsing", LogCategory::COMPILER);
+        // === Parse all files sequentially ===
+        LOG_HEADER("Sequential parsing", LogCategory::COMPILER);
 
         for (size_t i = 0; i < source_files.size(); ++i)
         {
@@ -155,8 +160,8 @@ namespace Bryo
             return std::make_unique<CompiledModule>();
         }
 
-        // // === PHASE 2: Build local symbol tables sequentially ===
-        LOG_HEADER("Phase 2: Sequential symbol collection", LogCategory::COMPILER);
+        // // === Build local symbol tables sequentially ===
+        LOG_HEADER("Sequential symbol collection", LogCategory::COMPILER);
 
         for (size_t i = 0; i < file_states.size(); ++i)
         {
@@ -167,14 +172,16 @@ namespace Bryo
 
             LOG_INFO("Building symbols for: " + state.file.filename, LogCategory::COMPILER);
 
-            // Create local symbol table
-            state.symbolTable = std::make_unique<SymbolTable>();
+            // Create type system and symbol table for this file
+            state.typeSystem = std::make_unique<TypeSystem>();
+            state.typeSystem->init_primitives();
+            state.symbolTable = std::make_unique<SymbolTable>(*state.typeSystem);
 
             // Collect declarations
-            SymbolTableBuilder collector(*state.symbolTable);
-            collector.collect(state.ast);
+            SymbolTableBuilder builder(*state.symbolTable);
+            builder.build(state.ast);
 
-            for (const auto &error : collector.get_errors())
+            for (const auto &error : builder.get_errors())
             {
                 state.errors.push_back(state.file.filename + " - Declaration: " + error);
             }
@@ -204,11 +211,12 @@ namespace Bryo
             return std::make_unique<CompiledModule>();
         }
 
-        // === PHASE 3: Merge symbol tables ===
-        LOG_HEADER("Phase 3: Merging symbol tables", LogCategory::COMPILER);
+        // === Merge symbol tables ===
+        LOG_HEADER("Merging symbol tables", LogCategory::COMPILER);
 
         // Create the global symbol table
-        auto global_symbols = std::make_unique<SymbolTable>();
+        auto global_type_system = std::make_unique<TypeSystem>();
+        auto global_symbols = std::make_unique<SymbolTable>(*global_type_system);
 
         // Merge all local symbol tables into global
         for (auto &state : file_states)
@@ -240,24 +248,74 @@ namespace Bryo
         }
 
         // Add built-in functions to global symbol table
-        add_builtin_functions(*global_symbols);
+        // add_builtin_functions(*global_symbols);
 
         // print global symbol table
         LOG_INFO("\nGlobal Symbol Table after Merging:\n", LogCategory::COMPILER);
         LOG_INFO(global_symbols->to_string(), LogCategory::COMPILER);
 
-        // === PHASE 4: Type resolution with global symbol table ===
-        LOG_HEADER("Phase 4: Type resolution", LogCategory::COMPILER);
+        // === Binding ===
+        SymbolResolutionVisitor resolver_visitor(*global_symbols);
+        for (auto &state : file_states)
+        {
+            if (!state.symbols_complete)
+                continue;
+
+            LOG_INFO("Binding AST for: " + state.file.filename, LogCategory::COMPILER);
+
+            // Create binder and bind the AST
+            state.boundTreeBuilder = std::make_unique<BoundTreeBuilder>();
+            state.boundTree = state.boundTreeBuilder->bind(state.ast);
+            resolver_visitor.visit(state.boundTree);
+
+            if (!state.boundTree)
+            {
+                state.errors.push_back(state.file.filename + ": Invalid Bound Tree");
+                continue;
+            }
+
+            // for (const auto &error : binder.)
+            // {
+            //     state.errors.push_back(state.file.filename + " - Binding: " + error);
+            // }
+
+            if (print_ast)
+            {
+                LOG_INFO("\nBound Tree for " + state.file.filename + ":\n", LogCategory::COMPILER);
+                BoundTreePrinter printer;
+                printer.visit(state.boundTree);
+            }
+
+            state.parse_complete = true;
+        }
+
+        // Collect errors
+        for (const auto &state : file_states)
+        {
+            all_errors.insert(all_errors.end(), state.errors.begin(), state.errors.end());
+        }
+
+        if (!all_errors.empty())
+        {
+            LOG_HEADER("Binding errors encountered", LogCategory::COMPILER);
+            for (const auto &error : all_errors)
+            {
+                LOG_ERROR(error, LogCategory::COMPILER);
+            }
+            return std::make_unique<CompiledModule>();
+        }
+
+        // === Type resolution with global symbol table ===
+        LOG_HEADER("Type resolution", LogCategory::COMPILER);
 
         TypeResolver resolver(*global_symbols);
-        resolver.passes_to_run = 1;
         for (int i = 0; i < 10; ++i)
         {
             for (const auto &state : file_states)
             {
-                if (state.ast)
+                if (state.boundTree)
                 {
-                    resolver.resolve(state.ast);
+                    resolver.resolve(state.boundTree);
                 }
             }
         }
@@ -265,15 +323,15 @@ namespace Bryo
         // run the resolver a second time to do a final pass after all files have run
         for (const auto &state : file_states)
         {
-            if (state.ast)
+            if (state.boundTree)
             {
-                resolver.resolve(state.ast);
+                resolver.resolve(state.boundTree);
 
                 if (print_ast)
                 {
-                    LOG_INFO("\nAST for " + state.file.filename + ":\n", LogCategory::COMPILER);
-                    AstPrinter printer;
-                    std::cout << printer.get_string(state.ast) << "\n";
+                    LOG_INFO("\n Bound Tree for " + state.file.filename + ":\n", LogCategory::COMPILER);
+                    BoundTreePrinter printer;
+                    printer.visit(state.boundTree);
                 }
 
                 for (const auto &error : resolver.get_errors())
@@ -283,7 +341,6 @@ namespace Bryo
             }
         }
 
-        
         if (print_symbols)
         {
             LOG_INFO("\nGlobal Symbol Table after Type Resolution:\n", LogCategory::COMPILER);
@@ -301,46 +358,64 @@ namespace Bryo
             return std::make_unique<CompiledModule>();
         }
 
-        // Check for unresolved symbols before proceeding to code generation
-        if (global_symbols->has_unresolved_symbols())
+        // === Convert bound tree to HLIR ===
+        LOG_HEADER("HLIR generation", LogCategory::COMPILER);
+
+        // Create HLIR module
+        auto hlir_module = std::make_unique<HLIR::Module>("BryoProgram", global_symbols->get_global_namespace());
+        
+        // Convert each bound tree to HLIR
+        // for (auto &state : file_states)
+        // {
+        //     if (!state.boundTree)
+        //         continue;
+                
+        //     LOG_INFO("Generating HLIR for: " + state.file.filename, LogCategory::COMPILER);
+            
+        //     HLIR::BoundToHLIR converter(hlir_module.get(), global_type_system.get());
+        //     converter.build(state.boundTree);
+        // }
+        
+        // Dump HLIR if requested
+        if (print_hlir)
         {
-            LOG_ERROR("Cannot proceed to code generation: " + 
-                     std::to_string(global_symbols->unresolved_symbols_count()) + 
-                     " unresolved symbols found", LogCategory::COMPILER);
-            return std::make_unique<CompiledModule>();
+            LOG_HEADER("HLIR Output", LogCategory::COMPILER);
+            std::cout << hlir_module->dump() << "\n";
         }
 
-        // === PHASE 5: Code generation with global symbols ===
-        LOG_HEADER("Phase 5: Code generation", LogCategory::COMPILER);
+        // // === PHASE 6: Code generation with global symbols ===
+        // LOG_HEADER("Phase 5: Code generation", LogCategory::COMPILER);
 
-        auto llvm_context = std::make_unique<llvm::LLVMContext>();
-        CodeGenerator codegen(*global_symbols, "BryoProgram", llvm_context.get());
+        // auto llvm_context = std::make_unique<llvm::LLVMContext>();
+        // CodeGenerator codegen(*global_symbols, "BryoProgram", llvm_context.get());
 
-        // Quick pass: declare all functions from symbol table
-        codegen.declare_all_types();
-        codegen.declare_all_functions();
-        codegen.generate_builtin_functions();
+        // // Quick pass: declare all functions from symbol table
+        // codegen.declare_all_types();
+        // codegen.declare_all_functions();
+        // codegen.generate_builtin_functions();
 
-        // Single AST pass: generate all bodies
-        for (const auto &state : file_states)
-        {
-            if (!state.ast)
-                continue;
-            codegen.generate_definitions(state.ast);
-        }
+        // // Single AST pass: generate all bodies
+        // for (const auto &state : file_states)
+        // {
+        //     if (!state.ast)
+        //         continue;
+        //     codegen.generate_definitions(state.ast);
+        // }
 
-        auto llvm_module = codegen.release_module();
+        // auto llvm_module = codegen.release_module();
 
-        for (const auto &error : codegen.get_errors())
-        {
-            all_errors.push_back(error.to_string());
-        }
+        // for (const auto &error : codegen.get_errors())
+        // {
+        //     all_errors.push_back(error.to_string());
+        // }
 
-        return std::make_unique<CompiledModule>(
-            std::move(llvm_context),
-            std::move(llvm_module),
-            "BryoProgram",
-            all_errors);
+        // return std::make_unique<CompiledModule>(
+        //     std::move(llvm_context),
+        //     std::move(llvm_module),
+        //     "BryoProgram",
+        //     all_errors);
+
+        return nullptr;
     }
 
 } // namespace Bryo

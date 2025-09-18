@@ -1,119 +1,108 @@
 #pragma once
 
-#include "symbol_table.hpp"
-#include "type_system.hpp"
-#include "ast/ast.hpp"
-#include "symbol.hpp"
-#include "conversions.hpp"
+#include "binding/bound_tree.hpp"
+#include "semantic/symbol_table.hpp"
+#include "semantic/type_system.hpp"
+#include "binding/conversions.hpp"
 #include <unordered_map>
 #include <unordered_set>
-#include <string>
 #include <vector>
-#include "type.hpp"
+#include <string>
 
 namespace Bryo
 {
 
-    /**
-     * @class TypeResolver
-     * @brief Performs full semantic analysis, including type checking, type inference,
-     * symbol resolution, and AST annotation.
-     *
-     * This class is the core of the "middle-end". It validates the semantic
-     * correctness of the program and enriches the AST with the information
-     * needed for subsequent stages like code generation.
-     */
-    class TypeResolver : public DefaultVisitor
+    class TypeResolver : public BoundVisitor
     {
     private:
-        SymbolTable &symbolTable;
-        TypeSystem &typeSystem;
+        SymbolTable& symbolTable;
+        TypeSystem& typeSystem;
         std::vector<std::string> errors;
-
-        // --- Core of the Unification Solver ---
+        
+        // Type inference via unification
         std::unordered_map<TypePtr, TypePtr> substitution;
         std::unordered_set<TypePtr> pendingConstraints;
-
-        // --- Intermediate State ---
-        // Maps each AST node to its resolved semantic type during analysis.
-        std::unordered_map<BaseSyntax *, TypePtr> nodeTypes;
-
-        // --- Generic Context Tracking ---
-        // Maps type parameter names to their TypeParameter types in current generic context
-        std::unordered_map<std::string, TypePtr> currentTypeParameters;
-
+        
+        // Context tracking
+        FunctionSymbol* currentFunction = nullptr;
+        TypeSymbol* currentType = nullptr;  // For 'this' resolution
+        
+        // Multiple passes for type inference
+        static constexpr int MAX_PASSES = 10;
+        
     public:
-        int passes_to_run = 10;
-        TypeResolver(SymbolTable &symbol_table)
-            : symbolTable(symbol_table), typeSystem(symbol_table.get_type_system()) {}
-
-        const std::vector<std::string> &get_errors() const { return errors; }
-
-        bool resolve(CompilationUnitSyntax *unit);
-
+        explicit TypeResolver(SymbolTable& st) 
+            : symbolTable(st), typeSystem(st.get_type_system()) {}
+        
+        bool resolve(BoundCompilationUnit* unit);
+        const std::vector<std::string>& get_errors() const { return errors; }
+        
     private:
-        // --- Core Unification Logic ---
+        // === Core Type Resolution ===
         TypePtr apply_substitution(TypePtr type);
-        void unify(TypePtr t1, TypePtr t2, BaseSyntax *error_node, const std::string &context);
-        bool has_pending_constraints();
-        void report_final_errors();
-        void report_error(BaseSyntax *error_node, const std::string &message);
-        void update_ast_with_final_types(CompilationUnitSyntax *unit);
-
-        // Single method that handles ALL expression annotations
-        // Symbol is optional - many expressions don't have associated symbols
-        void annotate_expression(BaseExprSyntax *expr, TypePtr type, Symbol *symbol = nullptr);
-
-        Scope *get_containing_scope(BaseSyntax *node);
-
-        // Computes lvalue status by inspecting expression and symbol
-        bool compute_lvalue_status(BaseExprSyntax *expr, Symbol *symbol);
-
-        // Sets the appropriate symbol field based on expression type
-        void set_expression_symbol(BaseExprSyntax *expr, Symbol *symbol);
-
-        // Gets symbol from expression if it has one
-        Symbol *get_expression_symbol(BaseExprSyntax *expr);
-
-        // --- Visitor Overrides ---
-        // [Keep all existing visitor declarations unchanged]
-        void visit(LiteralExprSyntax *node) override;
-        void visit(ArrayLiteralExprSyntax *node) override;
-        void visit(BaseNameExprSyntax *node) override;
-        void visit(BinaryExprSyntax *node) override;
-        void visit(AssignmentExprSyntax *node) override;
-        void visit(CallExprSyntax *node) override;
-        void visit(QualifiedNameSyntax *node) override;
-        void visit(UnaryExprSyntax *node) override;
-        void visit(IndexerExprSyntax *node) override;
-        void visit(ConditionalExprSyntax *node) override;
-        void visit(IfStmtSyntax *node) override;
-        void visit(CastExprSyntax *node) override;
-        void visit(ThisExprSyntax *node) override;
-        void visit(NewExprSyntax *node) override;
-        void visit(ReturnStmtSyntax *node) override;
-        void visit(ForStmtSyntax *node) override;
-        void visit(WhileStmtSyntax *node) override;
-        void visit(VariableDeclSyntax *node) override;
-        void visit(PropertyDeclSyntax *node) override;
-        void visit(PropertyAccessorSyntax *node) override;
-        void visit(FunctionDeclSyntax *node) override;
-        void visit(ParameterDeclSyntax *node) override;
-        void visit(TypedIdentifier *node) override;
-        void visit(TypeDeclSyntax *node) override;
-        void visit(PointerTypeSyntax *node) override;
-        void visit(TypeParameterDeclSyntax *node) override;
-
-        // --- Helper Methods ---
-        TypePtr get_node_type(BaseSyntax *node);
-        void set_node_type(BaseSyntax *node, TypePtr type);
-        TypePtr resolve_expr_type(BaseExprSyntax *type_expr, Scope *scope);
-        TypePtr infer_function_return_type(BlockSyntax *body);
+        void unify(TypePtr t1, TypePtr t2, BoundNode* error_node, const std::string& context);
+        void annotate_expression(BoundExpression* expr, TypePtr type, Symbol* symbol = nullptr);
+        
+        // === Symbol Resolution ===
+        Symbol* resolve_qualified_name(const std::vector<std::string>& parts);
+        FunctionSymbol* resolve_overload(const std::vector<FunctionSymbol*>& overloads, 
+                                        const std::vector<TypePtr>& argTypes);
+        
+        // === Type Utilities ===
+        TypePtr resolve_type_expression(BoundExpression* typeExpr);
+        TypePtr infer_return_type(BoundStatement* body);
+        ValueCategory compute_value_category(BoundExpression* expr, Symbol* symbol = nullptr);
+        
+        // === Conversion Checking ===
         ConversionKind check_conversion(TypePtr from, TypePtr to);
-        bool check_implicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);
-        bool check_explicit_conversion(TypePtr from, TypePtr to, BaseSyntax* error_node, const std::string& context);
-        FunctionSymbol* resolve_overload(const std::vector<FunctionSymbol*>& overloads, const std::vector<TypePtr>& argTypes);
-        int count_conversions(const std::vector<ConversionKind> &conversions, ConversionKind kind);
+        bool check_implicit_conversion(TypePtr from, TypePtr to, BoundNode* node, const std::string& context);
+        bool check_explicit_conversion(TypePtr from, TypePtr to, BoundNode* node, const std::string& context);
+        
+        // === Error Reporting ===
+        void report_error(BoundNode* node, const std::string& message);
+        void report_final_errors();
+        
+        // === Visitor Implementations ===
+        // Expressions
+        void visit(BoundLiteralExpression* node) override;
+        void visit(BoundNameExpression* node) override;
+        void visit(BoundBinaryExpression* node) override;
+        void visit(BoundUnaryExpression* node) override;
+        void visit(BoundAssignmentExpression* node) override;
+        void visit(BoundCallExpression* node) override;
+        void visit(BoundMemberAccessExpression* node) override;
+        void visit(BoundIndexExpression* node) override;
+        void visit(BoundNewExpression* node) override;
+        void visit(BoundArrayCreationExpression* node) override;
+        void visit(BoundCastExpression* node) override;
+        void visit(BoundConditionalExpression* node) override;
+        void visit(BoundThisExpression* node) override;
+        void visit(BoundTypeOfExpression* node) override;
+        void visit(BoundSizeOfExpression* node) override;
+        void visit(BoundParenthesizedExpression* node) override;
+        void visit(BoundConversionExpression* node) override;
+        void visit(BoundTypeExpression* node) override;
+        
+        // Statements
+        void visit(BoundBlockStatement* node) override;
+        void visit(BoundExpressionStatement* node) override;
+        void visit(BoundIfStatement* node) override;
+        void visit(BoundWhileStatement* node) override;
+        void visit(BoundForStatement* node) override;
+        void visit(BoundBreakStatement* node) override;
+        void visit(BoundContinueStatement* node) override;
+        void visit(BoundReturnStatement* node) override;
+        void visit(BoundUsingStatement* node) override;
+        
+        // Declarations
+        void visit(BoundVariableDeclaration* node) override;
+        void visit(BoundFunctionDeclaration* node) override;
+        void visit(BoundPropertyDeclaration* node) override;
+        void visit(BoundTypeDeclaration* node) override;
+        void visit(BoundNamespaceDeclaration* node) override;
+        
+        // Top-level
+        void visit(BoundCompilationUnit* node) override;
     };
-
+    
 } // namespace Bryo

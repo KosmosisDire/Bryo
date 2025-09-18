@@ -4,162 +4,92 @@
 #include <vector>
 #include <memory>
 #include <variant>
-#include "common/symbol_handle.hpp"
 
 namespace Bryo
 {
-
-    // Forward declarations
     struct Type;
-    class TypeLikeSymbol;
-    class ScopeNode;
-    struct BaseExprSyntax;
-    struct BlockSyntax;
+    struct TypeSymbol;
     using TypePtr = std::shared_ptr<Type>;
-
     
-    struct PrimitiveType
-    {
-        enum Kind
-        {
-            I8,
-            U8,
-            I16,
-            U16,
-            I32,
-            U32,
-            I64,
-            U64,
-            F32,
-            F64,
-            Bool,
-            Char,
-            Void,
-        };
-
-        Kind kind;
+    enum class PrimitiveKind : uint32_t {
+        Void,
+        Bool,
+        Char,
+        I8, I16, I32, I64,
+        U8, U16, U32, U64,
+        F32, F64,
     };
 
-    struct ArrayType
-    {
-        TypePtr elementType;
-        int fixedSize = -1; // length must match rank, < 0 means any size (aka size is not encoded in the type)
-    };
+    #pragma region Type Variants
 
-    // Reference to a defined type (Player, Enemy, etc.)
-    struct TypeReference
-    {
-        TypeLikeSymbol *definition; // Points to TypeSymbol or EnumSymbol
+    struct PrimitiveType {
+        PrimitiveKind kind;
     };
-
-    struct FunctionType
-    {
+    
+    struct PointerType {
+        TypePtr pointee;
+    };
+    
+    struct ArrayType {
+        TypePtr element;
+        int32_t size = -1;  // -1 = dynamic array
+    };
+    
+    struct FunctionType {
         TypePtr returnType;
-        std::vector<TypePtr> parameterTypes;
+        std::vector<TypePtr> paramTypes;
     };
-
-    struct UnresolvedType
-    {
-        int id = 0;
+    
+    struct NamedType {
+        TypeSymbol* symbol;  // Points to the type's symbol
     };
-
-    // Represents a type parameter like T in Array<T>
-    struct TypeParameter
-    {
+    
+    struct GenericType {
+        TypeSymbol* genericSymbol;
+        std::vector<TypePtr> typeArgs;
+    };
+    
+    struct TypeParameter {
         std::string name;
-        int parameterId;  // Unique ID within the generic context
+        uint32_t index;
     };
-
-    // Represents a generic type instantiation like Array<i32>
-    struct GenericType
-    {
-        TypeLikeSymbol *genericDefinition;  // Points to the generic type definition
-        std::vector<TypePtr> typeArguments; // The actual type arguments
+    
+    struct UnresolvedType {
+        uint32_t id;  // For type inference
     };
-
-    struct PointerType
-    {
-        TypePtr pointeeType;
-    };
-
-    class Type
-    {
-        // Make TypeSystem a friend so it can create Types
-        friend class TypeSystem;
-
-        // Private constructor, only TypeSystem can create Types
-        Type(std::variant<PrimitiveType, ArrayType, TypeReference, FunctionType, UnresolvedType, TypeParameter, GenericType, PointerType> v)
-            : value(std::move(v)) {}
-
-        // Static factory for TypeSystem to use with std::make_shared
-        template <typename T>
-        static TypePtr create(T &&variant_value)
-        {
-            struct EnableMakeShared : Type
-            {
-                EnableMakeShared(T &&v) : Type(std::forward<T>(v)) {}
-            };
-            return std::make_shared<EnableMakeShared>(std::forward<T>(variant_value));
-        }
-
-    public:
-        enum class StorageKind {
-            Direct,      // Value stored directly (primitives, structs)
-            Indirect,    // Value accessed via implicit pointer (classes, arrays)
-            Explicit     // Explicit pointer type
-        };
-
+    
+    #pragma region Type
+    
+    struct Type {
         std::variant<
             PrimitiveType,
+            PointerType,
             ArrayType,
-            TypeReference,
             FunctionType,
-            UnresolvedType,
-            TypeParameter,
+            NamedType,
             GenericType,
-            PointerType
-            >
-            value;
-
-        // Type properties
-        bool is_value_type() const;
-        bool is_reference_type() const { return !is_value_type(); }
-        bool is_void() const;
-
-        StorageKind get_storage_kind() const
-        {
-            if (this->is<PointerType>())
-                return StorageKind::Explicit;
-            if (this->is_reference_type())
-                return StorageKind::Indirect;
-            return StorageKind::Direct;
-        }
-
-        template <typename T>
-        bool is() const
-        {
-            return std::holds_alternative<T>(value);
-        }
+            TypeParameter,
+            UnresolvedType
+        > kind;
+        
+        // Helper methods
         template<typename T>
-        T &as()
-        {
-            return std::get<T>(value);
+        bool is() const { return std::holds_alternative<T>(kind); }
+        
+        template<typename T>
+        const T* as() const { 
+            if (auto ptr = std::get_if<T>(&kind)) {
+            return ptr;
+            }
+            return nullptr;
         }
-        std::string get_name() const; // Implementation in type.cpp
-
-        // Since we have canonicalization, pointer comparison is sufficient
-        bool equals(const TypePtr &other) const { return this == other.get(); }
-
-        // Helper to get the underlying type symbol (if any)
-        TypeLikeSymbol *get_type_symbol() const;
+        
+        bool is_void() const;
+        bool is_value_type() const;
+        bool is_reference_type() const;
+        std::string get_name() const;
+        int get_size() const;
+        int get_alignment() const;
     };
-
-    // ============= Type Implementation =============
-
-    inline bool Type::is_void() const
-    {
-        auto prim = std::get_if<PrimitiveType>(&value);
-        return prim && prim->kind == PrimitiveType::Void;
-    }
 
 } // namespace Bryo

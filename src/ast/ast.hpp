@@ -179,7 +179,6 @@ namespace Bryo
     struct BaseSyntax
     {
         SourceRange location;
-        SymbolHandle containingScope = {0};
 
         virtual ~BaseSyntax() = default;
         virtual void accept(Visitor *visitor);
@@ -206,8 +205,6 @@ namespace Bryo
 
     struct BaseExprSyntax : BaseSyntax
     {
-        TypePtr resolvedType;
-        bool isLValue = false;
         ACCEPT_VISITOR
     };
 
@@ -227,10 +224,10 @@ namespace Bryo
     
     struct BaseNameExprSyntax : BaseExprSyntax
     {
-        SymbolHandle resolvedSymbol = {0};
         ACCEPT_VISITOR
 
         std::string get_name() const;
+        std::vector<std::string> get_parts() const;
     };
 
     struct SimpleNameSyntax : BaseNameExprSyntax
@@ -253,44 +250,55 @@ namespace Bryo
         ACCEPT_VISITOR
     };
 
-    inline std::string BaseNameExprSyntax::get_name() const
+    inline std::vector<std::string> BaseNameExprSyntax::get_parts() const
     {
-        std::string result;
+        std::vector<std::string> parts;
 
         if (auto qualified = this->as<QualifiedNameSyntax>())
         {
-            // For qualified names, try to get name from left if it's a BaseNameExprSyntax
-            // Otherwise just return the right side name
-            std::string left_name;
+            // For qualified names, get parts from left side (if it's a name)
             if (auto leftName = qualified->left->as<BaseNameExprSyntax>())
             {
-                left_name = leftName->get_name();
+                auto leftParts = leftName->get_parts();
+                parts.insert(parts.end(), leftParts.begin(), leftParts.end());
             }
             
-            std::string right_name = qualified->right->get_name();
-
-            if (!left_name.empty() && !right_name.empty())
-            {
-                result = left_name + "." + right_name;
-            }
-            else if (!right_name.empty())
-            {
-                result = right_name;
-            }
+            // Add parts from right side
+            auto rightParts = qualified->right->get_parts();
+            parts.insert(parts.end(), rightParts.begin(), rightParts.end());
         }
         else if (auto simple = this->as<SimpleNameSyntax>())
         {
-            // Simple name - extract from token
-            result = simple->identifier.text;
+            // Simple name - single part
+            parts.push_back(simple->identifier.text);
         }
         else if (auto generic = this->as<GenericNameSyntax>())
         {
-            // Note: This doesn't include type arguments in the name
-            result = generic->identifier->get_name();
+            // Generic name - get parts from the identifier (no type arguments)
+            auto identifierParts = generic->identifier->get_parts();
+            parts.insert(parts.end(), identifierParts.begin(), identifierParts.end());
         }
 
+        return parts;
+    }
+
+    inline std::string BaseNameExprSyntax::get_name() const
+    {
+        auto parts = get_parts();
+        if (parts.empty())
+        {
+            return "";
+        }
+
+        std::string result = parts[0];
+        for (size_t i = 1; i < parts.size(); ++i)
+        {
+            result += "." + parts[i];
+        }
         return result;
     }
+
+
 
 #pragma endregion
 
@@ -372,7 +380,6 @@ namespace Bryo
 
     struct MemberAccessExprSyntax : BaseExprSyntax
     {
-        SymbolHandle resolvedMember = {0};
         BaseExprSyntax *object;       // The object/expression being accessed
         BaseNameExprSyntax *member; // The member name
         ACCEPT_VISITOR
@@ -387,7 +394,6 @@ namespace Bryo
 
     struct CallExprSyntax : BaseExprSyntax
     {
-        SymbolHandle resolvedCallee = {0};
         BaseExprSyntax *callee;
         List<BaseExprSyntax *> arguments;
         ACCEPT_VISITOR

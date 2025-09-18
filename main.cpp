@@ -32,6 +32,7 @@ int main(int argc, char* argv[])
     Compiler compiler;
     compiler.set_print_ast(true);
     compiler.set_print_symbols(true);
+    compiler.set_print_hlir(true);
 
     // Use command line arguments if provided, otherwise default to simple.bryo
     std::vector<std::string> filenames;
@@ -40,7 +41,7 @@ int main(int argc, char* argv[])
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"test.bryo", "runtime/print.bryo"};
+        filenames = {"test.bryo"};
     }
     
     std::vector<SourceFile> source_files;
@@ -52,20 +53,24 @@ int main(int argc, char* argv[])
 
     auto result = compiler.compile(source_files);
 
-    if (result->is_valid())
+    if (result && result->is_valid())
     {
         result->dump_ir();
         result->write_object_file("out/output.o");
         auto ret = result->execute_jit<float>("Main_f32_").value_or(-1.0f);
         std::cout << "JIT execution returned: " << ret << std::endl;
     }
-    else
+    else if (result)
     {
-        LOG_HEADER("Compilation failed");
+        LOG_HEADER("Compilation failed with errors:");
         for (const auto& error : result->get_errors())
         {
-            std::cerr << "Error: " << error << std::endl;
+            LOG_ERROR(error, LogCategory::COMPILER);
         }
+    }
+    else    
+    {
+        LOG_HEADER("No result from compilation.");
     }
 
     return 0;

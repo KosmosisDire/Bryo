@@ -108,22 +108,6 @@ namespace Bryo
             return id;
         }
 
-        MissingExprSyntax *makeErrorExpr(std::string message)
-        {
-            auto error = make<MissingExprSyntax>();
-            error->message = message;
-            error->partialNodes = {};
-            return error;
-        }
-
-        MissingStmtSyntax *makeErrorStmt(std::string message)
-        {
-            auto error = make<MissingStmtSyntax>();
-            error->message = message;
-            error->partialNodes = {};
-            return error;
-        }
-
         // Empty list
         template <typename T>
         std::span<T> emptyList() { return {}; }

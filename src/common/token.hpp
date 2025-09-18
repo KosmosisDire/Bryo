@@ -131,6 +131,7 @@ namespace Bryo
         Question,     // ?
         Colon,        // :
         FatArrow,     // =>
+        ThinArrow,    // ->
         Dot,          // .
         DotDotEquals, // ..=
         DotDot,       // ..
@@ -439,6 +440,8 @@ namespace Bryo
             return ":";
         case TokenKind::FatArrow:
             return "=>";
+        case TokenKind::ThinArrow:
+            return "->";
         case TokenKind::Dot:
             return ".";
         case TokenKind::DotDotEquals:

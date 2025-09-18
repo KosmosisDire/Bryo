@@ -1,330 +1,240 @@
 #pragma once
 
 #include <string>
-#include <memory>
 #include <vector>
-#include "scope.hpp"
+#include <memory>
+#include <unordered_map>
+#include <variant>
+#include "common/source_location.hpp"
 #include "type.hpp"
-#include "conversions.hpp"
 
 namespace Bryo
 {
-
     // Forward declarations
-    struct ExpressionNode;
-    struct BlockStatementNode;
-    class SymbolTable;
-
-    // Access levels
-    enum class AccessLevel
-    {
-        Public,
+    struct Symbol;
+    struct NamespaceSymbol;
+    struct TypeSymbol;
+    struct FunctionSymbol;
+    struct VariableSymbol;
+    struct FieldSymbol;
+    struct ParameterSymbol;
+    struct LocalSymbol;
+    struct PropertySymbol;
+    struct EnumCaseSymbol;
+    
+    using SymbolPtr = Symbol*;
+    
+    enum class SymbolKind {
+        Namespace,
+        Type,
+        Function,
+        Variable,   // Covers fields, locals, parameters
+        Property,
+        EnumCase,
+    };
+    
+    enum class Accessibility {
         Private,
-        Protected
+        Protected,
+        Public,
     };
+    
+    #pragma region Symbol
+    
+    struct Symbol {
+        SymbolKind kind;
+        std::string name;
+        SourceRange location;
+        Accessibility access = Accessibility::Private;
+        
+        // Tree structure
+        Symbol* parent = nullptr;
+        
+        // Modifiers as simple flags
+        bool isStatic = false;
+        bool isAbstract = false;
+        bool isVirtual = false;
+        bool isOverride = false;
+        bool isConst = false;
+        bool isRef = false;  // For ref types or ref parameters
+        
+        virtual ~Symbol() = default;
+        
+        // Type-safe casting
+        template<typename T>
+        T* as() { return dynamic_cast<T*>(this); }
+        
+        template<typename T>  
+        const T* as() const { return dynamic_cast<const T*>(this); }
 
-    // Symbol modifiers
-    enum class SymbolModifiers : uint32_t
-    {
-        None = 0,
-        Static = 1 << 0,
-        Virtual = 1 << 1,
-        Override = 1 << 2,
-        Abstract = 1 << 3,
-        Async = 1 << 4,
-        Extern = 1 << 5,
-        Enforced = 1 << 6,
-        Ref = 1 << 7,
-        Inline = 1 << 8
-    };
-
-    inline SymbolModifiers operator|(SymbolModifiers a, SymbolModifiers b)
-    {
-        return static_cast<SymbolModifiers>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
-    }
-
-    inline SymbolModifiers operator&(SymbolModifiers a, SymbolModifiers b)
-    {
-        return static_cast<SymbolModifiers>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
-    }
-
-    // Base symbol class - all symbols are scope nodes
-    class Symbol : public ScopeNode
-    {
-    protected:
-        std::string name_;
-        AccessLevel access_ = AccessLevel::Private;
-        SymbolModifiers modifiers_ = SymbolModifiers::None;
-
-    public:
-        // Basic properties
-        const std::string &name() const { return name_; }
-        AccessLevel access() const { return access_; }
-        SymbolModifiers modifiers() const { return modifiers_; }
-
-        void set_name(const std::string &name) { name_ = name; }
-        void set_access(AccessLevel access) { access_ = access; }
-        void add_modifier(SymbolModifiers mod) { modifiers_ = modifiers_ | mod; }
-
-        bool has_modifier(SymbolModifiers mod) const
-        {
-            return (modifiers_ & mod) != SymbolModifiers::None;
-        }
-
-        // For debugging/display
-        virtual const char *kind_name() const = 0;
-
-        // Build qualified name
+        template<typename T>
+        bool is() const { return dynamic_cast<const T*>(this) != nullptr; }
+        
+        // Get fully qualified name
         std::string get_qualified_name() const;
-    };
-
-    class UnscopedSymbol : public Symbol
-    {
-    };
-
-    class ScopedSymbol : public Symbol, public Scope
-    {
-    public:
-        // Implement Scope interface
-        ScopeNode *as_scope_node() override { return this; }
-        const ScopeNode *as_scope_node() const override { return this; }
-    };
-
-    // Base for types and enums
-    class TypeLikeSymbol : public ScopedSymbol
-    {
-    public:
-        // Can be used as a type in declarations
-    };
-
-    // Base for symbols that have a type (variables, parameters, fields, properties, functions)
-    class TypedSymbol
-    {
-    protected:
-        TypePtr type_;
-
-    public:
-        // Abstract class - cannot be instantiated directly
-        virtual ~TypedSymbol() = default;
-
-        // Type access
-        virtual TypePtr type() const { return type_; }
-        virtual void set_type(TypePtr type) { type_ = type; }
-
-        // Virtual function to get back to the ScopeNode (if this is also a ScopeNode)
-        virtual ScopeNode *as_scope_node() = 0;
-        virtual const ScopeNode *as_scope_node() const = 0;
-
-        // Proxy the as() functions through the ScopeNode
-        template <typename T>
-        T *as()
-        {
-            if (auto node = as_scope_node())
-            {
-                return node->as<T>();
+        
+        // Find enclosing symbol of type
+        template<typename T>
+        T* get_enclosing() {
+            Symbol* current = parent;
+            while (current) {
+                if (auto result = current->as<T>()) {
+                    return result;
+                }
+                current = current->parent;
             }
             return nullptr;
         }
 
-        template <typename T>
-        const T *as() const
-        {
-            if (auto node = as_scope_node())
-            {
-                return node->as<T>();
+        inline static std::string access_name(Accessibility access) {
+            switch (access) {
+                case Accessibility::Private: return "private";
+                case Accessibility::Protected: return "protected";
+                case Accessibility::Public: return "public";
+                default: return "unknown";
             }
-            return nullptr;
         }
 
-        template <typename T>
-        bool is() const
-        {
-            if (auto node = as_scope_node())
-            {
-                return node->is<T>();
+        inline static std::string kind_name(SymbolKind kind) {
+            switch (kind) {
+                case SymbolKind::Namespace: return "namespace";
+                case SymbolKind::Type: return "type";
+                case SymbolKind::Function: return "function";
+                case SymbolKind::Variable: return "variable";
+                case SymbolKind::Property: return "property";
+                case SymbolKind::EnumCase: return "enum_case";
+                default: return "unknown";
             }
-            return false;
         }
     };
-
-    class ScopedTypedSymbol : public ScopedSymbol, public TypedSymbol
-    {
-    public:
-        // Implement TypedSymbol's virtual function
-        ScopeNode *as_scope_node() override { return this; }
-        const ScopeNode *as_scope_node() const override { return this; }
-
-        // Resolve ambiguity by using ScopeNode's as() functions
-        using ScopeNode::as;
-        using ScopeNode::is;
+    
+    #pragma region Container Symbol
+    
+    struct ContainerSymbol : Symbol {
+        // Children organized by name (multimap for overloads)
+        std::unordered_multimap<std::string, std::unique_ptr<Symbol>> members;
+        
+        // Ordered list for deterministic iteration
+        std::vector<Symbol*> member_order;
+        
+        // Add a member
+        Symbol* add_member(std::unique_ptr<Symbol> symbol);
+        
+        // Lookup member by name (non-recursive)
+        std::vector<Symbol*> get_member(const std::string& name);
+        
+        // Get all function overloads
+        std::vector<FunctionSymbol*> get_functions(const std::string& name);
     };
 
-    class UnscopedTypedSymbol : public UnscopedSymbol, public TypedSymbol
-    {
-    public:
-        // Implement TypedSymbol's virtual function
-        ScopeNode *as_scope_node() override { return this; }
-        const ScopeNode *as_scope_node() const override { return this; }
+    #pragma region Namespace Symbol
+    
+    struct NamespaceSymbol : ContainerSymbol {
+        // Using directives in this namespace
+        std::vector<NamespaceSymbol*> using_namespaces;
+        std::vector<TypeSymbol*> using_types;
+        
+        NamespaceSymbol(const std::string& name);
+    };
+    
 
-        // Resolve ambiguity by using ScopeNode's as() functions
-        using ScopeNode::as;
-        using ScopeNode::is;
+    #pragma region Type Symbol
+    
+    struct TypeSymbol : ContainerSymbol {
+        TypePtr type;  // The semantic type this symbol represents
+        
+        // Inheritance
+        TypeSymbol* base_class = nullptr;
+        std::vector<TypeSymbol*> interfaces;
+        
+        // For generics
+        std::vector<Symbol*> type_parameters;  // Could be TypeParameterSymbol
+        
+        // Virtual method table
+        std::vector<FunctionSymbol*> vtable;
+        
+        TypeSymbol(const std::string& name, TypePtr type);
+        
+        bool is_value_type() const;
+        bool is_reference_type() const;
     };
 
-    // Regular type (class/struct)
-    class TypeSymbol : public TypeLikeSymbol
-    {
-    public:
-        const char *kind_name() const override { return "type"; }
-
-        bool is_ref_type() const { return has_modifier(SymbolModifiers::Ref); }
-        bool is_abstract() const { return has_modifier(SymbolModifiers::Abstract); }
+    #pragma region Function Symbol
+    
+    struct FunctionSymbol : ContainerSymbol {
+        // Signature
+        TypePtr return_type;
+        std::vector<ParameterSymbol*> parameters;  // Points to child parameter symbols
+        
+        // For generics
+        std::vector<Symbol*> type_parameters;
+        
+        FunctionSymbol* overridden_method();
+        uint32_t vtable_index = UINT32_MAX;
+        
+        // Special kinds
+        bool is_constructor = false;
+        bool is_operator = false; 
+        
+        FunctionSymbol(const std::string& name, TypePtr return_type);
+        
+        // Get mangled name for code generation
+        std::string get_mangled_name() const;
+        
+        // Check if signatures match (for overriding)
+        bool signature_matches(FunctionSymbol* other) const;
     };
 
-    // Enum type
-    class EnumSymbol : public TypeLikeSymbol
-    {
-    public:
-        const char *kind_name() const override { return "enum"; }
+    #pragma region Variable Symbols
+
+    // Base for all variables
+    struct VariableSymbol : Symbol {
+        TypePtr type;
+        
+        VariableSymbol(const std::string& name, TypePtr type);
     };
 
-    // Namespace
-    class NamespaceSymbol : public ScopedSymbol
-    {
-    public:
-        const char *kind_name() const override { return "namespace"; }
+    struct FieldSymbol : VariableSymbol {
+        uint32_t offset = 0;
+        uint32_t alignment = 0;
+        
+        FieldSymbol(const std::string& name, TypePtr type);
     };
 
-    // Variable: used for both local and member variables
-    class VariableSymbol : public UnscopedTypedSymbol
-    {
-    public:
-        bool is_field = false;
-        const char *kind_name() const override { return is_field ? "field" : "var"; }
+    struct ParameterSymbol : VariableSymbol {
+        uint32_t index;
+        bool has_default = false;
+        bool is_ref = false;
+        bool is_out = false;
+        
+        ParameterSymbol(const std::string& name, TypePtr type, uint32_t idx);
     };
 
-    // Parameter
-    class ParameterSymbol : public UnscopedTypedSymbol
-    {
-    public:
-        const char *kind_name() const override { return "param"; }
+    struct LocalSymbol : VariableSymbol {
+        bool is_captured = false;
+        
+        LocalSymbol(const std::string& name, TypePtr type);
     };
 
-    // Property
-    class PropertySymbol : public ScopedTypedSymbol
-    {
-    public:
-        const char *kind_name() const override { return "prop"; }
-        bool has_getter() const { return const_cast<PropertySymbol *>(this)->lookup_local(std::string("get")) != nullptr; }
-        bool has_setter() const { return const_cast<PropertySymbol *>(this)->lookup_local(std::string("set")) != nullptr; }
+    #pragma region Property Symbol
+    
+    struct PropertySymbol : ContainerSymbol {
+        TypePtr type;
+        FunctionSymbol* getter = nullptr;
+        FunctionSymbol* setter = nullptr;
+        VariableSymbol* backing_field = nullptr;  // For auto-properties
+        
+        PropertySymbol(const std::string& name, TypePtr type);
     };
 
-    // Function
-    class FunctionSymbol : public ScopedTypedSymbol
-    {
-        std::vector<ParameterSymbol *> parameters_;
-
-    public:
-        const char *kind_name() const override { return "fn"; }
-
-        // Override to use the inherited type_ as return type
-        void set_return_type(TypePtr type) { type_ = type; }
-        void set_parameters(std::vector<ParameterSymbol *> params)
-        {
-            parameters_ = std::move(params);
-        }
-
-        TypePtr return_type() const { return type_; }
-        const std::vector<ParameterSymbol *> &parameters() const { return parameters_; }
-
-        std::string get_mangled_name() const
-        {
-            std::string mangled = get_qualified_name();
-            mangled += "_";
-
-            // Add return type
-            if (type_)
-            {
-                mangled += type_->get_name();
-            }
-            mangled += "_";
-
-            for (size_t i = 0; i < parameters_.size(); ++i)
-            {
-                if (i > 0)
-                    mangled += "_";
-                if (parameters_[i]->type())
-                {
-                    mangled += parameters_[i]->type()->get_name();
-                }
-            }
-            return mangled;
-        }
-
-        std::string full_signature() const
-        {
-            std::string sig = name_ + "(";
-            for (size_t i = 0; i < parameters_.size(); ++i)
-            {
-                if (i > 0)
-                    sig += ", ";
-                if (parameters_[i]->type())
-                {
-                    sig += parameters_[i]->type()->get_name();
-                }
-                else
-                {
-                    sig += "var";
-                }
-            }
-            sig += "): ";
-            if (type_)
-            {
-                sig += type_->get_name();
-            }
-            return sig;
-        }
+    #pragma region Enum Case Symbol
+    
+    struct EnumCaseSymbol : Symbol {
+        std::vector<TypePtr> associated_types;  // For tagged enums
+        uint32_t value = 0;  // Discriminant value
+        
+        EnumCaseSymbol(const std::string& name);
     };
-
-    class FunctionGroupSymbol : public Symbol
-    {
-        public:
-
-        std::vector<std::unique_ptr<FunctionSymbol>> local_overloads;
-        const char *kind_name() const override { return "fn group"; }
-
-        // Add a new overload to the group
-        // returns false if there is a conflict
-        void add_overload(std::unique_ptr<FunctionSymbol> func)
-        {
-            func->parent = this; // Set parent to the group
-            local_overloads.push_back(std::move(func));
-        }
-
-        std::vector<FunctionSymbol *> get_overloads() const
-        {
-            std::vector<FunctionSymbol *> result;
-            for (auto &func : local_overloads)
-            {
-                result.push_back(func.get());
-            }
-            return result;
-        }
-    };
-
-    // Enum case
-    class EnumCaseSymbol : public UnscopedSymbol
-    {
-        std::vector<TypePtr> parameters_;
-
-    public:
-        const char *kind_name() const override { return "enum_case"; }
-
-        void set_params(std::vector<TypePtr> types) { parameters_ = std::move(types); }
-        const std::vector<TypePtr> &params() const { return parameters_; }
-
-        bool is_simple() const { return parameters_.empty(); }
-        bool is_tagged() const { return !parameters_.empty(); }
-    };
+    
 
 } // namespace Bryo

@@ -86,14 +86,20 @@ set(SOURCE_FILES
 
     # Semantic Analysis
     src/semantic/type.cpp
-    src/semantic/scope.cpp
     src/semantic/symbol.cpp
     src/semantic/symbol_table.cpp
+    src/semantic/type_system.cpp
     src/semantic/symbol_table_builder.cpp
     src/semantic/type_resolver.cpp
     
+    # Binding
+    src/binding/bound_tree_builder.cpp
+
+    # HLIR
+    src/hlir/bound_to_hlir.cpp
+    
     # Code Generator
-    src/codegen/codegen.cpp
+    # src/codegen/codegen.cpp
     
     # Common Utilities
     src/common/logger.cpp

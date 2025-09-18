@@ -625,6 +625,8 @@ namespace Bryo
                 return make_token(TokenKind::Decrement, 2);
             if (peek_char() == '=')
                 return make_token(TokenKind::MinusAssign, 2);
+            if (peek_char() == '>')
+                return make_token(TokenKind::ThinArrow, 2);
             return make_token(TokenKind::Minus, 1);
 
         case '*':

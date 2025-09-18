@@ -1,35 +1,39 @@
 type Test
 {
     bool stuff = true
-}
 
-fn RunTest(bool* test)
-{
-    Print("Running test...\n")
-    if (test[0])
+    fn Run()
     {
-        Print("Test stuff is true\n")
-        test[0] = false
+        if (stuff)
+        {
+            return 1.0
+        }
+
+        return 0.0
     }
-    else
+
+    fn Run2()
     {
-        Print("Test stuff is false\n")
+        Run()
+        return Run() + 10.0
+    }
+
+    fn Run3(i32 depth)
+    {
+        if (depth > 10)
+        {
+            return 15.0
+        }
+
+        return Run3(depth + 1)
     }
 }
 
-fn RunTests(Test* test)
-{
-    test[0].stuff = true
-    RunTest(&test[0].stuff)
-    RunTest(&test[0].stuff)
-}
-
-fn Main: f32
+fn Main
 {
     Test test = new Test(true)
-    RunTests(&test)
-
-    f32 stuff = 1.0;
+    f32 stuff = 1.0
+    stuff += 10.0
     
-    return 0.0
-}
+    return stuff
+} 

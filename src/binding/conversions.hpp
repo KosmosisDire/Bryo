@@ -1,6 +1,6 @@
 #pragma once
 
-#include "type.hpp"
+#include "semantic/type.hpp"
 #include <string>
 #include <unordered_map>
 
@@ -12,13 +12,36 @@ namespace Bryo
      * @enum ConversionKind
      * @brief Represents the kind of type conversion between two types
      */
+    // Type conversion (implicit or explicit)
     enum class ConversionKind : uint8_t
     {
-        NoConversion = 0, // No conversion possible
-        Identity,         // Same type, no conversion needed
-        ImplicitNumeric,  // Implicit numeric widening (safe)
-        ExplicitNumeric,  // Explicit numeric conversion (may lose precision)
+        Identity,           // No conversion needed
+        ImplicitNumeric,   // int to long, float to double
+        ImplicitReference, // Derived to base
+        ExplicitNumeric,   // double to int
+        ExplicitReference, // Base to derived  
+        Boxing,            // Value type to object
+        Unboxing,          // Object to value type
+        UserDefined,      // User-defined conversion operator
+        NoConversion      // No valid conversion
     };
+
+    inline std::string to_string(ConversionKind kind)
+    {
+        switch (kind)
+        {
+        case ConversionKind::Identity: return "Identity";
+        case ConversionKind::ImplicitNumeric: return "ImplicitNumeric";
+        case ConversionKind::ImplicitReference: return "ImplicitReference";
+        case ConversionKind::ExplicitNumeric: return "ExplicitNumeric";
+        case ConversionKind::ExplicitReference: return "ExplicitReference";
+        case ConversionKind::Boxing: return "Boxing";
+        case ConversionKind::Unboxing: return "Unboxing";
+        case ConversionKind::UserDefined: return "UserDefined";
+        case ConversionKind::NoConversion: return "NoConversion";
+        default: return "UnknownConversion";
+        }
+    }
 
     /**
      * @class Conversions
@@ -33,7 +56,7 @@ namespace Bryo
         static constexpr ConversionKind IMP = ConversionKind::ImplicitNumeric;
         static constexpr ConversionKind EXP = ConversionKind::ExplicitNumeric;
 
-        // Conversion matrix using PrimitiveType::Kind as indices
+        // Conversion matrix using PrimitiveKind as indices
         // Rows = source type, Columns = target type
         static constexpr ConversionKind conversionMatrix[14][14] = {
             // Converting FROM (row) TO (column):
@@ -57,63 +80,63 @@ namespace Bryo
         /**
          * Get primitive type kind from string name
          */
-        static PrimitiveType::Kind GetPrimitiveKind(const std::string &typeName)
+        static PrimitiveKind get_primitive_kind(const std::string &typeName)
         {
-            static const std::unordered_map<std::string, PrimitiveType::Kind> typeMap = {
-                {"i8", PrimitiveType::I8},
-                {"u8", PrimitiveType::U8},
-                {"i16", PrimitiveType::I16},
-                {"u16", PrimitiveType::U16},
-                {"i32", PrimitiveType::I32},
-                {"u32", PrimitiveType::U32},
-                {"i64", PrimitiveType::I64},
-                {"u64", PrimitiveType::U64},
-                {"f32", PrimitiveType::F32},
-                {"f64", PrimitiveType::F64},
-                {"bool", PrimitiveType::Bool},
-                {"char", PrimitiveType::Char},
-                {"void", PrimitiveType::Void}};
+            static const std::unordered_map<std::string, PrimitiveKind> typeMap = {
+                {"i8", PrimitiveKind::I8},
+                {"u8", PrimitiveKind::U8},
+                {"i16", PrimitiveKind::I16},
+                {"u16", PrimitiveKind::U16},
+                {"i32", PrimitiveKind::I32},
+                {"u32", PrimitiveKind::U32},
+                {"i64", PrimitiveKind::I64},
+                {"u64", PrimitiveKind::U64},
+                {"f32", PrimitiveKind::F32},
+                {"f64", PrimitiveKind::F64},
+                {"bool", PrimitiveKind::Bool},
+                {"char", PrimitiveKind::Char},
+                {"void", PrimitiveKind::Void}};
 
             auto it = typeMap.find(typeName);
             if (it != typeMap.end())
                 return it->second;
 
             // Return void as default for unknown types
-            return PrimitiveType::Void;
+            return PrimitiveKind::Void;
         }
 
         /**
          * Classify the conversion between two primitive types
          */
-        static ConversionKind ClassifyConversion(PrimitiveType::Kind source, PrimitiveType::Kind target)
+        static ConversionKind classify_conversion(PrimitiveKind source, PrimitiveKind target)
         {
             // Direct indexing using the enum values
-            return conversionMatrix[source][target];
+            return conversionMatrix[(uint32_t)source][(uint32_t)target];
         }
 
         /**
          * Classify the conversion between two types (TypePtr version)
          */
-        static ConversionKind ClassifyConversion(TypePtr sourceType, TypePtr targetType)
+        static ConversionKind classify_conversion(TypePtr sourceType, TypePtr targetType)
         {
             // Handle array conversions
-            auto sourceArray = std::get_if<ArrayType>(&sourceType->value);
-            auto targetArray = std::get_if<ArrayType>(&targetType->value);
+            auto sourceArray = sourceType->as<ArrayType>();
+            auto targetArray = targetType->as<ArrayType>();
 
             if (sourceArray && targetArray)
             {
                 // Array to array conversion
                 // Check if element types match
-                if (sourceArray->elementType == targetArray->elementType ||
-                    sourceArray->elementType->get_name() == targetArray->elementType->get_name())
+                if (sourceArray->element == targetArray->element ||
+                    sourceArray->element->get_name() == targetArray->element->get_name())
                 {
                     // Sized array to unsized array is allowed (char[12] -> char[])
                     // Unsized to unsized is allowed (char[] -> char[])
                     // Sized to same-sized is allowed (char[12] -> char[12])
                     // But sized to different-sized is not (char[12] -> char[10])
-                    if (targetArray->fixedSize == -1 ||              // Target is unsized array
-                        sourceArray->fixedSize == -1 ||              // Source is unsized array
-                        sourceArray->fixedSize == targetArray->fixedSize) // Same size
+                    if (targetArray->size == -1 ||              // Target is unsized array
+                        sourceArray->size == -1 ||              // Source is unsized array
+                        sourceArray->size == targetArray->size) // Same size
                     {
                         return ConversionKind::Identity; // Treat as identity for parameter passing
                     }
@@ -122,23 +145,23 @@ namespace Bryo
             }
 
             // Handle array to pointer decay
-            auto targetPointer = std::get_if<PointerType>(&targetType->value);
+            auto targetPointer = targetType->as<PointerType>();
             if (sourceArray && targetPointer)
             {
                 // Check if array element type matches pointer target type
-                if (sourceArray->elementType == targetPointer->pointeeType ||
-                    sourceArray->elementType->get_name() == targetPointer->pointeeType->get_name())
+                if (sourceArray->element == targetPointer->pointee ||
+                    sourceArray->element->get_name() == targetPointer->pointee->get_name())
                 {
                     return ConversionKind::Identity; // Array-to-pointer decay is implicit
                 }
             }
 
             // Handle pointer types - identity only if same pointer type
-            auto sourcePointer = std::get_if<PointerType>(&sourceType->value);
+            auto sourcePointer = sourceType->as<PointerType>();
             if (sourcePointer && targetPointer)
             {
-                if (sourcePointer->pointeeType == targetPointer->pointeeType ||
-                    sourcePointer->pointeeType->get_name() == targetPointer->pointeeType->get_name())
+                if (sourcePointer->pointee == targetPointer->pointee ||
+                    sourcePointer->pointee->get_name() == targetPointer->pointee->get_name())
                 {
                     return ConversionKind::Identity;
                 }
@@ -146,12 +169,12 @@ namespace Bryo
             }
 
             // Handle primitive types
-            auto sourcePrim = std::get_if<PrimitiveType>(&sourceType->value);
-            auto targetPrim = std::get_if<PrimitiveType>(&targetType->value);
+            auto sourcePrim = sourceType->as<PrimitiveType>();
+            auto targetPrim = targetType->as<PrimitiveType>();
 
             if (sourcePrim && targetPrim)
             {
-                return ClassifyConversion(sourcePrim->kind, targetPrim->kind);
+                return classify_conversion(sourcePrim->kind, targetPrim->kind);
             }
 
             // For all other types (TypeReference, GenericType, etc.), only identity conversions
@@ -164,7 +187,7 @@ namespace Bryo
         /**
          * Check if a conversion is implicit (can be done automatically)
          */
-        static bool IsImplicitConversion(ConversionKind kind)
+        static bool is_implicit_conversion(ConversionKind kind)
         {
             // TODO: Support implicit casting
             return kind == ConversionKind::Identity;
@@ -173,7 +196,7 @@ namespace Bryo
         /**
          * Check if a conversion requires an explicit cast
          */
-        static bool IsExplicitConversion(ConversionKind kind)
+        static bool is_explicit_conversion(ConversionKind kind)
         {
             // TODO: Support implicit casting without forcing explicit
             return kind == ConversionKind::ExplicitNumeric || kind == ConversionKind::ImplicitNumeric;
@@ -182,7 +205,7 @@ namespace Bryo
         /**
          * Check if any conversion is possible
          */
-        static bool IsConversionPossible(ConversionKind kind)
+        static bool is_conversion_possible(ConversionKind kind)
         {
             return kind != ConversionKind::NoConversion;
         }
@@ -190,7 +213,7 @@ namespace Bryo
         /**
          * Get a human-readable description of the conversion
          */
-        static std::string GetConversionDescription(ConversionKind kind)
+        static std::string describe_conversion(ConversionKind kind)
         {
             switch (kind)
             {

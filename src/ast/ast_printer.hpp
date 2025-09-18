@@ -41,37 +41,16 @@ namespace Bryo
             return std::string(indentLevel * 2, ' ');
         }
 
-        // Helper to get the semantic type annotation string for an expression.
-        std::string get_type_annotation(const BaseSyntax *node)
-        {
-            // Try to cast the generic Node to a const Expression
-            if (const auto expr = node->as<BaseExprSyntax>())
-            {
-                if (expr->resolvedType)
-                {
-                    // If the type is resolved, get its name for printing.
-                    return " [Type: " + expr->resolvedType->get_name() + "]";
-                }
-                else
-                {
-                    // If the type pointer is null, indicate that.
-                    return " [Type: <no type>]";
-                }
-            }
-            // If it's not an expression node, there's no type annotation.
-            return "";
-        }
-
         // Prints a single line for a leaf node, automatically adding type info.
         void leaf(const BaseSyntax *node, const std::string &name, const std::string &details = "")
         {
-            output << indent() << name << details << get_type_annotation(node) << "\n";
+            output << indent() << name << details << "\n";
         }
 
         // Enters a new indentation level for a branch node, automatically adding type info.
         void enter(const BaseSyntax *node, const std::string &name, const std::string &details = "")
         {
-            output << indent() << name << details << get_type_annotation(node) << " {\n";
+            output << indent() << name << details << " {\n";
             indentLevel++;
         }
 

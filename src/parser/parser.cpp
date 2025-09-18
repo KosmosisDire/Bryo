@@ -11,6 +11,9 @@
 
 namespace Bryo
 {
+
+    #pragma region Public API
+
     Parser::Parser(TokenStream &tokens) : tokens(tokens)
     {
         contextStack.push_back(Context::TOP_LEVEL);
@@ -18,7 +21,6 @@ namespace Bryo
 
     Parser::~Parser() = default;
 
-    // ================== Public API ==================
 
     CompilationUnitSyntax *Parser::parse()
     {
@@ -58,7 +60,9 @@ namespace Bryo
         return !errors.empty();
     }
 
-    // ================== Error Handling ==================
+    #pragma endregion
+    
+    #pragma region Error Handling
 
     void Parser::error(const std::string &msg)
     {
@@ -81,7 +85,8 @@ namespace Bryo
     MissingExprSyntax *Parser::errorExpr(const std::string &msg)
     {
         error(msg);
-        auto err = arena.makeErrorExpr(msg);
+        auto err = arena.make<MissingExprSyntax>();
+        err->message = msg;
         err->location = tokens.previous().location;
         return err;
     }
@@ -89,7 +94,8 @@ namespace Bryo
     MissingStmtSyntax *Parser::errorStmt(const std::string &msg)
     {
         error(msg);
-        auto err = arena.makeErrorStmt(msg);
+        auto err = arena.make<MissingStmtSyntax>();
+        err->message = msg;
         err->location = tokens.previous().location;
         return err;
     }
@@ -112,7 +118,9 @@ namespace Bryo
         }
     }
 
-    // ================== Context Management ==================
+    #pragma endregion
+    
+    #pragma region Context Management
 
     bool Parser::inLoop() const
     {
@@ -161,7 +169,9 @@ namespace Bryo
         return false;
     }
 
-    // ================== Utility Helpers ==================
+    #pragma endregion
+    
+    #pragma region Utility Helpers
 
     bool Parser::check(TokenKind kind)
     {
@@ -202,7 +212,9 @@ namespace Bryo
         return next;
     }
 
-    // ================== Top Level Parsing ==================
+    #pragma endregion
+    
+    #pragma region Top Level Parsing
 
     BaseStmtSyntax *Parser::parseTopLevelStatement()
     {
@@ -227,7 +239,9 @@ namespace Bryo
         return errorStmt("Invalid top level construct");
     }
 
-    // ================== Declarations ==================
+    #pragma endregion
+    
+    #pragma region Declarations
 
     bool Parser::checkDeclarationStart()
     {
@@ -429,7 +443,7 @@ namespace Bryo
             // Traditional parameter list with parentheses
             decl->parameters = parseParameterList();
         }
-        else if (check(TokenKind::Colon))
+        else if (check(TokenKind::ThinArrow))
         {
             // No parentheses, but we have a return type - assume no parameters
             decl->parameters = arena.emptyList<ParameterDeclSyntax *>();
@@ -466,7 +480,7 @@ namespace Bryo
         }
 
         // Parse return type if present
-        if (consume(TokenKind::Colon))
+        if (consume(TokenKind::ThinArrow))
         {
             decl->returnType = parseTypeExpression();
             if (!decl->returnType)
@@ -889,7 +903,9 @@ namespace Bryo
         return decl;
     }
 
-    // ================== Statements ==================
+    #pragma endregion
+    
+    #pragma region Statements
 
     BaseStmtSyntax *Parser::parseStatement()
     {
@@ -1221,7 +1237,9 @@ namespace Bryo
         return directive;
     }
 
-    // ================== Expressions ==================
+    #pragma endregion
+    
+    #pragma region Expressions
 
     BaseExprSyntax *Parser::parseExpression(int minPrecedence)
     {
@@ -1888,9 +1906,9 @@ namespace Bryo
         return sizeOf;
     }
 
-    // ================== Types ==================
-
-    // ================== Helper Functions ==================
+    #pragma endregion
+    
+    #pragma region Helper Functions
 
     BaseNameExprSyntax *Parser::parseIdentifier()
     {
@@ -2005,7 +2023,7 @@ namespace Bryo
     {
         return checkAny({TokenKind::Semicolon, TokenKind::RightParen,
                          TokenKind::RightBracket, TokenKind::RightBrace,
-                         TokenKind::Comma, TokenKind::Colon, TokenKind::Assign,
+                         TokenKind::Comma, TokenKind::Colon, TokenKind::Assign, TokenKind::ThinArrow,
                          TokenKind::FatArrow, TokenKind::EndOfFile});
     }
 
@@ -2051,5 +2069,6 @@ namespace Bryo
         return true; // No semicolon needed - statements on different lines
 #endif
     }
+    #pragma endregion
 
 } // namespace Bryo
