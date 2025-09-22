@@ -130,6 +130,29 @@ namespace Bryo::HLIR
             return result;
         }
         
+        Value* field_addr(Value* object, uint32_t field_index, TypePtr field_type) {
+            // Result type should be pointer to field type
+            auto ptr_type = field_type; // TODO: Should be pointer type
+            auto result = current_func->create_value(ptr_type);
+            auto inst = std::make_unique<FieldAddrInst>(result, object, field_index);
+            result->def = inst.get();
+            object->uses.push_back(inst.get());
+            current_block->add_inst(std::move(inst));
+            return result;
+        }
+        
+        Value* element_addr(Value* array, Value* index, TypePtr element_type) {
+            // Result type should be pointer to element type  
+            auto ptr_type = element_type; // TODO: Should be pointer type
+            auto result = current_func->create_value(ptr_type);
+            auto inst = std::make_unique<ElementAddrInst>(result, array, index);
+            result->def = inst.get();
+            array->uses.push_back(inst.get());
+            index->uses.push_back(inst.get());
+            current_block->add_inst(std::move(inst));
+            return result;
+        }
+        
         Value* call(Function* func, std::vector<Value*> args) {
             Value* result = nullptr;
             if (func->return_type() && !func->return_type()->is_void()) {

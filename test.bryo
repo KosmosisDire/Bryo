@@ -33,7 +33,7 @@ fn Main
 {
     Test test = new Test(true)
     f32 stuff = 1.0
-    stuff += 10.0
+    stuff += test.Run2()
     
     return stuff
 } 

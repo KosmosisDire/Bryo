@@ -394,6 +394,7 @@ namespace Bryo::HLIR
         uint32_t next_block_id = 0;
 
         bool is_external = false;
+        bool is_static = false; // if not then we need a this pointer as first arg
 
         Value *create_value(TypePtr type, const std::string &name = "")
         {
@@ -457,6 +458,32 @@ namespace Bryo::HLIR
                     create_function(func_sym);
                 }
             }
+        }
+        
+        // Lookup function by symbol
+        Function* find_function(FunctionSymbol* sym)
+        {
+            for (const auto& func : functions)
+            {
+                if (func->symbol == sym)
+                {
+                    return func.get();
+                }
+            }
+            return nullptr;
+        }
+        
+        // Lookup type definition by symbol
+        TypeDefinition* find_type(TypeSymbol* sym)
+        {
+            for (const auto& type : types)
+            {
+                if (type->symbol == sym)
+                {
+                    return type.get();
+                }
+            }
+            return nullptr;
         }
 
         Function *create_function(FunctionSymbol *sym)

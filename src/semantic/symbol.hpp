@@ -188,7 +188,9 @@ namespace Bryo
     #pragma region Variable Symbols
 
     // Base for all variables
-    struct VariableSymbol : Symbol {
+    struct VariableSymbol : Symbol
+    {
+        
         TypePtr type;
         
         VariableSymbol(const std::string& name, TypePtr type);

@@ -71,21 +71,72 @@ namespace Bryo::HLIR
                 set_symbol_value(name->symbol, value);
             }
         }
-        // TODO: Handle member access, index expressions
+        // Handle member field assignment
+        else if (auto member = node->target->as<BoundMemberAccessExpression>()) {
+            auto obj_val = evaluate_expression(member->object);
+            if (obj_val && member->member) {
+                // Field assignment
+                if (auto field = member->member->as<FieldSymbol>()) {
+                    size_t field_index = 0;
+                    if (field->parent && field->parent->is<TypeSymbol>()) {
+                        // TODO: Proper field indexing - for now use 0
+                        field_index = 0;
+                    }
+                    
+                    // Generate field address instruction
+                    auto addr_result = builder.field_addr(obj_val, field_index, field->type);
+                    builder.store(value, addr_result);
+                }
+                // Variable member assignment
+                else if (auto var = member->member->as<VariableSymbol>()) {
+                    size_t field_index = 0;
+                    if (var->parent && var->parent->is<TypeSymbol>()) {
+                        // TODO: Proper field indexing - for now use 0
+                        field_index = 0;
+                    }
+                    
+                    // Generate field address instruction
+                    auto addr_result = builder.field_addr(obj_val, field_index, var->type);
+                    builder.store(value, addr_result);
+                }
+                // Property setter
+                else if (auto prop = member->member->as<PropertySymbol>()) {
+                    if (prop->setter) {
+                        if (auto func = module->find_function(prop->setter)) {
+                            std::vector<HLIR::Value*> args;
+                            args.push_back(obj_val);  // this
+                            args.push_back(value);     // value
+                            builder.call(func, args);
+                        }
+                    }
+                }
+            }
+        }
+        // TODO: Handle index expressions
         
         expression_values[node] = value;
     }
     
     void BoundToHLIR::visit(BoundCallExpression* node) {
         std::vector<HLIR::Value*> args;
+        
+        // Check if this is a method call through member access
+        if (auto member_expr = node->callee->as<BoundMemberAccessExpression>()) {
+            // Evaluate the object to get 'this'
+            auto this_val = evaluate_expression(member_expr->object);
+            if (this_val) {
+                args.push_back(this_val);
+            }
+        }
+        
+        // Add regular arguments
         for (auto arg : node->arguments) {
             args.push_back(evaluate_expression(arg));
         }
         
         if (node->method && node->method->as<FunctionSymbol>()) {
             auto func_sym = static_cast<FunctionSymbol*>(node->method);
-            // TODO: Look up HLIR function from symbol
-            HLIR::Function* func = nullptr; // TODO: module->function_map[func_sym->get_mangled_name()];
+            HLIR::Function* func = module->find_function(func_sym);
             
             if (func) {
                 auto result = builder.call(func, args);
@@ -97,18 +148,143 @@ namespace Bryo::HLIR
     #pragma region Stub Expressions
     
     void BoundToHLIR::visit(BoundMemberAccessExpression* node) {
-        // TODO: Implement field/property access
-        expression_values[node] = nullptr;
+        // Evaluate the object
+        HLIR::Value* obj_val = nullptr;
+        if (node->object) {
+            obj_val = evaluate_expression(node->object);
+        }
+
+        HLIR::Value* result = nullptr;
+
+        if (node->member) {
+            // Field access
+            if (auto field = node->member->as<FieldSymbol>()) {
+                if (obj_val) {
+                    // Get the field offset/index
+                    size_t field_index = 0;
+                    if (field->parent && field->parent->is<TypeSymbol>()) {
+                        auto type_sym = field->parent->as<TypeSymbol>();
+                        // Find field index by searching members
+                        auto field_members = type_sym->get_member(field->name);
+                        // Count fields before this one
+                        // TODO: Proper field indexing - for now use 0
+                        field_index = 0;
+                    }
+                    
+                    // Generate field address instruction
+                    auto addr_result = builder.field_addr(obj_val, field_index, field->type);
+                    // Load the field value
+                    result = builder.load(addr_result, field->type);
+                }
+            }
+            // Variable member (for compatibility)
+            else if (auto var = node->member->as<VariableSymbol>()) {
+                if (obj_val) {
+                    // Treat as field access
+                    size_t field_index = 0;
+                    if (var->parent && var->parent->is<TypeSymbol>()) {
+                        auto type_sym = var->parent->as<TypeSymbol>();
+                        // Find field index by searching members
+                        auto var_members = type_sym->get_member(var->name);
+                        // TODO: Proper field indexing - for now use 0
+                        field_index = 0;
+                    }
+                    
+                    // Generate field address instruction
+                    auto addr_result = builder.field_addr(obj_val, field_index, var->type);
+                    result = builder.load(addr_result, var->type);
+                } else {
+                    // Static member or error
+                    result = get_symbol_value(var);
+                }
+            }
+            // Property access via getter
+            else if (auto prop = node->member->as<PropertySymbol>()) {
+                if (prop->getter) {
+                    if (auto func = module->find_function(prop->getter)) {
+                        std::vector<HLIR::Value*> args;
+                        if (obj_val) args.push_back(obj_val);
+                        result = builder.call(func, args);
+                    }
+                }
+            }
+            // Method reference: no value to produce here, handled at call site
+            else if (node->member->as<FunctionSymbol>()) {
+                // Store the object for potential method call
+                expression_values[node] = obj_val;
+                return;
+            }
+        }
+
+        expression_values[node] = result;
     }
     
     void BoundToHLIR::visit(BoundIndexExpression* node) {
-        // TODO: Implement array/indexer access
-        expression_values[node] = nullptr;
+        // Evaluate object and index
+        auto obj_val = evaluate_expression(node->object);
+        auto index_val = evaluate_expression(node->index);
+        
+        if (!obj_val || !index_val) {
+            expression_values[node] = nullptr;
+            return;
+        }
+        
+        // Get element type from array type
+        TypePtr element_type = nullptr;
+        if (auto array_type = node->object->type->as<ArrayType>()) {
+            element_type = array_type->element;
+        } else if (auto ptr_type = node->object->type->as<PointerType>()) {
+            // Pointer arithmetic - treat as array access
+            element_type = ptr_type->pointee;
+        } else {
+            // Error: Cannot index this type
+            expression_values[node] = nullptr;
+            return;
+        }
+        
+        // Generate element address and load
+        auto addr_result = builder.element_addr(obj_val, index_val, element_type);
+        auto result = builder.load(addr_result, element_type);
+        
+        expression_values[node] = result;
     }
     
     void BoundToHLIR::visit(BoundNewExpression* node) {
-        // TODO: Implement object creation
-        expression_values[node] = nullptr;
+        // Get the type being instantiated
+        TypePtr obj_type = node->type;
+        if (!obj_type) {
+            expression_values[node] = nullptr;
+            return;
+        }
+        
+        // Allocate memory for the object
+        auto alloc_result = builder.alloc(obj_type);
+        
+        // Call constructor if available
+        if (node->constructor) {
+            auto ctor_func = module->find_function(node->constructor);
+            if (ctor_func) {
+                std::vector<HLIR::Value*> args;
+                // First argument is 'this' pointer
+                args.push_back(alloc_result);
+                // Add constructor arguments
+                for (auto arg : node->arguments) {
+                    args.push_back(evaluate_expression(arg));
+                }
+                builder.call(ctor_func, args);
+            }
+        } else {
+            // Default initialization
+            // For named types with fields, initialize each field to default value
+            if (auto named_type = obj_type->as<NamedType>()) {
+                if (auto type_sym = named_type->symbol) {
+                    // TODO: Iterate through fields and initialize them
+                    // For now, just leave uninitialized
+                }
+            }
+        }
+        
+        expression_values[node] = alloc_result;
     }
     
     void BoundToHLIR::visit(BoundArrayCreationExpression* node) {
@@ -129,8 +305,17 @@ namespace Bryo::HLIR
     }
     
     void BoundToHLIR::visit(BoundThisExpression* node) {
-        // TODO: Implement this pointer
-        expression_values[node] = nullptr;
+        // Check if we're in a member function context
+        if (!current_function) {
+            throw std::runtime_error("'this' used outside of function context");
+        }
+        
+        // For non-static member functions, 'this' is always the first parameter
+        if (!current_function->is_static && current_function->params.size() > 0) {
+            expression_values[node] = current_function->params[0];
+        } else {
+            throw std::runtime_error("'this' used outside of member function context");
+        }
     }
     
     void BoundToHLIR::visit(BoundTypeOfExpression* node) {
@@ -318,6 +503,11 @@ namespace Bryo::HLIR
     #pragma region Declarations
     
     void BoundToHLIR::visit(BoundVariableDeclaration* node) {
+        // Skip member variables - they're handled by type declarations
+        if (node->symbol && node->symbol->is<FieldSymbol>()) {
+            return;
+        }
+        
         HLIR::Value* init_value = nullptr;
         
         if (node->initializer) {
@@ -336,7 +526,9 @@ namespace Bryo::HLIR
         auto func_sym = node->symbol->as<FunctionSymbol>();
         if (!func_sym) return;
         
-        auto func = module->create_function(func_sym);
+        // Look up the pre-created function
+        auto func = module->find_function(func_sym);
+        if (!func) return; // Function should already exist
         
         current_function = func;
         auto entry = func->create_block("entry");
@@ -344,6 +536,19 @@ namespace Bryo::HLIR
         current_block = entry;  // Set current_block
         builder.set_function(func);
         builder.set_block(entry);
+        
+        // Check if this is a member function (has a parent TypeSymbol)
+        bool is_member_function = func_sym->parent && func_sym->parent->is<TypeSymbol>();
+        
+        // Add implicit 'this' parameter for member functions
+        if (is_member_function && !func_sym->isStatic) {
+            auto parent_type = func_sym->parent->as<TypeSymbol>();
+            auto this_param = func->create_value(
+                parent_type->type,
+                "this"
+            );
+            func->params.push_back(this_param);
+        }
         
         // Create parameter values
         for (size_t i = 0; i < node->parameters.size(); i++) {
@@ -375,10 +580,14 @@ namespace Bryo::HLIR
     
     void BoundToHLIR::visit(BoundTypeDeclaration* node)
     {
+        // Types are already defined in the module, just process member functions
         auto type_sym = node->symbol->as<TypeSymbol>();
         if (!type_sym) return;
         
-        auto type_def = module->define_type(type_sym);
+        // Process member functions if any
+        for (auto member : node->members) {
+            member->accept(this);
+        }
     }
     
     void BoundToHLIR::visit(BoundNamespaceDeclaration* node) {

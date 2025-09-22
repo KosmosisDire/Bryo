@@ -10,7 +10,6 @@
 #include "ast/ast_code_printer.hpp"
 #include "binding/bound_tree_builder.hpp"
 #include "binding/bound_tree_printer.hpp"
-#include "binding/symbol_resolution_pass.hpp"
 #include "semantic/type_resolver.hpp"
 #include "semantic/symbol_table_builder.hpp"
 #include "hlir/hlir.hpp"
@@ -255,7 +254,7 @@ namespace Bryo
         LOG_INFO(global_symbols->to_string(), LogCategory::COMPILER);
 
         // === Binding ===
-        SymbolResolutionVisitor resolver_visitor(*global_symbols);
+        // SymbolResolutionVisitor resolver_visitor(*global_symbols);
         for (auto &state : file_states)
         {
             if (!state.symbols_complete)
@@ -264,9 +263,9 @@ namespace Bryo
             LOG_INFO("Binding AST for: " + state.file.filename, LogCategory::COMPILER);
 
             // Create binder and bind the AST
-            state.boundTreeBuilder = std::make_unique<BoundTreeBuilder>();
+            state.boundTreeBuilder = std::make_unique<BoundTreeBuilder>(*global_symbols.get());
             state.boundTree = state.boundTreeBuilder->bind(state.ast);
-            resolver_visitor.visit(state.boundTree);
+            // resolver_visitor.visit(state.boundTree);
 
             if (!state.boundTree)
             {
@@ -365,16 +364,16 @@ namespace Bryo
         auto hlir_module = std::make_unique<HLIR::Module>("BryoProgram", global_symbols->get_global_namespace());
         
         // Convert each bound tree to HLIR
-        // for (auto &state : file_states)
-        // {
-        //     if (!state.boundTree)
-        //         continue;
+        for (auto &state : file_states)
+        {
+            if (!state.boundTree)
+                continue;
                 
-        //     LOG_INFO("Generating HLIR for: " + state.file.filename, LogCategory::COMPILER);
+            LOG_INFO("Generating HLIR for: " + state.file.filename, LogCategory::COMPILER);
             
-        //     HLIR::BoundToHLIR converter(hlir_module.get(), global_type_system.get());
-        //     converter.build(state.boundTree);
-        // }
+            HLIR::BoundToHLIR converter(hlir_module.get(), global_type_system.get());
+            converter.build(state.boundTree);
+        }
         
         // Dump HLIR if requested
         if (print_hlir)

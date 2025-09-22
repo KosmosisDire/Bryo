@@ -3,324 +3,388 @@
 namespace Bryo
 {
 
-// === Core Helper Methods ===
+    // === Core Helper Methods ===
 
-void SymbolTableBuilder::push_error(const std::string& error) {
-    errors.push_back(error);
-}
-
-TypePtr SymbolTableBuilder::get_type_from_expr(BaseExprSyntax* typeExpr) {
-    // For now, return unresolved type
-    // This will be resolved in a later semantic pass
-    return typeSystem.get_unresolved();
-}
-
-void SymbolTableBuilder::build(CompilationUnitSyntax* unit) {
-    if (unit) {
-        unit->accept(this);
+    void SymbolTableBuilder::push_error(const std::string &error)
+    {
+        errors.push_back(error);
     }
-}
 
-// === Visitor Implementations ===
-
-// Annotate all nodes with their containing scope
-void SymbolTableBuilder::visit(BaseSyntax* node) {
-
-}
-
-void SymbolTableBuilder::visit(CompilationUnitSyntax* node) {
-    // Start at global namespace
-    symbolTable.push_scope(symbolTable.get_global_namespace());
-    
-    for (auto stmt : node->topLevelStatements) {
-        if (stmt) stmt->accept(this);
+    TypePtr SymbolTableBuilder::get_type_from_expr(BaseExprSyntax *typeExpr)
+    {
+        // For now, return unresolved type
+        // This will be resolved in a later semantic pass
+        return typeSystem.get_unresolved();
     }
-    
-    symbolTable.pop_scope();
-}
 
-void SymbolTableBuilder::visit(NamespaceDeclSyntax* node) {
-
-    
-    if (!node->name) return;
-    
-    std::string name = node->name->get_name();
-    auto ns_symbol = symbolTable.define_namespace(name);
-    
-    if (!ns_symbol) {
-        push_error("Failed to define namespace '" + name + "'");
-        return;
-    }
-    
-    // Enter namespace scope
-    symbolTable.push_scope(ns_symbol);
-    
-    // Process body
-    if (node->body) {
-        for (auto stmt : *node->body) {
-            if (stmt) stmt->accept(this);
+    void SymbolTableBuilder::build(CompilationUnitSyntax *unit)
+    {
+        if (unit)
+        {
+            unit->accept(this);
         }
     }
-    
-    // Exit scope unless file-scoped
-    if (!node->isFileScoped) {
+
+    // === Visitor Implementations ===
+
+    // Annotate all nodes with their containing scope
+    void SymbolTableBuilder::visit(BaseSyntax *node)
+    {
+    }
+
+    void SymbolTableBuilder::visit(CompilationUnitSyntax *node)
+    {
+        // Start at global namespace
+        symbolTable.push_scope(symbolTable.get_global_namespace());
+
+        for (auto stmt : node->topLevelStatements)
+        {
+            if (stmt)
+                stmt->accept(this);
+        }
+
         symbolTable.pop_scope();
     }
-}
 
-void SymbolTableBuilder::visit(TypeDeclSyntax* node) {
+    void SymbolTableBuilder::visit(NamespaceDeclSyntax *node)
+    {
 
-    
-    if (!node->name) return;
-    
-    std::string name = node->name->get_name();
-    
-    // Create the type (initially unresolved)
-    auto type = typeSystem.get_unresolved();
-    auto type_symbol = symbolTable.define_type(name, type);
-    
-    if (!type_symbol) {
-        push_error("Failed to define type '" + name + "'");
-        return;
-    }
-    
-    // Apply modifiers
-    if (has_flag(node->modifiers, ModifierKindFlags::Static)) {
-        type_symbol->isStatic = true;
-    }
-    if (has_flag(node->modifiers, ModifierKindFlags::Abstract)) {
-        type_symbol->isAbstract = true;
-    }
-    
-    // Set access level
-    type_symbol->access = get_access_level(node->modifiers);
-    
-    // Enter type scope
-    symbolTable.push_scope(type_symbol);
-    
-    // Process members
-    for (auto member : node->members) {
-        if (member) member->accept(this);
-    }
-    
-    symbolTable.pop_scope();
-}
+        if (!node->name)
+            return;
 
-void SymbolTableBuilder::visit(FunctionDeclSyntax* node) {
+        std::string name = node->name->get_name();
+        auto ns_symbol = symbolTable.define_namespace(name);
 
-    
-    if (!node->name) return;
-    
-    std::string name = node->name->get_name();
-    TypePtr return_type = get_type_from_expr(node->returnType);
-    
-    auto func_symbol = symbolTable.define_function(name, return_type);
-    if (!func_symbol) {
-        push_error("Failed to define function '" + name + "'");
-        return;
+        if (!ns_symbol)
+        {
+            push_error("Failed to define namespace '" + name + "'");
+            return;
+        }
+
+        // Enter namespace scope
+        symbolTable.push_scope(ns_symbol);
+
+        // Process body
+        if (node->body)
+        {
+            for (auto stmt : *node->body)
+            {
+                if (stmt)
+                    stmt->accept(this);
+            }
+        }
+
+        // Exit scope unless file-scoped
+        if (!node->isFileScoped)
+        {
+            symbolTable.pop_scope();
+        }
     }
-    
-    // Apply modifiers
-    if (has_flag(node->modifiers, ModifierKindFlags::Static)) {
-        func_symbol->isStatic = true;
+
+    void SymbolTableBuilder::visit(TypeDeclSyntax *node)
+    {
+
+        if (!node->name)
+            return;
+
+        std::string name = node->name->get_name();
+
+        // Create the type (initially unresolved)
+        auto type = typeSystem.get_unresolved();
+        auto type_symbol = symbolTable.define_type(name, type);
+
+        if (!type_symbol)
+        {
+            push_error("Failed to define type '" + name + "'");
+            return;
+        }
+
+        // Apply modifiers
+        if (has_flag(node->modifiers, ModifierKindFlags::Static))
+        {
+            type_symbol->isStatic = true;
+        }
+        if (has_flag(node->modifiers, ModifierKindFlags::Abstract))
+        {
+            type_symbol->isAbstract = true;
+        }
+
+        // Set access level
+        type_symbol->access = get_access_level(node->modifiers);
+
+        // Enter type scope
+        symbolTable.push_scope(type_symbol);
+
+        // Process members
+        for (auto member : node->members)
+        {
+            if (member)
+                member->accept(this);
+        }
+
+        symbolTable.pop_scope();
     }
-    if (has_flag(node->modifiers, ModifierKindFlags::Virtual)) {
-        func_symbol->isVirtual = true;
-    }
-    if (has_flag(node->modifiers, ModifierKindFlags::Override)) {
-        func_symbol->isOverride = true;
-    }
-    if (has_flag(node->modifiers, ModifierKindFlags::Abstract)) {
-        func_symbol->isAbstract = true;
-    }
-    
-    func_symbol->access = get_access_level(node->modifiers);
-    
-    // Enter function scope
-    symbolTable.push_scope(func_symbol);
-    currentParameterIndex = 0;
-    
-    // Process parameters
-    std::vector<ParameterSymbol*> params;
-    for (auto param_decl : node->parameters) {
-        if (param_decl) {
-            param_decl->accept(this);
-            
-            // Extract the created parameter symbol
-            if (param_decl->param && param_decl->param->name) {
-                std::string param_name = param_decl->param->name->get_name();
-                if (auto param_sym = symbolTable.resolve(param_name)) {
-                    if (auto p = param_sym->as<ParameterSymbol>()) {
-                        params.push_back(p);
+
+    void SymbolTableBuilder::visit(FunctionDeclSyntax *node)
+    {
+
+        if (!node->name)
+            return;
+
+        std::string name = node->name->get_name();
+        TypePtr return_type = get_type_from_expr(node->returnType);
+
+        auto func_symbol = symbolTable.define_function(name, return_type);
+        if (!func_symbol)
+        {
+            push_error("Failed to define function '" + name + "'");
+            return;
+        }
+
+        // Apply modifiers
+        if (has_flag(node->modifiers, ModifierKindFlags::Static))
+        {
+            func_symbol->isStatic = true;
+        }
+        if (has_flag(node->modifiers, ModifierKindFlags::Virtual))
+        {
+            func_symbol->isVirtual = true;
+        }
+        if (has_flag(node->modifiers, ModifierKindFlags::Override))
+        {
+            func_symbol->isOverride = true;
+        }
+        if (has_flag(node->modifiers, ModifierKindFlags::Abstract))
+        {
+            func_symbol->isAbstract = true;
+        }
+
+        func_symbol->access = get_access_level(node->modifiers);
+
+        // Enter function scope
+        symbolTable.push_scope(func_symbol);
+        currentParameterIndex = 0;
+
+        // Process parameters
+        std::vector<ParameterSymbol *> params;
+        for (auto param_decl : node->parameters)
+        {
+            if (param_decl)
+            {
+                param_decl->accept(this);
+
+                // Extract the created parameter symbol
+                if (param_decl->param && param_decl->param->name)
+                {
+                    std::string param_name = param_decl->param->name->get_name();
+                    if (auto param_sym = symbolTable.resolve(param_name))
+                    {
+                        if (auto p = param_sym->as<ParameterSymbol>())
+                        {
+                            params.push_back(p);
+                        }
                     }
                 }
             }
         }
-    }
-    func_symbol->parameters = std::move(params);
-    
-    // Process body
-    if (node->body) {
-        // Don't create a new scope - BlockSyntax will handle that
-        for (auto stmt : node->body->statements) {
-            if (stmt) stmt->accept(this);
+        func_symbol->parameters = std::move(params);
+
+        // Process body
+        if (node->body)
+        {
+            // Don't create a new scope - BlockSyntax will handle that
+            for (auto stmt : node->body->statements)
+            {
+                if (stmt)
+                    stmt->accept(this);
+            }
         }
+
+        symbolTable.pop_scope();
     }
-    
-    symbolTable.pop_scope();
-}
 
-void SymbolTableBuilder::visit(ParameterDeclSyntax* node) {
+    void SymbolTableBuilder::visit(ParameterDeclSyntax *node)
+    {
 
-    
-    if (!node->param || !node->param->name) return;
-    
-    std::string name = node->param->name->get_name();
-    TypePtr type = get_type_from_expr(node->param->type);
-    
-    auto param_symbol = symbolTable.define_parameter(name, type, currentParameterIndex++);
-    if (!param_symbol) {
-        push_error("Failed to define parameter '" + name + "'");
+        if (!node->param || !node->param->name)
+            return;
+
+        std::string name = node->param->name->get_name();
+        TypePtr type = get_type_from_expr(node->param->type);
+
+        auto param_symbol = symbolTable.define_parameter(name, type, currentParameterIndex++);
+        if (!param_symbol)
+        {
+            push_error("Failed to define parameter '" + name + "'");
+        }
+
+        // Visit children for annotation
+        if (node->param)
+            node->param->accept(this);
+        if (node->defaultValue)
+            node->defaultValue->accept(this);
     }
-    
-    // Visit children for annotation
-    if (node->param) node->param->accept(this);
-    if (node->defaultValue) node->defaultValue->accept(this);
-}
 
-void SymbolTableBuilder::visit(VariableDeclSyntax* node) {
+    void SymbolTableBuilder::visit(VariableDeclSyntax *node)
+    {
+        if (!node->variable || !node->variable->name)
+            return;
 
-    
-    if (!node->variable || !node->variable->name) return;
-    
-    std::string name = node->variable->name->get_name();
-    TypePtr type = get_type_from_expr(node->variable->type);
-    
-    // Determine if we're in a type (field) or function/block (local)
-    auto current = symbolTable.get_current_scope();
-    if (current && current->kind == SymbolKind::Type) {
-        // Field
+        std::string name = node->variable->name->get_name();
+        TypePtr type = get_type_from_expr(node->variable->type);
+
+        // Determine if we're in a type (field) or function/block (local)
+        auto current = symbolTable.get_current_scope();
+        if (current && current->kind == SymbolKind::Type)
+        {
+            // Field
+            auto field_symbol = symbolTable.define_field(name, type);
+            if (!field_symbol)
+            {
+                push_error("Failed to define field '" + name + "'");
+            }
+        }
+        else
+        {
+            // Local variable
+            auto local_symbol = symbolTable.define_local(name, type);
+            if (!local_symbol)
+            {
+                push_error("Failed to define local variable '" + name + "'");
+            }
+        }
+
+        // Visit children
+        if (node->variable)
+            node->variable->accept(this);
+        if (node->initializer)
+            node->initializer->accept(this);
+    }
+
+    void SymbolTableBuilder::visit(PropertyDeclSyntax *node)
+    {
+
+        if (!node->variable || !node->variable->variable ||
+            !node->variable->variable->name)
+            return;
+
+        std::string name = node->variable->variable->name->get_name();
+        TypePtr type = get_type_from_expr(node->variable->variable->type);
+
+        // Properties are currently just treated as fields
+        // You could extend this to create a PropertySymbol if needed
         auto field_symbol = symbolTable.define_field(name, type);
-        if (!field_symbol) {
-            push_error("Failed to define field '" + name + "'");
+        if (!field_symbol)
+        {
+            push_error("Failed to define property '" + name + "'");
         }
-    } else {
-        // Local variable
-        auto local_symbol = symbolTable.define_local(name, type);
-        if (!local_symbol) {
-            push_error("Failed to define local variable '" + name + "'");
+
+        // Visit children
+        if (node->variable)
+            node->variable->accept(this);
+        if (node->getter)
+            node->getter->accept(this);
+        if (node->setter)
+            node->setter->accept(this);
+    }
+
+    void SymbolTableBuilder::visit(BlockSyntax *node)
+    {
+
+        // Create anonymous block scope
+        auto block_ns = symbolTable.define_namespace("$block");
+        if (!block_ns)
+        {
+            push_error("Failed to create block scope");
+            return;
         }
-    }
-    
-    // Visit children
-    if (node->variable) node->variable->accept(this);
-    if (node->initializer) node->initializer->accept(this);
-}
 
-void SymbolTableBuilder::visit(PropertyDeclSyntax* node) {
+        symbolTable.push_scope(block_ns);
 
-    
-    if (!node->variable || !node->variable->variable || 
-        !node->variable->variable->name) return;
-    
-    std::string name = node->variable->variable->name->get_name();
-    TypePtr type = get_type_from_expr(node->variable->variable->type);
-    
-    // Properties are currently just treated as fields
-    // You could extend this to create a PropertySymbol if needed
-    auto field_symbol = symbolTable.define_field(name, type);
-    if (!field_symbol) {
-        push_error("Failed to define property '" + name + "'");
-    }
-    
-    // Visit children
-    if (node->variable) node->variable->accept(this);
-    if (node->getter) node->getter->accept(this);
-    if (node->setter) node->setter->accept(this);
-}
+        for (auto stmt : node->statements)
+        {
+            if (stmt)
+                stmt->accept(this);
+        }
 
-void SymbolTableBuilder::visit(BlockSyntax* node) {
-
-    
-    // Create anonymous block scope
-    auto block_ns = symbolTable.define_namespace("$block");
-    if (!block_ns) {
-        push_error("Failed to create block scope");
-        return;
-    }
-    
-    symbolTable.push_scope(block_ns);
-    
-    for (auto stmt : node->statements) {
-        if (stmt) stmt->accept(this);
-    }
-    
-    symbolTable.pop_scope();
-}
-
-void SymbolTableBuilder::visit(IfStmtSyntax* node) {
-
-    
-    // Visit condition in current scope
-    if (node->condition) node->condition->accept(this);
-    
-    // Create scope for then branch
-    if (node->thenBranch) {
-        auto then_ns = symbolTable.define_namespace("$if_then");
-        symbolTable.push_scope(then_ns);
-        node->thenBranch->accept(this);
         symbolTable.pop_scope();
     }
-    
-    // Create scope for else branch
-    if (node->elseBranch) {
-        auto else_ns = symbolTable.define_namespace("$if_else");
-        symbolTable.push_scope(else_ns);
-        node->elseBranch->accept(this);
+
+    void SymbolTableBuilder::visit(IfStmtSyntax *node)
+    {
+
+        // Visit condition in current scope
+        if (node->condition)
+            node->condition->accept(this);
+
+        // Create scope for then branch
+        if (node->thenBranch)
+        {
+            auto then_ns = symbolTable.define_namespace("$if_then");
+            symbolTable.push_scope(then_ns);
+            node->thenBranch->accept(this);
+            symbolTable.pop_scope();
+        }
+
+        // Create scope for else branch
+        if (node->elseBranch)
+        {
+            auto else_ns = symbolTable.define_namespace("$if_else");
+            symbolTable.push_scope(else_ns);
+            node->elseBranch->accept(this);
+            symbolTable.pop_scope();
+        }
+    }
+
+    void SymbolTableBuilder::visit(WhileStmtSyntax *node)
+    {
+
+        auto while_ns = symbolTable.define_namespace("$while");
+        symbolTable.push_scope(while_ns);
+
+        if (node->condition)
+            node->condition->accept(this);
+        if (node->body)
+            node->body->accept(this);
+
         symbolTable.pop_scope();
     }
-}
 
-void SymbolTableBuilder::visit(WhileStmtSyntax* node) {
+    void SymbolTableBuilder::visit(ForStmtSyntax *node)
+    {
 
-    
-    auto while_ns = symbolTable.define_namespace("$while");
-    symbolTable.push_scope(while_ns);
-    
-    if (node->condition) node->condition->accept(this);
-    if (node->body) node->body->accept(this);
-    
-    symbolTable.pop_scope();
-}
+        auto for_ns = symbolTable.define_namespace("$for");
+        symbolTable.push_scope(for_ns);
 
-void SymbolTableBuilder::visit(ForStmtSyntax* node) {
+        if (node->initializer)
+            node->initializer->accept(this);
+        if (node->condition)
+            node->condition->accept(this);
+        for (auto update : node->updates)
+        {
+            if (update)
+                update->accept(this);
+        }
+        if (node->body)
+            node->body->accept(this);
 
-    
-    auto for_ns = symbolTable.define_namespace("$for");
-    symbolTable.push_scope(for_ns);
-    
-    if (node->initializer) node->initializer->accept(this);
-    if (node->condition) node->condition->accept(this);
-    for (auto update : node->updates) {
-        if (update) update->accept(this);
+        symbolTable.pop_scope();
     }
-    if (node->body) node->body->accept(this);
-    
-    symbolTable.pop_scope();
-}
 
-// === Private Helper Methods ===
+    // === Private Helper Methods ===
 
-Accessibility SymbolTableBuilder::get_access_level(ModifierKindFlags modifiers) {
-    if (has_flag(modifiers, ModifierKindFlags::Public))
-        return Accessibility::Public;
-    if (has_flag(modifiers, ModifierKindFlags::Protected))
-        return Accessibility::Protected;
-    return Accessibility::Private;
-}
+    Accessibility SymbolTableBuilder::get_access_level(ModifierKindFlags modifiers)
+    {
+        if (has_flag(modifiers, ModifierKindFlags::Public))
+            return Accessibility::Public;
+        if (has_flag(modifiers, ModifierKindFlags::Protected))
+            return Accessibility::Protected;
+        return Accessibility::Private;
+    }
 
-bool SymbolTableBuilder::has_flag(ModifierKindFlags flags, ModifierKindFlags flag) {
-    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
-}
+    bool SymbolTableBuilder::has_flag(ModifierKindFlags flags, ModifierKindFlags flag)
+    {
+        return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
+    }
 
 } // namespace Bryo

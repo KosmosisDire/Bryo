@@ -764,10 +764,74 @@ namespace Bryo
                 }
             }
         }
-        // TODO: Handle member function calls
+        else if (auto memberExpr = node->callee->as<BoundMemberAccessExpression>())
+        {
+            // Handle method calls (object.method(...))
+            if (memberExpr->member)
+            {
+                if (auto method = memberExpr->member->as<FunctionSymbol>())
+                {
+                    node->method = method;
+                    
+                    // Check parameter count
+                    if (method->parameters.size() != argTypes.size())
+                    {
+                        report_error(node, "Argument count mismatch: expected " +
+                                           std::to_string(method->parameters.size()) + ", got " +
+                                           std::to_string(argTypes.size()));
+                    }
+                    else
+                    {
+                        // Check argument types
+                        for (size_t i = 0; i < argTypes.size(); ++i)
+                        {
+                            TypePtr paramType = apply_substitution(method->parameters[i]->type);
+                            check_implicit_conversion(argTypes[i], paramType, node,
+                                                      "argument " + std::to_string(i + 1));
+                        }
+                    }
+                    
+                    annotate_expression(node, apply_substitution(method->return_type));
+                }
+                else if (auto container = memberExpr->member->as<ContainerSymbol>())
+                {
+                    // Handle overloaded methods
+                    auto overloads = container->get_functions(memberExpr->memberName);
+                    node->method = resolve_overload(overloads, argTypes);
+                    
+                    if (!node->method)
+                    {
+                        std::stringstream ss;
+                        ss << "No matching overload for '" << memberExpr->memberName << "' with argument types (";
+                        for (size_t i = 0; i < argTypes.size(); ++i)
+                        {
+                            if (i > 0)
+                                ss << ", ";
+                            ss << argTypes[i]->get_name();
+                        }
+                        ss << ")";
+                        report_error(node, ss.str());
+                        annotate_expression(node, typeSystem.get_unresolved());
+                        return;
+                    }
+                    
+                    annotate_expression(node, apply_substitution(node->method->return_type));
+                }
+                else
+                {
+                    report_error(node, "Member '" + memberExpr->memberName + "' is not callable");
+                    annotate_expression(node, typeSystem.get_unresolved());
+                }
+            }
+            else
+            {
+                report_error(node, "Cannot resolve member for method call");
+                annotate_expression(node, typeSystem.get_unresolved());
+            }
+        }
         else
         {
-            report_error(node, "Complex call expressions not yet supported");
+            report_error(node, "Unsupported callee expression");
             annotate_expression(node, typeSystem.get_unresolved());
         }
     }
@@ -818,8 +882,20 @@ namespace Bryo
         }
         else if (auto funcSym = node->member->as<FunctionSymbol>())
         {
-            // Method reference - type determined by call context
-            annotate_expression(node, typeSystem.get_unresolved(), node->member);
+            // Create a proper function type for method reference
+            std::vector<TypePtr> paramTypes;
+            for (auto param : funcSym->parameters)
+            {
+                if (param && param->type)
+                {
+                    paramTypes.push_back(apply_substitution(param->type));
+                }
+            }
+            TypePtr funcType = typeSystem.get_function(
+                apply_substitution(funcSym->return_type),
+                paramTypes
+            );
+            annotate_expression(node, funcType, node->member);
         }
         else
         {
