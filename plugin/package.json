@@ -1,0 +1,32 @@
+{
+  "name": "bryo-syntax",
+  "displayName": "Bryo Language Support",
+  "description": "Syntax highlighting for Bryo language",
+  "version": "0.1.0",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "bryo",
+        "aliases": ["Bryo", "bryo"],
+        "extensions": [".bryo", ".bry"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/bryo-icon.svg",
+          "dark": "./icons/bryo-icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "bryo",
+        "scopeName": "source.bryo",
+        "path": "./syntaxes/bryo.tmLanguage.json"
+      }
+    ]
+  }
+}
