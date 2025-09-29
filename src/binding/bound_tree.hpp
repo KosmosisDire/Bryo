@@ -378,11 +378,28 @@ namespace Bryo
         BOUND_ACCEPT_VISITOR
     };
 
+    // Property accessor (getter or setter)
+    // TODO: Maybe we sould actually be creating function symbols out of properties to begin with?
+    struct BoundPropertyAccessor
+    {
+        enum class Kind { Get, Set };
+        Kind kind;
+        
+        // For arrow properties: just an expression
+        // For block properties: a statement (block)
+        BoundExpression *expression = nullptr;  // For arrow syntax: => expr
+        BoundStatement *body = nullptr;         // For block syntax: { ... }
+        
+        // Function symbol for the generated getter/setter function
+        FunctionSymbol *function_symbol = nullptr;
+    };
+
     struct BoundPropertyDeclaration : BoundDeclaration
     {
         BoundExpression *typeExpression = nullptr;
-        BoundStatement *getter = nullptr;
-        BoundStatement *setter = nullptr;
+        BoundPropertyAccessor *getter = nullptr;
+        BoundPropertyAccessor *setter = nullptr;
+        BoundExpression *initializer = nullptr;  // For auto-properties with initial value
         BOUND_ACCEPT_VISITOR
     };
 
@@ -654,10 +671,23 @@ namespace Bryo
         {
             if (node->typeExpression)
                 node->typeExpression->accept(this);
+            if (node->initializer)
+                node->initializer->accept(this);
+                
             if (node->getter)
-                node->getter->accept(this);
+            {
+                if (node->getter->expression)
+                    node->getter->expression->accept(this);
+                if (node->getter->body)
+                    node->getter->body->accept(this);
+            }
             if (node->setter)
-                node->setter->accept(this);
+            {
+                if (node->setter->expression)
+                    node->setter->expression->accept(this);
+                if (node->setter->body)
+                    node->setter->body->accept(this);
+            }
         }
 
         void visit(BoundTypeDeclaration *node) override

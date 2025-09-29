@@ -1,6 +1,7 @@
 // hlir_builder.cpp
 #include "bound_to_hlir.hpp"
 #include <cassert>
+#include <iostream>
 
 namespace Bryo::HLIR
 {
@@ -101,13 +102,10 @@ namespace Bryo::HLIR
                 }
                 // Property setter
                 else if (auto prop = member->member->as<PropertySymbol>()) {
-                    if (prop->setter) {
-                        if (auto func = module->find_function(prop->setter)) {
-                            std::vector<HLIR::Value*> args;
-                            args.push_back(obj_val);  // this
-                            args.push_back(value);     // value
-                            builder.call(func, args);
-                        }
+                    if (prop->has_setter) {
+                        // For now, properties can't be assigned until we generate setter functions
+                        // TODO: Generate setter functions in HLIR and call them here
+                        std::cerr << "Warning: Property setters not yet implemented in HLIR\n";
                     }
                 }
             }
@@ -200,12 +198,11 @@ namespace Bryo::HLIR
             }
             // Property access via getter
             else if (auto prop = node->member->as<PropertySymbol>()) {
-                if (prop->getter) {
-                    if (auto func = module->find_function(prop->getter)) {
-                        std::vector<HLIR::Value*> args;
-                        if (obj_val) args.push_back(obj_val);
-                        result = builder.call(func, args);
-                    }
+                if (prop->has_getter) {
+                    // For now, properties can't be accessed until we generate getter functions
+                    // TODO: Generate getter functions in HLIR and call them here
+                    std::cerr << "Warning: Property getters not yet implemented in HLIR\n";
+                    result = nullptr;
                 }
             }
             // Method reference: no value to produce here, handled at call site
@@ -575,7 +572,18 @@ namespace Bryo::HLIR
     }
     
     void BoundToHLIR::visit(BoundPropertyDeclaration* node) {
-        // TODO: Generate getter/setter functions
+        auto prop_sym = node->symbol->as<PropertySymbol>();
+        if (!prop_sym) return;
+        
+        // Generate getter function if present
+        if (node->getter && prop_sym->has_getter) {
+            generate_property_getter(node, node->getter);
+        }
+        
+        // Generate setter function if present
+        if (node->setter && prop_sym->has_setter) {
+            generate_property_setter(node, node->setter);
+        }
     }
     
     void BoundToHLIR::visit(BoundTypeDeclaration* node)
@@ -667,6 +675,128 @@ namespace Bryo::HLIR
             case UnaryOperatorKind::Not: return HLIR::Opcode::Not;
             case UnaryOperatorKind::BitwiseNot: return HLIR::Opcode::BitNot;
             default: return HLIR::Opcode::Neg; // TODO: Handle inc/dec and others
+        }
+    }
+    
+    void BoundToHLIR::generate_property_getter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* getter) {
+        auto prop_sym = prop_decl->symbol->as<PropertySymbol>();
+        if (!prop_sym || !getter->function_symbol) return;
+        
+        std::cout << "INFO: Generating getter function: " << getter->function_symbol->get_qualified_name() << std::endl;
+        
+        // Find the HLIR function that was created from the function symbol
+        auto getter_func = module->find_function(getter->function_symbol);
+        if (!getter_func) {
+            std::cerr << "ERROR: Could not find HLIR function for getter symbol" << std::endl;
+            return;
+        }
+        
+        // Add 'this' parameter for instance property
+        if (prop_sym->parent && prop_sym->parent->is<TypeSymbol>()) {
+            auto parent_type = prop_sym->parent->as<TypeSymbol>();
+            auto this_param = getter_func->create_value(parent_type->type, "this");
+            getter_func->params.push_back(this_param);
+        }
+        
+        // Create function body
+        auto entry_block = getter_func->create_block("entry");
+        getter_func->entry = entry_block;
+        
+        // Set up builder context
+        auto prev_function = current_function;
+        auto prev_block = current_block;
+        current_function = getter_func;
+        current_block = entry_block;
+        builder.set_function(getter_func);
+        builder.set_block(entry_block);
+        
+        // Generate getter body
+        if (getter->expression) {
+            // Arrow property: => expression
+            auto result = evaluate_expression(getter->expression);
+            builder.ret(result);
+        } else if (getter->body) {
+            // Block property: { ... }
+            getter->body->accept(this);
+            // Add implicit return if no explicit return
+            if (!current_block->terminator()) {
+                builder.ret(nullptr);
+            }
+        } else {
+            // Empty getter - return default value
+            auto default_val = builder.const_null(prop_sym->type);
+            builder.ret(default_val);
+        }
+        
+        // Restore context
+        current_function = prev_function;
+        current_block = prev_block;
+        if (prev_function) {
+            builder.set_function(prev_function);
+            if (prev_block) {
+                builder.set_block(prev_block);
+            }
+        }
+    }
+    
+    void BoundToHLIR::generate_property_setter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* setter) {
+        auto prop_sym = prop_decl->symbol->as<PropertySymbol>();
+        if (!prop_sym || !setter->function_symbol) return;
+        
+        std::cout << "INFO: Generating setter function: " << setter->function_symbol->get_qualified_name() << std::endl;
+        
+        // Find the HLIR function that was created from the function symbol
+        auto setter_func = module->find_function(setter->function_symbol);
+        if (!setter_func) {
+            std::cerr << "ERROR: Could not find HLIR function for setter symbol" << std::endl;
+            return;
+        }
+        
+        // Add 'this' parameter for instance property
+        if (prop_sym->parent && prop_sym->parent->is<TypeSymbol>()) {
+            auto parent_type = prop_sym->parent->as<TypeSymbol>();
+            auto this_param = setter_func->create_value(parent_type->type, "this");
+            setter_func->params.push_back(this_param);
+        }
+        
+        // Add 'value' parameter
+        auto value_param = setter_func->create_value(prop_sym->type, "value");
+        setter_func->params.push_back(value_param);
+        
+        // Create function body
+        auto entry_block = setter_func->create_block("entry");
+        setter_func->entry = entry_block;
+        
+        // Set up builder context
+        auto prev_function = current_function;
+        auto prev_block = current_block;
+        current_function = setter_func;
+        current_block = entry_block;
+        builder.set_function(setter_func);
+        builder.set_block(entry_block);
+        
+        // Generate setter body
+        if (setter->expression) {
+            // Arrow setter: => expression (assign to expression)
+            evaluate_expression(setter->expression);
+        } else if (setter->body) {
+            // Block setter: { ... }
+            setter->body->accept(this);
+        }
+        
+        // Add implicit void return if no explicit return
+        if (!current_block->terminator()) {
+            builder.ret(nullptr);
+        }
+        
+        // Restore context
+        current_function = prev_function;
+        current_block = prev_block;
+        if (prev_function) {
+            builder.set_function(prev_function);
+            if (prev_block) {
+                builder.set_block(prev_block);
+            }
         }
     }
 }

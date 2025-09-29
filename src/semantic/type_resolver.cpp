@@ -335,7 +335,7 @@ namespace Bryo
 
             if (auto prop = symbol->as<PropertySymbol>())
             {
-                if (prop->setter)
+                if (prop->has_setter)
                     return ValueCategory::LValue;
             }
         }
@@ -1349,10 +1349,44 @@ namespace Bryo
             }
         }
 
+        // Process getter first to infer type if needed
         if (node->getter)
-            node->getter->accept(this);
+        {
+            if (node->getter->expression)
+            {
+                node->getter->expression->accept(this);
+                
+                // Infer property type from getter expression if no explicit type
+                if (node->symbol && (!node->typeExpression || node->symbol->as<PropertySymbol>()->type->is<UnresolvedType>()))
+                {
+                    if (auto propSym = node->symbol->as<PropertySymbol>())
+                    {
+                        TypePtr exprType = apply_substitution(node->getter->expression->type);
+                        if (exprType && !exprType->is<UnresolvedType>())
+                        {
+                            propSym->type = exprType;
+                            
+                            // Also update the getter function's return type
+                            // TODO: Maybe we sould actually be creating function symbols out of properties to begin with?
+                            if (node->getter && node->getter->function_symbol)
+                            {
+                                node->getter->function_symbol->return_type = exprType;
+                            }
+                        }
+                    }
+                }
+            }
+            if (node->getter->body)
+                node->getter->body->accept(this);
+        }
+        
         if (node->setter)
-            node->setter->accept(this);
+        {
+            if (node->setter->expression)
+                node->setter->expression->accept(this);
+            if (node->setter->body)
+                node->setter->body->accept(this);
+        }
     }
 
     void TypeResolver::visit(BoundTypeDeclaration *node)

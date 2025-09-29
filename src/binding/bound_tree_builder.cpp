@@ -252,22 +252,77 @@ namespace Bryo
             }
         }
 
+        // Bind initializer if present
+        if (syntax->variable && syntax->variable->initializer)
+        {
+            bound->initializer = bind_expression(syntax->variable->initializer);
+        }
+
         // Resolve the symbol
         bound->symbol = resolve_symbol({bound->name});
 
-        // Enter property scope for accessors
-        ScopeGuard scope(symbol_table_, bound->symbol);
-
+        // Bind getter if present
         if (syntax->getter)
         {
-            // TODO: Implement getter binding
-            // bound->getter = bind_statement(syntax->getter);
+            auto accessor = arena_.make<BoundPropertyAccessor>();
+            accessor->kind = BoundPropertyAccessor::Kind::Get;
+            
+            // Find the getter function symbol as a child of the property
+            if (auto prop_sym = bound->symbol->as<PropertySymbol>()) {
+                auto getter_members = prop_sym->get_member("get");
+                if (!getter_members.empty()) {
+                    if (auto func_sym = getter_members[0]->as<FunctionSymbol>()) {
+                        accessor->function_symbol = func_sym;
+                    }
+                }
+            }
+            
+            // Handle the variant body
+            if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->getter->body))
+            {
+                // Arrow property: => expr
+                accessor->expression = bind_expression(*expr_ptr);
+            }
+            else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->getter->body))
+            {
+                // Block property: { ... }
+                accessor->body = bind_statement(*block_ptr);
+            }
+            // std::monostate case is auto-implemented, leave both null
+            
+            bound->getter = accessor;
         }
 
+        // Bind setter if present
         if (syntax->setter)
         {
-            // TODO: Implement setter binding
-            // bound->setter = bind_statement(syntax->setter);
+            auto accessor = arena_.make<BoundPropertyAccessor>();
+            accessor->kind = BoundPropertyAccessor::Kind::Set;
+            
+            // Find the setter function symbol as a child of the property
+            if (auto prop_sym = bound->symbol->as<PropertySymbol>()) {
+                auto setter_members = prop_sym->get_member("set");
+                if (!setter_members.empty()) {
+                    if (auto func_sym = setter_members[0]->as<FunctionSymbol>()) {
+                        accessor->function_symbol = func_sym;
+                    }
+                }
+            }
+            
+            // Handle the variant body
+            if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->setter->body))
+            {
+                // Arrow setter (rare): => expr
+                accessor->expression = bind_expression(*expr_ptr);
+            }
+            else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->setter->body))
+            {
+                // Block setter: { ... }
+                accessor->body = bind_statement(*block_ptr);
+            }
+            // std::monostate case is auto-implemented, leave both null
+            
+            bound->setter = accessor;
         }
 
         return bound;

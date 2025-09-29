@@ -673,24 +673,60 @@ namespace Bryo
             IndentGuard guard(this);
             
             if (node->typeExpression) {
-                printIndent();
-                std::cout << "type:\n";
-                IndentGuard typeGuard(this);
-                node->typeExpression->accept(this);
+            printIndent();
+            std::cout << "type:\n";
+            IndentGuard typeGuard(this);
+            node->typeExpression->accept(this);
             }
             
             if (node->getter) {
+            printIndent();
+            std::cout << "getter:\n";
+            IndentGuard getterGuard(this);
+            
+            std::stringstream getterExtra;
+            getterExtra << "kind:get";
+            printNode("PropertyAccessor", getterExtra.str());
+            IndentGuard accessorGuard(this);
+            
+            if (node->getter->expression) {
                 printIndent();
-                std::cout << "getter:\n";
-                IndentGuard getterGuard(this);
-                node->getter->accept(this);
+                std::cout << "expression:\n";
+                IndentGuard exprGuard(this);
+                node->getter->expression->accept(this);
+            }
+            
+            if (node->getter->body) {
+                printIndent();
+                std::cout << "body:\n";
+                IndentGuard bodyGuard(this);
+                node->getter->body->accept(this);
+            }
             }
             
             if (node->setter) {
+            printIndent();
+            std::cout << "setter:\n";
+            IndentGuard setterGuard(this);
+            
+            std::stringstream setterExtra;
+            setterExtra << "kind:set";
+            printNode("PropertyAccessor", setterExtra.str());
+            IndentGuard accessorGuard(this);
+            
+            if (node->setter->expression) {
                 printIndent();
-                std::cout << "setter:\n";
-                IndentGuard setterGuard(this);
-                node->setter->accept(this);
+                std::cout << "expression:\n";
+                IndentGuard exprGuard(this);
+                node->setter->expression->accept(this);
+            }
+            
+            if (node->setter->body) {
+                printIndent();
+                std::cout << "body:\n";
+                IndentGuard bodyGuard(this);
+                node->setter->body->accept(this);
+            }
             }
         }
         

@@ -101,5 +101,9 @@ namespace Bryo::HLIR
         void resolve_pending_phis();
         HLIR::Opcode get_binary_opcode(BinaryOperatorKind kind);
         HLIR::Opcode get_unary_opcode(UnaryOperatorKind kind);
+        
+        // Property helper methods
+        void generate_property_getter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* getter);
+        void generate_property_setter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* setter);
     };
 }

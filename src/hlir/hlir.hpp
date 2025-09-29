@@ -494,7 +494,7 @@ namespace Bryo::HLIR
             functions.push_back(std::move(func));
             return ptr;
         }
-
+        
         TypeDefinition *define_type(TypeSymbol *sym)
         {
             auto def = std::make_unique<TypeDefinition>();
@@ -509,6 +509,14 @@ namespace Bryo::HLIR
                 }
                 else if (auto type_sym = member->as<TypeSymbol>()) {
                     define_type(type_sym);
+                }
+                else if (auto prop_sym = member->as<PropertySymbol>()) {
+                    // Create functions for property getter/setter
+                    for (const auto &prop_member : prop_sym->member_order) {
+                        if (auto prop_func_sym = prop_member->as<FunctionSymbol>()) {
+                            create_function(prop_func_sym);
+                        }
+                    }
                 }
             }
 

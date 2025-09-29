@@ -1,4 +1,15 @@
 type Test
 {
-    var Prop => 10 + 5;
+    var stuff = 10;
+
+    -- TODO: Fix setter HLIR generation
+    -- TODO: Fix backing field generation
+    var Health = 10
+    {
+        get => 10
+        set
+        {
+            stuff += 1
+        }
+    }
 }

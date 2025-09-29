@@ -220,11 +220,11 @@ namespace Bryo
 
     #pragma region Property Symbol
     
+    // TODO: Maybe we sould actually be creating function symbols out of properties to begin with?
     struct PropertySymbol : ContainerSymbol {
         TypePtr type;
-        FunctionSymbol* getter = nullptr;
-        FunctionSymbol* setter = nullptr;
-        VariableSymbol* backing_field = nullptr;  // For auto-properties
+        bool has_getter = false;
+        bool has_setter = false;
         
         PropertySymbol(const std::string& name, TypePtr type);
     };

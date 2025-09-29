@@ -57,6 +57,13 @@ FieldSymbol* SymbolTable::define_field(const std::string& name, TypePtr type) {
     );
 }
 
+PropertySymbol* SymbolTable::define_property(const std::string& name, TypePtr type) {
+    auto sym = std::make_unique<PropertySymbol>(name, type);
+    return static_cast<PropertySymbol*>(
+        get_current_container()->add_member(std::move(sym))
+    );
+}
+
 ParameterSymbol* SymbolTable::define_parameter(const std::string& name, TypePtr type, uint32_t index) {
     auto sym = std::make_unique<ParameterSymbol>(name, type, index);
     return static_cast<ParameterSymbol*>(
@@ -411,8 +418,8 @@ std::string SymbolTable::to_string() const {
                 ss << " : " << prop_sym->type->get_name();
             }
             ss << " { ";
-            if (prop_sym->getter) ss << "get; ";
-            if (prop_sym->setter) ss << "set; ";
+            if (prop_sym->has_getter) ss << "get; ";
+            if (prop_sym->has_setter) ss << "set; ";
             ss << "}";
         }
         else if (auto enum_case = sym->as<EnumCaseSymbol>()) {

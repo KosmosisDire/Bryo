@@ -271,21 +271,46 @@ namespace Bryo
         std::string name = node->variable->variable->name->get_name();
         TypePtr type = get_type_from_expr(node->variable->variable->type);
 
-        // Properties are currently just treated as fields
-        // You could extend this to create a PropertySymbol if needed
-        auto field_symbol = symbolTable.define_field(name, type);
-        if (!field_symbol)
+        // Create a PropertySymbol
+        auto prop_symbol = symbolTable.define_property(name, type);
+        if (!prop_symbol)
         {
             push_error("Failed to define property '" + name + "'");
+            return;
         }
 
-        // Visit children
-        if (node->variable)
-            node->variable->accept(this);
-        if (node->getter)
-            node->getter->accept(this);
-        if (node->setter)
-            node->setter->accept(this);
+        // Store whether this property has getter/setter and create function symbols
+        prop_symbol->has_getter = (node->getter != nullptr);
+        prop_symbol->has_setter = (node->setter != nullptr);
+        
+        // Enter property scope to create getter/setter as children
+        symbolTable.push_scope(prop_symbol);
+        
+        // Create getter function symbol if present
+        if (node->getter) {
+            auto getter_symbol = symbolTable.define_function("get", type);
+            if (!getter_symbol) {
+                push_error("Failed to define getter function for property '" + name + "'");
+            } else {
+                getter_symbol->isStatic = false; // Properties are instance members
+            }
+        }
+        
+        // Create setter function symbol if present  
+        if (node->setter) {
+            auto void_type = typeSystem.get_void();
+            auto setter_symbol = symbolTable.define_function("set", void_type);
+            if (!setter_symbol) {
+                push_error("Failed to define setter function for property '" + name + "'");
+            } else {
+                setter_symbol->isStatic = false; // Properties are instance members
+            }
+        }
+        
+        // Exit property scope
+        symbolTable.pop_scope();
+
+        // Don't visit children - the accessor bodies will be handled during binding
     }
 
     void SymbolTableBuilder::visit(BlockSyntax *node)
