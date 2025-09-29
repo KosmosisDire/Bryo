@@ -1,0 +1,4 @@
+type Test
+{
+    var Prop => 10 + 5;
+}

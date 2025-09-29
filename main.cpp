@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"test.bryo"};
+        filenames = {"minimal.bryo"};
     }
     
     std::vector<SourceFile> source_files;

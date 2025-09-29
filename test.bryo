@@ -1,39 +1,56 @@
-type Test
+type Animal
 {
-    bool stuff = true
+    var health = 10
+    var IsDead => health <= 0
 
-    fn Run()
+    new(var startingHealth)
     {
-        if (stuff)
-        {
-            return 1.0
-        }
-
-        return 0.0
+        health = startingHealth
     }
 
-    fn Run2()
+    fn Speak
     {
-        Run()
-        return Run() + 10.0
+        return 1.0
     }
 
-    fn Run3(i32 depth)
+    fn Heal(var amount)
     {
-        if (depth > 10)
-        {
-            return 15.0
-        }
-
-        return Run3(depth + 1)
+        health += amount
+        return health
     }
+
+}
+
+fn Test(Animal a)
+{
+    return a.Speak()
 }
 
 fn Main
 {
-    Test test = new Test(true)
-    f32 stuff = 1.0
-    stuff += test.Run2()
-    
-    return stuff
+    if 10 > 5 && 5 < 10
+    {
+        return 0.0
+    }
+
+    if 10 < 5
+    {
+        return 5.0
+    }
+
+    for (var i = 0; i < 10; i = i + 1)
+    {
+        var x = i * 2
+    }
+
+    var a = new Animal()
+    a.Speak()
+    a.health = 5
+
+    var big = new Animal(50)
+    big.Heal(10)
+    big.Speak()
+    big.health -= a.health
+
+    return Test(big)
 } 
