@@ -305,6 +305,10 @@ namespace Bryo
         auto bound = arena_.make<BoundForStatement>();
         bound->location = syntax->location;
 
+        // Find and enter the for loop scope that was created by SymbolTableBuilder
+        auto for_scope = symbol_table_.resolve("$for");
+        ScopeGuard scope(symbol_table_, for_scope);
+
         if (syntax->initializer)
         {
             bound->initializer = bind_statement(syntax->initializer);
