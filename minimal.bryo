@@ -1,6 +1,6 @@
 type Test
 {
-    var stuff = 10;
+    var stuff = 10
 
     -- TODO: Fix setter HLIR generation
     -- TODO: Fix backing field generation
@@ -11,5 +11,10 @@ type Test
         {
             stuff += 1
         }
+    }
+
+    fn Test
+    {
+        stuff += 10
     }
 }

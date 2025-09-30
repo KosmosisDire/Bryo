@@ -273,22 +273,25 @@ namespace Bryo
                 if (!getter_members.empty()) {
                     if (auto func_sym = getter_members[0]->as<FunctionSymbol>()) {
                         accessor->function_symbol = func_sym;
+
+                        // Enter getter function scope for binding body
+                        ScopeGuard scope(symbol_table_, func_sym);
+
+                        // Handle the variant body
+                        if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->getter->body))
+                        {
+                            // Arrow property: => expr
+                            accessor->expression = bind_expression(*expr_ptr);
+                        }
+                        else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->getter->body))
+                        {
+                            // Block property: { ... }
+                            accessor->body = bind_statement(*block_ptr);
+                        }
+                        // std::monostate case is auto-implemented, leave both null
                     }
                 }
             }
-            
-            // Handle the variant body
-            if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->getter->body))
-            {
-                // Arrow property: => expr
-                accessor->expression = bind_expression(*expr_ptr);
-            }
-            else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->getter->body))
-            {
-                // Block property: { ... }
-                accessor->body = bind_statement(*block_ptr);
-            }
-            // std::monostate case is auto-implemented, leave both null
             
             bound->getter = accessor;
         }
@@ -305,22 +308,25 @@ namespace Bryo
                 if (!setter_members.empty()) {
                     if (auto func_sym = setter_members[0]->as<FunctionSymbol>()) {
                         accessor->function_symbol = func_sym;
+
+                        // Enter setter function scope for binding body
+                        ScopeGuard scope(symbol_table_, func_sym);
+
+                        // Handle the variant body
+                        if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->setter->body))
+                        {
+                            // Arrow setter (rare): => expr
+                            accessor->expression = bind_expression(*expr_ptr);
+                        }
+                        else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->setter->body))
+                        {
+                            // Block setter: { ... }
+                            accessor->body = bind_statement(*block_ptr);
+                        }
+                        // std::monostate case is auto-implemented, leave both null
                     }
                 }
             }
-            
-            // Handle the variant body
-            if (auto expr_ptr = std::get_if<BaseExprSyntax *>(&syntax->setter->body))
-            {
-                // Arrow setter (rare): => expr
-                accessor->expression = bind_expression(*expr_ptr);
-            }
-            else if (auto block_ptr = std::get_if<BlockSyntax *>(&syntax->setter->body))
-            {
-                // Block setter: { ... }
-                accessor->body = bind_statement(*block_ptr);
-            }
-            // std::monostate case is auto-implemented, leave both null
             
             bound->setter = accessor;
         }

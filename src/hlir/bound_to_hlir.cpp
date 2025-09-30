@@ -64,12 +64,62 @@ namespace Bryo::HLIR
     }
     
     void BoundToHLIR::visit(BoundAssignmentExpression* node) {
-        auto value = evaluate_expression(node->value);
-        
+        auto rhs_value = evaluate_expression(node->value);
+
+        // Desugar compound assignments during lowering (e.g., x += 1 becomes x = x + 1)
+        HLIR::Value* final_value = rhs_value;
+        if (node->operatorKind != AssignmentOperatorKind::Assign) {
+            // Load the current value of the target
+            HLIR::Value* current_value = nullptr;
+
+            if (auto name = node->target->as<BoundNameExpression>()) {
+                current_value = get_symbol_value(name->symbol);
+            }
+            else if (auto member = node->target->as<BoundMemberAccessExpression>()) {
+                auto obj_val = evaluate_expression(member->object);
+                if (obj_val && member->member) {
+                    if (auto field = member->member->as<FieldSymbol>()) {
+                        size_t field_index = 0;
+                        auto addr_result = builder.field_addr(obj_val, field_index, field->type);
+                        current_value = builder.load(addr_result, field->type);
+                    }
+                    else if (auto var = member->member->as<VariableSymbol>()) {
+                        size_t field_index = 0;
+                        auto addr_result = builder.field_addr(obj_val, field_index, var->type);
+                        current_value = builder.load(addr_result, var->type);
+                    }
+                }
+            }
+
+            // Perform the compound operation
+            if (current_value) {
+                HLIR::Opcode opcode;
+                switch (node->operatorKind) {
+                    case AssignmentOperatorKind::Add: opcode = HLIR::Opcode::Add; break;
+                    case AssignmentOperatorKind::Subtract: opcode = HLIR::Opcode::Sub; break;
+                    case AssignmentOperatorKind::Multiply: opcode = HLIR::Opcode::Mul; break;
+                    case AssignmentOperatorKind::Divide: opcode = HLIR::Opcode::Div; break;
+                    case AssignmentOperatorKind::Modulo: opcode = HLIR::Opcode::Rem; break;
+                    case AssignmentOperatorKind::And: opcode = HLIR::Opcode::BitAnd; break;
+                    case AssignmentOperatorKind::Or: opcode = HLIR::Opcode::BitOr; break;
+                    case AssignmentOperatorKind::Xor: opcode = HLIR::Opcode::BitXor; break;
+                    case AssignmentOperatorKind::LeftShift: opcode = HLIR::Opcode::Shl; break;
+                    case AssignmentOperatorKind::RightShift: opcode = HLIR::Opcode::Shr; break;
+                    default:
+                        std::cerr << "Warning: Unsupported compound assignment operator\n";
+                        opcode = HLIR::Opcode::Add;
+                        break;
+                }
+
+                final_value = builder.binary(opcode, current_value, rhs_value);
+            }
+        }
+
+        // Now perform the actual assignment
         // Handle simple name assignment
         if (auto name = node->target->as<BoundNameExpression>()) {
             if (name->symbol) {
-                set_symbol_value(name->symbol, value);
+                set_symbol_value(name->symbol, final_value);
             }
         }
         // Handle member field assignment
@@ -83,10 +133,10 @@ namespace Bryo::HLIR
                         // TODO: Proper field indexing - for now use 0
                         field_index = 0;
                     }
-                    
+
                     // Generate field address instruction
                     auto addr_result = builder.field_addr(obj_val, field_index, field->type);
-                    builder.store(value, addr_result);
+                    builder.store(final_value, addr_result);
                 }
                 // Variable member assignment
                 else if (auto var = member->member->as<VariableSymbol>()) {
@@ -95,10 +145,10 @@ namespace Bryo::HLIR
                         // TODO: Proper field indexing - for now use 0
                         field_index = 0;
                     }
-                    
+
                     // Generate field address instruction
                     auto addr_result = builder.field_addr(obj_val, field_index, var->type);
-                    builder.store(value, addr_result);
+                    builder.store(final_value, addr_result);
                 }
                 // Property setter
                 else if (auto prop = member->member->as<PropertySymbol>()) {
@@ -111,8 +161,8 @@ namespace Bryo::HLIR
             }
         }
         // TODO: Handle index expressions
-        
-        expression_values[node] = value;
+
+        expression_values[node] = final_value;
     }
     
     void BoundToHLIR::visit(BoundCallExpression* node) {
