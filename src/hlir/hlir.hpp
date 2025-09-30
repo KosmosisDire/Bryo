@@ -373,7 +373,18 @@ namespace Bryo::HLIR
         {
             if (instructions.empty())
                 return nullptr;
-            return instructions.back().get();
+
+            auto *last = instructions.back().get();
+            // Check if the last instruction is actually a terminator
+            if (last->op == Opcode::Ret ||
+                last->op == Opcode::Br ||
+                last->op == Opcode::CondBr ||
+                last->op == Opcode::Switch)
+            {
+                return last;
+            }
+
+            return nullptr;
         }
     };
 

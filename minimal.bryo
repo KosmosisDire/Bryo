@@ -18,3 +18,10 @@ type Test
         stuff += 10
     }
 }
+
+fn Main_f32_
+{
+    var t = new Test()
+    t.stuff += 10
+    return t.stuff
+}

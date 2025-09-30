@@ -590,8 +590,10 @@ namespace Bryo::HLIR
         // Add implicit 'this' parameter for member functions
         if (is_member_function && !func_sym->isStatic) {
             auto parent_type = func_sym->parent->as<TypeSymbol>();
+            // 'this' should be a pointer to the parent type
+            auto this_ptr_type = type_system->get_pointer(parent_type->type);
             auto this_param = func->create_value(
-                parent_type->type,
+                this_ptr_type,
                 "this"
             );
             func->params.push_back(this_param);
@@ -744,7 +746,9 @@ namespace Bryo::HLIR
         // Add 'this' parameter for instance property
         if (prop_sym->parent && prop_sym->parent->is<TypeSymbol>()) {
             auto parent_type = prop_sym->parent->as<TypeSymbol>();
-            auto this_param = getter_func->create_value(parent_type->type, "this");
+            // 'this' should be a pointer to the parent type
+            auto this_ptr_type = type_system->get_pointer(parent_type->type);
+            auto this_param = getter_func->create_value(this_ptr_type, "this");
             getter_func->params.push_back(this_param);
         }
         
@@ -805,7 +809,9 @@ namespace Bryo::HLIR
         // Add 'this' parameter for instance property
         if (prop_sym->parent && prop_sym->parent->is<TypeSymbol>()) {
             auto parent_type = prop_sym->parent->as<TypeSymbol>();
-            auto this_param = setter_func->create_value(parent_type->type, "this");
+            // 'this' should be a pointer to the parent type
+            auto this_ptr_type = type_system->get_pointer(parent_type->type);
+            auto this_param = setter_func->create_value(this_ptr_type, "this");
             setter_func->params.push_back(this_param);
         }
         

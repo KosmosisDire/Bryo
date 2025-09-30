@@ -97,9 +97,9 @@ set(SOURCE_FILES
 
     # HLIR
     src/hlir/bound_to_hlir.cpp
-    
+
     # Code Generator
-    # src/codegen/codegen.cpp
+    src/codegen/codegen.cpp
     
     # Common Utilities
     src/common/logger.cpp

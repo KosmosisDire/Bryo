@@ -1,7 +1,7 @@
 #include "compiler.hpp"
 
 #include "common/logger.hpp"
-// #include "codegen/codegen.hpp"
+#include "codegen/codegen.hpp"
 #include "semantic/symbol_table.hpp"
 #include "parser/lexer.hpp"
 #include "parser/parser.hpp"
@@ -382,39 +382,38 @@ namespace Bryo
             std::cout << hlir_module->dump() << "\n";
         }
 
-        // // === PHASE 6: Code generation with global symbols ===
-        // LOG_HEADER("Phase 5: Code generation", LogCategory::COMPILER);
+        // === LLVM Code Generation from HLIR ===
+        LOG_HEADER("LLVM code generation", LogCategory::COMPILER);
 
-        // auto llvm_context = std::make_unique<llvm::LLVMContext>();
-        // CodeGenerator codegen(*global_symbols, "BryoProgram", llvm_context.get());
+        auto llvm_context = std::make_unique<llvm::LLVMContext>();
+        HLIRCodeGen codegen(*llvm_context, "BryoProgram");
 
-        // // Quick pass: declare all functions from symbol table
-        // codegen.declare_all_types();
-        // codegen.declare_all_functions();
-        // codegen.generate_builtin_functions();
+        std::unique_ptr<llvm::Module> llvm_module;
+        try
+        {
+            llvm_module = codegen.lower(hlir_module.get());
+            LOG_INFO("LLVM IR generation successful", LogCategory::COMPILER);
+        }
+        catch (const std::exception &e)
+        {
+            all_errors.push_back("LLVM code generation error: " + std::string(e.what()));
+        }
 
-        // // Single AST pass: generate all bodies
-        // for (const auto &state : file_states)
-        // {
-        //     if (!state.ast)
-        //         continue;
-        //     codegen.generate_definitions(state.ast);
-        // }
+        if (!all_errors.empty())
+        {
+            LOG_HEADER("Code generation errors", LogCategory::COMPILER);
+            for (const auto &error : all_errors)
+            {
+                LOG_ERROR(error, LogCategory::COMPILER);
+            }
+            return std::make_unique<CompiledModule>();
+        }
 
-        // auto llvm_module = codegen.release_module();
-
-        // for (const auto &error : codegen.get_errors())
-        // {
-        //     all_errors.push_back(error.to_string());
-        // }
-
-        // return std::make_unique<CompiledModule>(
-        //     std::move(llvm_context),
-        //     std::move(llvm_module),
-        //     "BryoProgram",
-        //     all_errors);
-
-        return nullptr;
+        return std::make_unique<CompiledModule>(
+            std::move(llvm_context),
+            std::move(llvm_module),
+            "BryoProgram",
+            all_errors);
     }
 
 } // namespace Bryo
