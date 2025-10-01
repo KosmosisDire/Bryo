@@ -44,7 +44,6 @@ fn Main_f32_
     -- Original should be unchanged
     var original = c.GetPoint()
 
-    -- Should return 3 + 4 + 13 - 4 - 3 = 13
-    -- Wait, let me recalculate: 3 + 4 + 13 + 4 - 3 - 4 - 2 = 15
+    -- Should return 3 + 4 + 13 + 4 - 3 - 4 - 2 = 15
     return p1.x + p1.y + p2.x + p2.y - original.x - original.y - 2.0
 }

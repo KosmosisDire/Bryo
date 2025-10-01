@@ -593,8 +593,26 @@ namespace Bryo
 
     BoundExpression *BoundTreeBuilder::bind_name(BaseNameExprSyntax *syntax)
     {
+        // Special handling for QualifiedNameSyntax where left is not a name
+        // (e.g., array[index].field, function().property, etc.)
+        if (auto qualified = syntax->as<QualifiedNameSyntax>())
+        {
+            // If left is not a name expression (e.g., it's an indexer),
+            // bind it as a member access on the bound left expression
+            if (!qualified->left->as<BaseNameExprSyntax>())
+            {
+                auto object = bind_expression(qualified->left);
+                auto member_access = arena_.make<BoundMemberAccessExpression>();
+                member_access->location = syntax->location;
+                member_access->object = object;
+                member_access->memberName = qualified->right->get_name();
+                // member symbol will be resolved by type resolver
+                return member_access;
+            }
+        }
+
         auto parts = syntax->get_parts();
-        
+
         // For qualified names, check if the first part is a variable
         // If so, convert to member access chain
         if (parts.size() > 1)

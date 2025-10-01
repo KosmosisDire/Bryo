@@ -108,6 +108,7 @@ set(SOURCE_FILES
     src/compiler.cpp
     src/jit.cpp
     src/compiled_module.cpp
+    src/test_runner.cpp
 )
 
 set(RUNTIME_FILES

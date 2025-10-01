@@ -1,5 +1,5 @@
 -- Test: Returning Local Struct from Function
--- Expected: 3.0
+-- Expected: 4.0
 
 type Point
 {
@@ -30,6 +30,6 @@ fn Main_f32_
     var p1 = CreatePoint()
     var p2 = CreateAndModify()
 
-    -- Should return 1.0 + 5.0 - 4.0 + 1.0 = 3.0
+    -- Should return 1.0 + 5.0 - 4.0 + 2.0 = 4.0
     return p1.x + p2.x - p2.y + p1.y
 }

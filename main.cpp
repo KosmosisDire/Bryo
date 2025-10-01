@@ -1,4 +1,5 @@
 #include "compiler.hpp"
+#include "test_runner.hpp"
 // #include "semantic/symbol_table.hpp"
 // #include "semantic/type_system.hpp"
 // #include "semantic/type_resolver.hpp"
@@ -10,6 +11,8 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <cstring>
+#include <algorithm>
 using namespace Bryo; 
 
 
@@ -29,6 +32,24 @@ int main(int argc, char* argv[])
     logger.initialize();
     logger.set_console_level(LogLevel::TRACE);
 
+    // Check for --test argument
+    if (argc > 1 && (std::strcmp(argv[1], "--test") == 0 || std::strcmp(argv[1], "-t") == 0)) {
+        // Test mode - run all tests in the tests directory
+        std::string test_dir = "tests";
+        if (argc > 2) {
+            test_dir = argv[2];
+        }
+
+        TestRunner runner;
+        auto results = runner.run_all_tests(test_dir);
+        runner.print_summary(results);
+
+        // Return 0 if all tests passed, 1 otherwise
+        bool all_passed = std::all_of(results.begin(), results.end(),
+            [](const TestResult& r) { return r.passed; });
+        return all_passed ? 0 : 1;
+    }
+
     Compiler compiler;
     compiler.set_print_ast(true);
     compiler.set_print_symbols(true);
@@ -41,7 +62,7 @@ int main(int argc, char* argv[])
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"../tests/Test30.bryo"};
+        filenames = {"tests/Test30.bryo"};
     }
     
     std::vector<SourceFile> source_files;
@@ -59,6 +80,7 @@ int main(int argc, char* argv[])
         result->write_object_file("out/output.o");
         auto ret = result->execute_jit<float>("Main_f32_").value_or(-1.0f);
         std::cout << "JIT execution returned: " << ret << std::endl;
+        return static_cast<int>(ret);
     }
     else if (result)
     {
@@ -67,11 +89,11 @@ int main(int argc, char* argv[])
         {
             LOG_ERROR(error, LogCategory::COMPILER);
         }
+        return 1;
     }
     else    
     {
         LOG_HEADER("No result from compilation.");
+        return 1;
     }
-
-    return 0;
 }

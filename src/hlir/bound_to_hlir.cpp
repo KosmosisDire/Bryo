@@ -295,7 +295,8 @@ namespace Bryo::HLIR
 
             if (func) {
                 // Convert arguments if needed: if parameter expects value but we have pointer, load it
-                bool is_member_func = !func->is_static && func->params.size() > 0;
+                // Determine if this is a member function by checking if the function's symbol has a TypeSymbol parent
+                bool is_member_func = func->symbol && func->symbol->parent && func->symbol->parent->is<TypeSymbol>() && !func->symbol->isStatic;
                 size_t param_offset = is_member_func ? 1 : 0; // Offset to skip 'this' parameter
 
                 for (size_t arg_idx = 0; arg_idx < node->arguments.size(); arg_idx++) {
@@ -336,6 +337,16 @@ namespace Bryo::HLIR
         HLIR::Value* result = nullptr;
 
         if (node->member) {
+            // Check if obj_val is a value type VALUE (not pointer)
+            // If so, we need to materialize it into temporary storage
+            if (obj_val && obj_val->type->as<NamedType>() && obj_val->type->is_value_type()) {
+                // obj_val is a struct value (not a pointer)
+                // Allocate temporary storage and store the value there
+                auto temp_storage = builder.alloc(obj_val->type, true);
+                builder.store(obj_val, temp_storage);
+                obj_val = temp_storage;  // Now obj_val is a pointer
+            }
+
             // Field access
             if (auto field = node->member->as<FieldSymbol>()) {
                 if (obj_val) {
@@ -397,12 +408,12 @@ namespace Bryo::HLIR
         // Evaluate object and index
         auto obj_val = evaluate_expression(node->object);
         auto index_val = evaluate_expression(node->index);
-        
+
         if (!obj_val || !index_val) {
             expression_values[node] = nullptr;
             return;
         }
-        
+
         // Get element type from array type
         TypePtr element_type = nullptr;
         if (auto array_type = node->object->type->as<ArrayType>()) {
@@ -415,11 +426,22 @@ namespace Bryo::HLIR
             expression_values[node] = nullptr;
             return;
         }
-        
-        // Generate element address and load
+
+        // Generate element address
         auto addr_result = builder.element_addr(obj_val, index_val, element_type);
-        auto result = builder.load(addr_result, element_type);
-        
+
+        // Follow member access rules:
+        // - Struct elements: return pointer (for chaining like arr[0].field)
+        // - Primitive elements: load and return value
+        HLIR::Value* result;
+        if (element_type->as<NamedType>() && element_type->is_value_type()) {
+            // Struct element - return pointer to enable field access
+            result = addr_result;
+        } else {
+            // Primitive element - load the value
+            result = builder.load(addr_result, element_type);
+        }
+
         expression_values[node] = result;
     }
     
@@ -500,8 +522,19 @@ namespace Bryo::HLIR
                     auto index_val = builder.const_int(static_cast<int64_t>(i), i32_type);
                     // Get element address
                     auto elem_addr = builder.element_addr(alloc_result, index_val, element_type);
+
+                    // For value types, load if we have a pointer
+                    HLIR::Value* value_to_store = init_val;
+                    if (element_type->is_value_type() && element_type->as<NamedType>()) {
+                        if (auto ptr_type = init_val->type->as<PointerType>()) {
+                            if (ptr_type->pointee == element_type) {
+                                value_to_store = builder.load(init_val, element_type);
+                            }
+                        }
+                    }
+
                     // Store the value
-                    builder.store(init_val, elem_addr);
+                    builder.store(value_to_store, elem_addr);
                 }
             }
         }

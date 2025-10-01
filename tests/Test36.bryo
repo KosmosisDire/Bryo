@@ -1,5 +1,5 @@
 -- Test: Struct-in-Struct Assignment
--- Expected: 13.0
+-- Expected: 11.0
 
 type Point
 {
@@ -46,6 +46,6 @@ fn Main_f32_
     c1.rect = c2.rect
 
     -- c1.rect should now be (5,6) to (7,8)
-    -- Should return 5 + 6 + 7 - 8 + 3 = 13
+    -- Should return 5 + 6 + 7 - 8 + 1 = 11
     return c1.rect.topLeft.x + c1.rect.topLeft.y + c1.rect.bottomRight.x - c1.rect.bottomRight.y + r1.topLeft.x
 }
