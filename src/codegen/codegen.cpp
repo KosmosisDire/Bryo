@@ -222,8 +222,19 @@ namespace Bryo
         // Get function type
         llvm::FunctionType *func_type = get_function_type(hlir_func);
 
+        // For external functions, use the simple name (not mangled)
+        // For regular functions, use the fully qualified name
+        std::string func_name;
+        if (hlir_func->is_external && hlir_func->symbol)
+        {
+            func_name = hlir_func->symbol->name; // Simple name for external linkage
+        }
+        else
+        {
+            func_name = hlir_func->name(); // Qualified name for Bryo functions
+        }
+
         // Create function
-        std::string func_name = hlir_func->name();
         llvm::Function *llvm_func = llvm::Function::Create(
             func_type,
             llvm::Function::ExternalLinkage,

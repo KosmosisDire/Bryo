@@ -45,7 +45,14 @@ namespace Bryo
         this->name = name;
         access = Accessibility::Public;
     }
-    
+
+    // BlockSymbol implementation
+    BlockSymbol::BlockSymbol(const std::string& debug_name) {
+        kind = SymbolKind::Block;
+        this->name = debug_name;
+        access = Accessibility::Private;  // Blocks are always private
+    }
+
     // TypeSymbol implementation
     TypeSymbol::TypeSymbol(const std::string& name, TypePtr type) {
         kind = SymbolKind::Type;

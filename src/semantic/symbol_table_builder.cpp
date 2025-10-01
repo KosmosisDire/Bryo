@@ -159,6 +159,15 @@ namespace Bryo
         {
             func_symbol->isAbstract = true;
         }
+        if (has_flag(node->modifiers, ModifierKindFlags::Extern))
+        {
+            func_symbol->isExtern = true;
+            // Validate: extern functions must not have a body
+            if (node->body != nullptr)
+            {
+                push_error("External function '" + name + "' cannot have a body");
+            }
+        }
 
         func_symbol->access = get_access_level(node->modifiers);
 
@@ -397,16 +406,18 @@ namespace Bryo
 
     void SymbolTableBuilder::visit(BlockSyntax *node)
     {
-
         // Create anonymous block scope
-        auto block_ns = symbolTable.define_namespace("$block");
-        if (!block_ns)
+        auto block_symbol = symbolTable.define_block("$block");
+        if (!block_symbol)
         {
             push_error("Failed to create block scope");
             return;
         }
 
-        symbolTable.push_scope(block_ns);
+        // Map AST node to block symbol so we can look it up during binding
+        symbolTable.map_ast_to_symbol(node, block_symbol);
+
+        symbolTable.push_scope(block_symbol);
 
         for (auto stmt : node->statements)
         {
@@ -419,49 +430,32 @@ namespace Bryo
 
     void SymbolTableBuilder::visit(IfStmtSyntax *node)
     {
-
         // Visit condition in current scope
         if (node->condition)
             node->condition->accept(this);
 
-        // Create scope for then branch
+        // Visit branches - they are BlockSyntax nodes that create their own scopes
         if (node->thenBranch)
-        {
-            auto then_ns = symbolTable.define_namespace("$if_then");
-            symbolTable.push_scope(then_ns);
             node->thenBranch->accept(this);
-            symbolTable.pop_scope();
-        }
-
-        // Create scope for else branch
         if (node->elseBranch)
-        {
-            auto else_ns = symbolTable.define_namespace("$if_else");
-            symbolTable.push_scope(else_ns);
             node->elseBranch->accept(this);
-            symbolTable.pop_scope();
-        }
     }
 
     void SymbolTableBuilder::visit(WhileStmtSyntax *node)
     {
-
-        auto while_ns = symbolTable.define_namespace("$while");
-        symbolTable.push_scope(while_ns);
-
+        // Visit condition and body - body is BlockSyntax that creates its own scope
         if (node->condition)
             node->condition->accept(this);
         if (node->body)
             node->body->accept(this);
-
-        symbolTable.pop_scope();
     }
 
     void SymbolTableBuilder::visit(ForStmtSyntax *node)
     {
-
-        auto for_ns = symbolTable.define_namespace("$for");
-        symbolTable.push_scope(for_ns);
+        // Create a block scope for the entire for loop (to contain loop variable)
+        auto for_block = symbolTable.define_block("$for");
+        symbolTable.map_ast_to_symbol(node, for_block);
+        symbolTable.push_scope(for_block);
 
         if (node->initializer)
             node->initializer->accept(this);

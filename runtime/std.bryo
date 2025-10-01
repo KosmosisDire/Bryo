@@ -1,0 +1,1024 @@
+--- Memory Management ---
+
+extern fn malloc(i32 size) -> void*
+extern fn free(void* ptr) -> void
+extern fn realloc(void* ptr, i32 size) -> void*
+extern fn puts(char* s) -> i32
+
+fn Print(string msg)
+{
+    puts(msg)
+}
+
+fn PrintInt(i32 value)
+{
+    var buffer = new char[12];  -- Enough for 32-bit int
+    IntToString(value, buffer);
+    Print(buffer);
+}
+
+fn IntToString(i32 num, char* buffer) -> i32
+{
+    if num == 0
+    {
+        buffer[0] = (char)48  -- '0' ASCII value
+        buffer[1] = (char)0   -- '\0' null terminator
+        return 1
+    }
+
+    var isNegative = num < 0
+    if isNegative
+    {
+        num = -num  -- Make positive for digit extraction
+    }
+
+    var index = 0
+    var digit = 0
+
+    -- Extract digits (builds string backwards)
+    while num > 0
+    {
+        digit = num % 10
+        buffer[index] = (char)(digit + 48)  -- Convert digit to ASCII ('0' is 48)
+        index += 1
+        num /= 10
+    }
+
+    -- Add negative sign if needed
+    if isNegative
+    {
+        buffer[index] = (char)45  -- '-' ASCII value
+        index += 1
+    }
+
+    buffer[index] = (char)0  -- Null terminate
+
+    -- Reverse the string in-place
+    var start = 0
+    var end = index - 1
+    char temp = (char)0
+    while start < end
+    {
+        temp = buffer[start]
+        buffer[start] = buffer[end]
+        buffer[end] = temp
+        start += 1
+        end -= 1
+    }
+
+    return index  -- Return length
+}
+
+fn PrintFloat(f32 value)
+{
+    var buffer = new char[32];  -- Enough for float representation
+    FloatToString(value, buffer, 6);  -- 6 decimal places by default
+    Print(buffer);
+}
+
+fn FloatToString(f32 num, char* buffer, i32 precision) -> i32
+{
+    var index = 0
+    
+    -- Handle negative numbers
+    if num < 0.0
+    {
+        buffer[index] = (char)45  -- '-'
+        index += 1
+        num = -num
+    }
+    
+    -- Extract integer part
+    var intPart = (i32)num
+    var fracPart = num - (f32)intPart
+    
+    -- Convert integer part
+    var tempBuffer = new char[12]
+    var intLen = IntToString(intPart, tempBuffer)
+    
+    var i = 0
+    while i < intLen
+    {
+        buffer[index] = tempBuffer[i]
+        index += 1
+        i += 1
+    }
+    
+    -- Add decimal point
+    buffer[index] = (char)46  -- '.'
+    index += 1
+    
+    -- Convert fractional part
+    var j = 0
+    while j < precision
+    {
+        fracPart *= 10.0
+        var digit = (i32)fracPart
+        buffer[index] = (char)(digit + 48)
+        index += 1
+        fracPart -= (f32)digit
+        j += 1
+    }
+    
+    buffer[index] = (char)0  -- Null terminate
+    return index
+}
+
+fn Malloc(i32 size) -> void*
+{
+    return malloc(size)
+}
+
+fn Free(void* ptr)
+{
+    free(ptr)
+}
+
+fn Realloc(void* ptr, i32 newSize) -> void*
+{
+    return realloc(ptr, newSize)
+}
+
+fn Memcpy(void* dest, void* src, i32 size)
+{
+    char* d = (char*)dest
+    char* s = (char*)src
+    
+    var i = 0
+    while i < size
+    {
+        d[i] = s[i]
+        i += 1
+    }
+}
+
+fn Memset(void* ptr, i32 value, i32 size)
+{
+    char* p = (char*)ptr
+    var val = (char)value
+    
+    var i = 0
+    while i < size
+    {
+        p[i] = val
+        i += 1
+    }
+}
+
+fn Memcmp(void* a, void* b, i32 size) -> i32
+{
+    char* pa = (char*)a
+    char* pb = (char*)b
+    
+    var i = 0
+    while i < size
+    {
+        if pa[i] != pb[i]
+        {
+            if pa[i] < pb[i]
+                return -1
+            else
+                return 1
+        }
+        i += 1
+    }
+    
+    return 0
+}
+
+--- String Utilities ---
+
+fn StrLen(char* s) -> i32
+{
+    var len = 0
+    while s[len] != (char)0
+    {
+        len += 1
+    }
+    return len
+}
+
+fn StrCopy(char* dest, char* src)
+{
+    var i = 0
+    while src[i] != (char)0
+    {
+        dest[i] = src[i]
+        i += 1
+    }
+    dest[i] = (char)0
+}
+
+fn StrCat(char* dest, char* src)
+{
+    var destLen = StrLen(dest)
+    var i = 0
+    while src[i] != (char)0
+    {
+        dest[destLen + i] = src[i]
+        i += 1
+    }
+    dest[destLen + i] = (char)0
+}
+
+fn StrCmp(char* a, char* b) -> i32
+{
+    var i = 0
+    while a[i] != (char)0 && b[i] != (char)0
+    {
+        if a[i] != b[i]
+        {
+            if a[i] < b[i]
+                return -1
+            else
+                return 1
+        }
+        i += 1
+    }
+    
+    -- Check if one string is longer
+    if a[i] == (char)0 && b[i] != (char)0
+        return -1
+    if a[i] != (char)0 && b[i] == (char)0
+        return 1
+    
+    return 0
+}
+
+fn StrFind(char* haystack, char* needle) -> i32
+{
+    var needleLen = StrLen(needle)
+    if needleLen == 0
+        return 0
+    
+    var haystackLen = StrLen(haystack)
+    var i = 0
+    
+    while i <= haystackLen - needleLen
+    {
+        var j = 0
+        var matched = true
+        
+        while j < needleLen
+        {
+            if haystack[i + j] != needle[j]
+            {
+                matched = false
+                j = needleLen  -- Break out
+            }
+            j += 1
+        }
+        
+        if matched
+            return i
+        
+        i += 1
+    }
+    
+    return -1  -- Not found
+}
+
+fn StrReverse(char* s)
+{
+    var len = StrLen(s)
+    var start = 0
+    var end = len - 1
+    
+    while start < end
+    {
+        var temp = s[start]
+        s[start] = s[end]
+        s[end] = temp
+        start += 1
+        end -= 1
+    }
+}
+
+fn StrToInt(char* s) -> i32
+{
+    var result = 0
+    var i = 0
+    var isNegative = false
+    
+    -- Skip whitespace
+    while s[i] == (char)32 || s[i] == (char)9
+    {
+        i += 1
+    }
+    
+    -- Check for sign
+    if s[i] == (char)45  -- '-'
+    {
+        isNegative = true
+        i += 1
+    }
+    else if s[i] == (char)43  -- '+'
+    {
+        i += 1
+    }
+    
+    -- Parse digits
+    while s[i] >= (char)48 && s[i] <= (char)57  -- '0' to '9'
+    {
+        result = result * 10 + ((i32)s[i] - 48)
+        i += 1
+    }
+    
+    if isNegative
+        return -result
+    
+    return result
+}
+
+fn StrToFloat(char* s) -> f32
+{
+    var result = 0.0
+    var i = 0
+    var isNegative = false
+    
+    -- Skip whitespace
+    while s[i] == (char)32 || s[i] == (char)9
+    {
+        i += 1
+    }
+    
+    -- Check for sign
+    if s[i] == (char)45  -- '-'
+    {
+        isNegative = true
+        i += 1
+    }
+    else if s[i] == (char)43  -- '+'
+    {
+        i += 1
+    }
+    
+    -- Parse integer part
+    while s[i] >= (char)48 && s[i] <= (char)57
+    {
+        result = result * 10.0 + (f32)((i32)s[i] - 48)
+        i += 1
+    }
+    
+    -- Parse decimal part
+    if s[i] == (char)46  -- '.'
+    {
+        i += 1
+        var divisor = 10.0
+        
+        while s[i] >= (char)48 && s[i] <= (char)57
+        {
+            result = result + (f32)((i32)s[i] - 48) / divisor
+            divisor = divisor * 10.0
+            i += 1
+        }
+    }
+    
+    if isNegative
+        return -result
+    
+    return result
+}
+
+fn StrTrim(char* s)
+{
+    var len = StrLen(s)
+    if len == 0
+        return
+    
+    -- Trim end
+    var end = len - 1
+    while end >= 0 && (s[end] == (char)32 || s[end] == (char)9 || s[end] == (char)10 || s[end] == (char)13)
+    {
+        end -= 1
+    }
+    s[end + 1] = (char)0
+    
+    -- Trim start
+    var start = 0
+    while s[start] == (char)32 || s[start] == (char)9 || s[start] == (char)10 || s[start] == (char)13
+    {
+        start += 1
+    }
+    
+    if start > 0
+    {
+        var i = 0
+        while start + i <= end
+        {
+            s[i] = s[start + i]
+            i += 1
+        }
+        s[i] = (char)0
+    }
+}
+
+--- Math Utilities ---
+
+fn Abs(i32 x) -> i32
+{
+    if x < 0
+        return -x
+    return x
+}
+
+fn AbsF(f32 x) -> f32
+{
+    if x < 0.0
+        return -x
+    return x
+}
+
+fn Min(i32 a, i32 b) -> i32
+{
+    if a < b
+        return a
+    return b
+}
+
+fn Max(i32 a, i32 b) -> i32
+{
+    if a > b
+        return a
+    return b
+}
+
+fn MinF(f32 a, f32 b) -> f32
+{
+    if a < b
+        return a
+    return b
+}
+
+fn MaxF(f32 a, f32 b) -> f32
+{
+    if a > b
+        return a
+    return b
+}
+
+fn Clamp(i32 x, i32 min, i32 max) -> i32
+{
+    if x < min
+        return min
+    if x > max
+        return max
+    return x
+}
+
+fn ClampF(f32 x, f32 min, f32 max) -> f32
+{
+    if x < min
+        return min
+    if x > max
+        return max
+    return x
+}
+
+-- Taylor series approximation for sqrt
+fn Sqrt(f32 x) -> f32
+{
+    if x < 0.0
+        return 0.0
+    
+    if x == 0.0
+        return 0.0
+    
+    -- Newton's method
+    var guess = x
+    var epsilon = 0.00001
+    
+    var i = 0
+    while i < 20
+    {
+        var newGuess = (guess + x / guess) / 2.0
+        if AbsF(newGuess - guess) < epsilon
+            return newGuess
+        guess = newGuess
+        i += 1
+    }
+    
+    return guess
+}
+
+fn Floor(f32 x) -> f32
+{
+    var intPart = (i32)x
+    if x < 0.0 && x != (f32)intPart
+        return (f32)(intPart - 1)
+    return (f32)intPart
+}
+
+fn Ceil(f32 x) -> f32
+{
+    var intPart = (i32)x
+    if x > 0.0 && x != (f32)intPart
+        return (f32)(intPart + 1)
+    return (f32)intPart
+}
+
+fn Round(f32 x) -> f32
+{
+    if x >= 0.0
+        return Floor(x + 0.5)
+    else
+        return Ceil(x - 0.5)
+}
+
+fn Pow(f32 base, f32 exp) -> f32
+{
+    -- Handle special cases
+    if exp == 0.0
+        return 1.0
+    
+    if base == 0.0
+        return 0.0
+    
+    -- For integer exponents, use repeated multiplication
+    var isNegExp = exp < 0.0
+    if isNegExp
+        exp = -exp
+    
+    var result = 1.0
+    var intExp = (i32)exp
+    
+    var i = 0
+    while i < intExp
+    {
+        result = result * base
+        i += 1
+    }
+    
+    if isNegExp
+        return 1.0 / result
+    
+    return result
+}
+
+fn Lerp(f32 a, f32 b, f32 t) -> f32
+{
+    return a + (b - a) * t
+}
+
+-- Taylor series for sin (limited accuracy)
+fn Sin(f32 x) -> f32
+{
+    var pi = 3.14159265359
+    
+    -- Normalize to -pi to pi
+    while x > pi
+    {
+        x -= 2.0 * pi
+    }
+    while x < -pi
+    {
+        x += 2.0 * pi
+    }
+    
+    -- Taylor series: sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
+    var result = x
+    var term = x
+    var x2 = x * x
+    
+    var i = 1
+    while i < 10
+    {
+        term = -term * x2 / ((f32)(2 * i) * (f32)(2 * i + 1))
+        result += term
+        i += 1
+    }
+    
+    return result
+}
+
+fn Cos(f32 x) -> f32
+{
+    var pi = 3.14159265359
+    
+    -- Normalize to -pi to pi
+    while x > pi
+    {
+        x -= 2.0 * pi
+    }
+    while x < -pi
+    {
+        x += 2.0 * pi
+    }
+    
+    -- Taylor series: cos(x) = 1 - x^2/2! + x^4/4! - x^6/6! + ...
+    var result = 1.0
+    var term = 1.0
+    var x2 = x * x
+    
+    var i = 1
+    while i < 10
+    {
+        term = -term * x2 / ((f32)(2 * i - 1) * (f32)(2 * i))
+        result += term
+        i += 1
+    }
+    
+    return result
+}
+
+fn Tan(f32 x) -> f32
+{
+    var cosVal = Cos(x)
+    if AbsF(cosVal) < 0.00001
+        return 0.0  -- Avoid division by zero
+    
+    return Sin(x) / cosVal
+}
+
+--- StringBuilder ---
+
+type StringBuilder
+{
+    char* buffer
+    i32 length
+    i32 capacity
+    
+    new(i32 initialCapacity)
+    {
+        capacity = initialCapacity
+        length = 0
+        buffer = (char*)Malloc(capacity)
+        buffer[0] = (char)0
+    }
+    
+    fn Append(char* str)
+    {
+        var strLen = StrLen(str)
+        var newLength = length + strLen
+        
+        -- Grow if needed
+        while newLength >= capacity
+        {
+            capacity = capacity * 2
+            buffer = (char*)Realloc((void*)buffer, capacity)
+        }
+        
+        -- Copy string
+        var i = 0
+        while i < strLen
+        {
+            buffer[length + i] = str[i]
+            i += 1
+        }
+        
+        length = newLength
+        buffer[length] = (char)0
+    }
+    
+    fn AppendChar(char c)
+    {
+        if length + 1 >= capacity
+        {
+            capacity = capacity * 2
+            buffer = (char*)Realloc((void*)buffer, capacity)
+        }
+        
+        buffer[length] = c
+        length += 1
+        buffer[length] = (char)0
+    }
+    
+    fn AppendInt(i32 value)
+    {
+        var temp = (char*)Malloc(12)
+        IntToString(value, temp)
+        Append(temp)
+        Free((void*)temp)
+    }
+    
+    fn AppendFloat(f32 value)
+    {
+        var temp = (char*)Malloc(32)
+        FloatToString(value, temp, 6)
+        Append(temp)
+        Free((void*)temp)
+    }
+    
+    fn Clear()
+    {
+        length = 0
+        buffer[0] = (char)0
+    }
+    
+    fn ToString() -> char*
+    {
+        return buffer
+    }
+    
+    fn Destroy()
+    {
+        Free((void*)buffer)
+    }
+}
+
+--- Dynamic Array Header ---
+
+-- Metadata stored before the array pointer
+type ArrayHeader
+{
+    i32 length
+    i32 capacity
+}
+
+fn ArrayHeaderSize() -> i32
+{
+    return 8  -- sizeof(ArrayHeader) = 2 * sizeof(i32)
+}
+
+fn GetArrayHeader(void* arr) -> void*
+{
+    var ptr = (i32*)arr
+    var headerSize = ArrayHeaderSize() / 4  -- Convert to i32 units
+    return (void*)((ptr - headerSize)
+}
+
+--- Generic Dynamic Array Functions ---
+
+fn ArrayCreate(i32 elementSize, i32 initialCapacity) -> void*
+{
+    var totalSize = ArrayHeaderSize() + (elementSize * initialCapacity)
+    var mem = (i32*)Malloc(totalSize)
+    
+    var header = (i32*)mem
+    header[0] = 0  -- length
+    header[1] = initialCapacity  -- capacity
+    
+    return (void*)(header + 2)
+}
+
+fn ArrayLength(void* arr) -> i32
+{
+    var header = (i32*)GetArrayHeader(arr)
+    return header[0]
+}
+
+fn ArrayCapacity(void* arr) -> i32
+{
+    var header = (i32*)GetArrayHeader(arr)
+    return header[1]
+}
+
+fn ArraySetLength(void* arr, i32 newLength)
+{
+    var header = (i32*)GetArrayHeader(arr)
+    header[0] = newLength
+}
+
+fn ArraySetCapacity(void* arr, i32 newCapacity)
+{
+    var header = (i32*)GetArrayHeader(arr)
+    header[1] = newCapacity
+}
+
+fn ArrayGrow(void* arr, i32 elementSize) -> void*
+{
+    var oldCapacity = ArrayCapacity(arr)
+    var newCapacity = oldCapacity * 2
+    
+    var oldMem = GetArrayHeader(arr)
+    var newSize = ArrayHeaderSize() + (elementSize * newCapacity)
+    var newMem = (i32*)Realloc(oldMem, newSize)
+    
+    newMem[1] = newCapacity  -- Update capacity
+    
+    return (void*)(newMem + 2)
+}
+
+fn ArrayPushInt(i32* arr, i32 value) -> i32*
+{
+    var len = ArrayLength((void*)arr)
+    var cap = ArrayCapacity((void*)arr)
+    
+    if len >= cap
+    {
+        arr = (i32*)ArrayGrow((void*)arr, 4)  -- sizeof(i32) = 4
+    }
+    
+    arr[len] = value
+    ArraySetLength((void*)arr, len + 1)
+    
+    return arr
+}
+
+fn ArrayPushFloat(f32* arr, f32 value) -> f32*
+{
+    var len = ArrayLength((void*)arr)
+    var cap = ArrayCapacity((void*)arr)
+    
+    if len >= cap
+    {
+        arr = (f32*)ArrayGrow((void*)arr, 4)  -- sizeof(f32) = 4
+    }
+    
+    arr[len] = value
+    ArraySetLength((void*)arr, len + 1)
+    
+    return arr
+}
+
+fn ArrayPopInt(i32* arr) -> i32
+{
+    var len = ArrayLength((void*)arr)
+    if len == 0
+        return 0
+    
+    var newLen = len - 1
+    ArraySetLength((void*)arr, newLen)
+    return arr[newLen]
+}
+
+fn ArrayPopFloat(f32* arr) -> f32
+{
+    var len = ArrayLength((void*)arr)
+    if len == 0
+        return 0.0
+    
+    var newLen = len - 1
+    ArraySetLength((void*)arr, newLen)
+    return arr[newLen]
+}
+
+fn ArrayClear(void* arr)
+{
+    ArraySetLength(arr, 0)
+}
+
+fn ArrayDestroy(void* arr)
+{
+    var header = GetArrayHeader(arr)
+    Free(header)
+}
+
+--- Sorting & Utilities ---
+
+fn SwapInt(i32* arr, i32 i, i32 j)
+{
+    var temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+}
+
+fn SwapFloat(f32* arr, i32 i, i32 j)
+{
+    var temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+}
+
+-- Bubble sort for integers
+fn BubbleSortInt(i32* arr, i32 length)
+{
+    var i = 0
+    while i < length - 1
+    {
+        var j = 0
+        while j < length - i - 1
+        {
+            if arr[j] > arr[j + 1]
+            {
+                SwapInt(arr, j, j + 1)
+            }
+            j += 1
+        }
+        i += 1
+    }
+}
+
+-- Quick sort partition
+fn PartitionInt(i32* arr, i32 low, i32 high) -> i32
+{
+    var pivot = arr[high]
+    var i = low - 1
+    
+    var j = low
+    while j < high
+    {
+        if arr[j] < pivot
+        {
+            i += 1
+            SwapInt(arr, i, j)
+        }
+        j += 1
+    }
+    
+    SwapInt(arr, i + 1, high)
+    return i + 1
+}
+
+fn QuickSortIntHelper(i32* arr, i32 low, i32 high)
+{
+    if low < high
+    {
+        var pi = PartitionInt(arr, low, high)
+        QuickSortIntHelper(arr, low, pi - 1)
+        QuickSortIntHelper(arr, pi + 1, high)
+    }
+}
+
+fn QuickSortInt(i32* arr, i32 length)
+{
+    if length > 1
+    {
+        QuickSortIntHelper(arr, 0, length - 1)
+    }
+}
+
+-- Binary search (array must be sorted)
+fn BinarySearchInt(i32* arr, i32 length, i32 target) -> i32
+{
+    var left = 0
+    var right = length - 1
+    
+    while left <= right
+    {
+        var mid = left + (right - left) / 2
+        
+        if arr[mid] == target
+            return mid
+        
+        if arr[mid] < target
+            left = mid + 1
+        else
+            right = mid - 1
+    }
+    
+    return -1  -- Not found
+}
+
+--- Random Number Generation ---
+
+type Random
+{
+    u32 seed
+    
+    new(u32 initialSeed)
+    {
+        seed = initialSeed
+    }
+    
+    -- Linear Congruential Generator
+    fn Next() -> i32
+    {
+        var a = (u32)1103515245
+        var c = (u32)12345
+        var m = (u32)2147483647
+        
+        seed = ((seed * a) + c) & m
+        return (i32)seed
+    }
+    
+    fn NextFloat() -> f32
+    {
+        return (f32)Next() / 2147483647.0
+    }
+    
+    fn Range(i32 min, i32 max) -> i32
+    {
+        var range = max - min
+        return min + (Next() % range)
+    }
+    
+    fn RangeFloat(f32 min, f32 max) -> f32
+    {
+        return min + NextFloat() * (max - min)
+    }
+}
+
+--- Bit Manipulation ---
+
+fn CountBits(i32 x) -> i32
+{
+    var count = 0
+    while x != 0
+    {
+        count += x & 1
+        x = x >> 1
+    }
+    return count
+}
+
+fn IsPowerOfTwo(i32 x) -> bool
+{
+    if x <= 0
+        return false
+    return (x & (x - 1)) == 0
+}
+
+fn NextPowerOfTwo(i32 x) -> i32
+{
+    if x <= 1
+        return 1
+    
+    x -= 1
+    x = x | (x >> 1)
+    x = x | (x >> 2)
+    x = x | (x >> 4)
+    x = x | (x >> 8)
+    x = x | (x >> 16)
+    return x + 1
+}

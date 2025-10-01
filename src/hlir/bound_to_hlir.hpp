@@ -5,6 +5,7 @@
 #include "semantic/type_system.hpp"
 #include "hlir_builder.hpp"
 #include <unordered_map>
+#include <unordered_set>
 #include <stack>
 #include <vector>
 
@@ -142,6 +143,13 @@ namespace Bryo::HLIR
                 if (backedge_block) {
                     for (auto& [sym, phi_inst] : phi_nodes) {
                         auto body_val = converter->symbol_values[sym];
+
+                        // If the value is still the PHI result itself (unchanged in loop body),
+                        // use the entry value instead to avoid self-referential PHI
+                        if (body_val == phi_inst->result) {
+                            body_val = entry_values[sym];
+                        }
+
                         phi_inst->add_incoming(body_val, backedge_block);
                     }
                 }

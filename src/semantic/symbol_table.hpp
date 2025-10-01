@@ -25,6 +25,7 @@ public:
     
     // Symbol definition
     NamespaceSymbol* define_namespace(const std::string& name);
+    BlockSymbol* define_block(const std::string& debug_name);
     TypeSymbol* define_type(const std::string& name, TypePtr type);
     FunctionSymbol* define_function(const std::string& name, TypePtr return_type);
     FieldSymbol* define_field(const std::string& name, TypePtr type);

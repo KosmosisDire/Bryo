@@ -1,0 +1,16 @@
+
+fn Main_f32_
+{
+    Print("Hello from Bryo!")
+    Print("External functions work! ✅")
+    Print("Printing functions works! ✅")
+    PrintInt(123)
+    PrintFloat(3.14159)
+
+    var x = 10.5
+    var y = 2.0
+    var z = x / y
+    PrintFloat(x + y + z)
+
+    return 0.0
+}

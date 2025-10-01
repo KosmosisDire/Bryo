@@ -2,12 +2,28 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"type": "cmake",
-			"label": "CMake: clean",
-			"command": "clean",
-			"preset": "debug-build",
-			"problemMatcher": [],
-			"detail": "CMake template clean task"
+			"label": "CMake: Build",
+			"type": "shell",
+			"command": "cmake",
+			"args": [
+				"--build",
+				"build",
+				"--target",
+				"Bryo",
+				"-j",
+				"18"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			},
+			"problemMatcher": ["$gcc"]
 		}
 	]
 }

@@ -496,16 +496,39 @@ namespace Bryo
         // Parse function body
         if (check(TokenKind::LeftBrace))
         {
-            decl->body = withContext(Context::FUNCTION, [this]()
-                                    { return parseBlock(); });
+            // External functions should not have a body
+            if (has_flag(modifiers, ModifierKindFlags::Extern))
+            {
+                error("External function cannot have a body");
+                decl->body = nullptr;
+                // Skip the block to recover
+                parseBlock();
+            }
+            else
+            {
+                decl->body = withContext(Context::FUNCTION, [this]()
+                                        { return parseBlock(); });
+            }
         }
-        else if (consume(TokenKind::Semicolon))
+        else if (check(TokenKind::FatArrow))
         {
-            decl->body = nullptr; // abstract or interface
+            // Expression body not allowed for external functions
+            if (has_flag(modifiers, ModifierKindFlags::Extern))
+            {
+                error("External function cannot have a body");
+                decl->body = nullptr;
+            }
+            else
+            {
+                error("Expression-bodied functions not yet supported");
+                decl->body = nullptr;
+            }
         }
         else
         {
-            error("Expected '{' or ';' after function declaration");
+            // No body - this is abstract, interface, or external
+            // Semicolon is optional
+            consume(TokenKind::Semicolon);
             decl->body = nullptr;
         }
 
@@ -539,13 +562,22 @@ namespace Bryo
 
     BaseDeclSyntax *Parser::parseVarDeclaration(ModifierKindFlags modifiers, const Token &startToken)
     {
-        auto checkpoint = tokens.checkpoint();
         consume(TokenKind::Var);
 
         if (!check(TokenKind::Identifier))
         {
-            error("Expected identifier after 'var'");
-            tokens.restore(checkpoint);
+            // Check if the user used a keyword instead of an identifier
+            auto currentToken = tokens.current();
+            if (currentToken.is_keyword())
+            {
+                error("Cannot use keyword '" + std::string(currentToken.text) + "' as an identifier");
+            }
+            else
+            {
+                error("Expected identifier after 'var', found '" + std::string(currentToken.text) + "' instead");
+            }
+            // Skip the invalid token to avoid infinite loop
+            tokens.advance();
             return nullptr;
         }
         auto name = parseIdentifier();

@@ -13,6 +13,7 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+
 using namespace Bryo; 
 
 
@@ -62,7 +63,7 @@ int main(int argc, char* argv[])
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"tests/Test30.bryo"};
+        filenames = {"minimal.bryo", "runtime/basic_print.bryo"};
     }
     
     std::vector<SourceFile> source_files;

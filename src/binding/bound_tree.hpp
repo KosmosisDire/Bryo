@@ -299,6 +299,7 @@ namespace Bryo
     struct BoundBlockStatement : BoundStatement
     {
         std::vector<BoundStatement *> statements;
+        Symbol *symbol = nullptr;  // The $block namespace symbol
         BOUND_ACCEPT_VISITOR
     };
 

@@ -110,7 +110,19 @@ namespace Bryo::HLIR
         }
         
         Value* binary(Opcode op, Value* left, Value* right) {
-            auto result = current_func->create_value(left->type);
+            // Determine result type based on operation
+            TypePtr result_type;
+            if (op == Opcode::Eq || op == Opcode::Ne ||
+                op == Opcode::Lt || op == Opcode::Le ||
+                op == Opcode::Gt || op == Opcode::Ge) {
+                // Comparison operations return bool
+                result_type = type_system->get_bool();
+            } else {
+                // Arithmetic/logical operations return operand type
+                result_type = left->type;
+            }
+
+            auto result = current_func->create_value(result_type);
             auto inst = std::make_unique<BinaryInst>(op, result, left, right);
             result->def = inst.get();
             left->uses.push_back(inst.get());

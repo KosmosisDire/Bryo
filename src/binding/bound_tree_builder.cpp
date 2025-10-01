@@ -77,6 +77,12 @@ namespace Bryo
         auto bound = arena_.make<BoundBlockStatement>();
         bound->location = syntax->location;
 
+        // Look up the block symbol that was created during symbol table building
+        bound->symbol = symbol_table_.get_symbol_for_ast(syntax);
+
+        // Push into block scope so variable lookups work correctly
+        ScopeGuard scope(symbol_table_, bound->symbol);
+
         for (auto stmt : syntax->statements)
         {
             if (auto bound_stmt = bind_statement(stmt))

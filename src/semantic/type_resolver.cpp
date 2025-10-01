@@ -14,15 +14,16 @@ namespace Bryo
         // Multiple passes for type inference
         for (int pass = 0; pass < MAX_PASSES; ++pass)
         {
-            size_t errorsBefore = errors.size();
+            // Clear errors at start of each pass (we'll re-encounter them if they persist)
+            errors.clear();
+
             size_t constraintsBefore = pendingConstraints.size();
 
             // Visit the entire tree
             unit->accept(this);
 
             // Check if we made progress
-            bool madeProgress = (errors.size() > errorsBefore) ||
-                                (pendingConstraints.size() < constraintsBefore);
+            bool madeProgress = (pendingConstraints.size() < constraintsBefore);
 
             if (!madeProgress || pendingConstraints.empty())
             {
@@ -219,6 +220,34 @@ namespace Bryo
         // Handle BoundTypeExpression
         if (auto boundType = typeExpr->as<BoundTypeExpression>())
         {
+            // Check for pointer types (marked with "*")
+            if (boundType->parts.size() == 1 && boundType->parts[0] == "*")
+            {
+                if (!boundType->typeArguments.empty())
+                {
+                    TypePtr pointeeType = resolve_type_expression(boundType->typeArguments[0]);
+                    if (pointeeType)
+                    {
+                        return typeSystem.get_pointer(pointeeType);
+                    }
+                }
+                return typeSystem.get_unresolved();
+            }
+
+            // Check for array types (marked with "[]")
+            if (boundType->parts.size() == 1 && boundType->parts[0] == "[]")
+            {
+                if (!boundType->typeArguments.empty())
+                {
+                    TypePtr elementType = resolve_type_expression(boundType->typeArguments[0]);
+                    if (elementType)
+                    {
+                        return typeSystem.get_array(elementType, -1); // -1 for dynamic array
+                    }
+                }
+                return typeSystem.get_unresolved();
+            }
+
             // Look up the type symbol
             Symbol *symbol = resolve_qualified_name(boundType->parts);
 
@@ -234,6 +263,12 @@ namespace Bryo
             // Check for primitive types
             if (boundType->parts.size() == 1)
             {
+                // Special case: "string" is an alias for "char*"
+                if (boundType->parts[0] == "string")
+                {
+                    return typeSystem.get_pointer(typeSystem.get_primitive("char"));
+                }
+
                 TypePtr primitive = typeSystem.get_primitive(boundType->parts[0]);
                 if (primitive)
                 {
@@ -368,6 +403,12 @@ namespace Bryo
         TypePtr canonicalFrom = apply_substitution(from);
         TypePtr canonicalTo = apply_substitution(to);
 
+        // Check for null types (can happen with external functions that haven't been fully resolved)
+        if (!canonicalFrom || !canonicalTo)
+        {
+            return false; // Cannot determine conversion with null types
+        }
+
         // Don't report errors if types are still being inferred
         if (canonicalFrom->is<UnresolvedType>() || canonicalTo->is<UnresolvedType>())
         {
@@ -470,8 +511,9 @@ namespace Bryo
             type = typeSystem.get_primitive("char");
             break;
         case LiteralKind::String:
-            type = typeSystem.get_primitive("string");
-            break; // TODO: String type
+            // String literals are char* (pointer to null-terminated char array)
+            type = typeSystem.get_pointer(typeSystem.get_primitive("char"));
+            break;
         default:
             type = typeSystem.get_unresolved();
             break;
@@ -1219,10 +1261,24 @@ namespace Bryo
 
     void TypeResolver::visit(BoundBlockStatement *node)
     {
+        // Push block scope if present
+        Symbol* prevScope = nullptr;
+        if (node->symbol)
+        {
+            prevScope = symbolTable.get_current_scope();
+            symbolTable.push_scope(node->symbol);
+        }
+
         for (auto stmt : node->statements)
         {
             if (stmt)
                 stmt->accept(this);
+        }
+
+        // Restore previous scope
+        if (node->symbol && prevScope)
+        {
+            symbolTable.pop_scope();
         }
     }
 

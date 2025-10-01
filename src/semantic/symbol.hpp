@@ -32,6 +32,7 @@ namespace Bryo
         Variable,   // Covers fields, locals, parameters
         Property,
         EnumCase,
+        Block,      // Anonymous block scope
     };
     
     enum class Accessibility {
@@ -104,6 +105,7 @@ namespace Bryo
                 case SymbolKind::Variable: return "variable";
                 case SymbolKind::Property: return "property";
                 case SymbolKind::EnumCase: return "enum_case";
+                case SymbolKind::Block: return "block";
                 default: return "unknown";
             }
         }
@@ -135,10 +137,18 @@ namespace Bryo
         // Using directives in this namespace
         std::vector<NamespaceSymbol*> using_namespaces;
         std::vector<TypeSymbol*> using_types;
-        
+
         NamespaceSymbol(const std::string& name);
     };
-    
+
+    #pragma region Block Symbol
+
+    struct BlockSymbol : ContainerSymbol {
+        // Anonymous block scope for local variables
+        // No special members needed - just a container for locals
+
+        BlockSymbol(const std::string& debug_name);
+    };
 
     #pragma region Type Symbol
     
@@ -167,16 +177,17 @@ namespace Bryo
         // Signature
         TypePtr return_type;
         std::vector<ParameterSymbol*> parameters;  // Points to child parameter symbols
-        
+
         // For generics
         std::vector<Symbol*> type_parameters;
-        
+
         FunctionSymbol* overridden_method();
         uint32_t vtable_index = UINT32_MAX;
-        
+
         // Special kinds
         bool is_constructor = false;
-        bool is_operator = false; 
+        bool is_operator = false;
+        bool isExtern = false; 
         
         FunctionSymbol(const std::string& name, TypePtr return_type);
         

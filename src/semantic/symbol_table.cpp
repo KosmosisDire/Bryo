@@ -37,6 +37,13 @@ NamespaceSymbol* SymbolTable::define_namespace(const std::string& name) {
     return static_cast<NamespaceSymbol*>(container->add_member(std::move(ns)));
 }
 
+BlockSymbol* SymbolTable::define_block(const std::string& debug_name) {
+    auto block = std::make_unique<BlockSymbol>(debug_name);
+    auto container = current_scope->as<ContainerSymbol>();
+    if (!container) return nullptr;
+    return static_cast<BlockSymbol*>(container->add_member(std::move(block)));
+}
+
 TypeSymbol* SymbolTable::define_type(const std::string& name, TypePtr type) {
     auto sym = std::make_unique<TypeSymbol>(name, type);
     auto container = current_scope->as<ContainerSymbol>();

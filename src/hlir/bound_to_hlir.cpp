@@ -609,6 +609,11 @@ namespace Bryo::HLIR
     void BoundToHLIR::visit(BoundIfStatement* node) {
         auto cond = evaluate_expression(node->condition);
 
+        // Save the block before the if-statement
+        auto before_block = current_block;
+        // Save symbol values before the if-statement
+        auto before_values = symbol_values;
+
         auto then_block = create_block("if.then");
         auto merge_block = create_block("if.merge");
         auto else_block = node->elseStatement
@@ -621,34 +626,91 @@ namespace Bryo::HLIR
         builder.set_block(then_block);
         current_block = then_block;
         node->thenStatement->accept(this);
-        // Check if then_block has a terminator (current_block might have changed)
-        bool then_terminated = then_block->terminator() != nullptr;
+        // Save values after then branch
+        auto then_values = symbol_values;
+        auto then_exit_block = current_block;
+
+        // Check if then_block has a terminator (current_block might have changed or become null)
+        bool then_terminated = !then_exit_block || then_exit_block->terminator() != nullptr;
         if (!then_terminated) {
-            builder.set_block(then_block);
+            builder.set_block(then_exit_block);
             builder.br(merge_block);
         }
 
         // Else branch (if exists)
         bool else_terminated = false;
+        HLIR::BasicBlock* else_exit_block = nullptr;
+        std::unordered_map<Symbol*, HLIR::Value*> else_values;
+
         if (node->elseStatement) {
+            // Restore symbol values to before the if for the else branch
+            symbol_values = before_values;
+
             builder.set_block(else_block);
             current_block = else_block;
             node->elseStatement->accept(this);
-            // Check if else_block has a terminator (current_block might have changed)
-            else_terminated = else_block->terminator() != nullptr;
+
+            // Save values after else branch
+            else_values = symbol_values;
+            else_exit_block = current_block;
+
+            // Check if else_block has a terminator (current_block might have changed or become null)
+            else_terminated = !else_exit_block || else_exit_block->terminator() != nullptr;
             if (!else_terminated) {
-                builder.set_block(else_block);
+                builder.set_block(else_exit_block);
                 builder.br(merge_block);
             }
+        } else {
+            // No else branch - values stay the same as before
+            else_values = before_values;
+            // The "else" path comes directly from the block before the if
+            else_exit_block = before_block;
         }
 
         // Check if merge block is reachable
-        bool merge_reachable = !then_terminated || (node->elseStatement && !else_terminated) || !node->elseStatement;
+        bool merge_reachable = !then_terminated || !else_terminated;
 
         if (merge_reachable) {
-            // Merge block is reachable, continue with it
+            // Merge block is reachable, create PHI nodes for modified variables
             builder.set_block(merge_block);
             current_block = merge_block;
+
+            // Collect all symbols that might need PHI nodes
+            std::unordered_set<Symbol*> all_symbols;
+            for (auto& [sym, _] : then_values) all_symbols.insert(sym);
+            for (auto& [sym, _] : else_values) all_symbols.insert(sym);
+
+            // Create PHI nodes for symbols with different values
+            for (auto* sym : all_symbols) {
+                auto then_it = then_values.find(sym);
+                auto else_it = else_values.find(sym);
+
+                HLIR::Value* then_val = (then_it != then_values.end()) ? then_it->second : nullptr;
+                HLIR::Value* else_val = (else_it != else_values.end()) ? else_it->second : nullptr;
+
+                // If values differ between branches, create a PHI node
+                if (then_val && else_val && then_val != else_val) {
+                    auto phi_result = builder.phi(then_val->type);
+                    auto phi_inst = static_cast<HLIR::PhiInst*>(phi_result->def);
+
+                    // Add incoming values from each branch
+                    if (!then_terminated) {
+                        phi_inst->add_incoming(then_val, then_exit_block);
+                    }
+                    if (!else_terminated) {
+                        phi_inst->add_incoming(else_val, else_exit_block);
+                    }
+
+                    // Update symbol to use the PHI result
+                    symbol_values[sym] = phi_result;
+                } else if (then_val) {
+                    // Only then branch has this value, use it
+                    symbol_values[sym] = then_val;
+                } else if (else_val) {
+                    // Only else branch has this value, use it
+                    symbol_values[sym] = else_val;
+                }
+            }
         } else {
             // Both branches terminated - merge block is dead code
             // Remove it from the function's block list
@@ -868,18 +930,20 @@ namespace Bryo::HLIR
         // Look up the pre-created function
         auto func = module->find_function(func_sym);
         if (!func) return; // Function should already exist
-        
+
+        // Set is_external flag from symbol
+        func->is_external = func_sym->isExtern;
+
+        // Clear symbol values from previous function
+        symbol_values.clear();
+        expression_values.clear();
+
         current_function = func;
-        auto entry = func->create_block("entry");
-        func->entry = entry;
-        current_block = entry;  // Set current_block
-        builder.set_function(func);
-        builder.set_block(entry);
-        
+
         // Check if this is a member function (has a parent TypeSymbol)
         bool is_member_function = func_sym->parent && func_sym->parent->is<TypeSymbol>();
-        
-        // Add implicit 'this' parameter for member functions
+
+        // Add implicit 'this' parameter for member functions (even for external functions)
         if (is_member_function && !func_sym->isStatic) {
             auto parent_type = func_sym->parent->as<TypeSymbol>();
             // 'this' should be a pointer to the parent type
@@ -890,16 +954,21 @@ namespace Bryo::HLIR
             );
             func->params.push_back(this_param);
         }
-        
-        // Create parameter values
+
+        // Create parameter values (needed for both external and regular functions)
         for (size_t i = 0; i < node->parameters.size(); i++) {
             auto param_sym = node->parameters[i]->symbol->as<ParameterSymbol>();
             auto param_type = param_sym->type;
 
-            // For value types (structs), we need to allocate stack space and store the parameter there
-            // so that we can take their address for member access
-            if (param_type->as<NamedType>() && param_type->is_value_type()) {
-                // Create parameter as value
+            // External functions only need the parameter signature, not stack allocation
+            if (func_sym->isExtern) {
+                auto param = func->create_value(param_type, node->parameters[i]->name);
+                func->params.push_back(param);
+            }
+            // Regular functions need full parameter setup
+            else if (param_type->as<NamedType>() && param_type->is_value_type()) {
+                // For value types (structs), we need to allocate stack space and store the parameter there
+                // so that we can take their address for member access
                 auto param = func->create_value(param_type, node->parameters[i]->name);
                 func->params.push_back(param);
 
@@ -917,17 +986,26 @@ namespace Bryo::HLIR
                 set_symbol_value(param_sym, param);
             }
         }
-        
-        // Process body
-        if (node->body) {
-            node->body->accept(this);
+
+        // Skip body generation for external functions
+        if (!func_sym->isExtern) {
+            auto entry = func->create_block("entry");
+            func->entry = entry;
+            current_block = entry;  // Set current_block
+            builder.set_function(func);
+            builder.set_block(entry);
+
+            // Process body
+            if (node->body) {
+                node->body->accept(this);
+            }
+
+            // Add implicit return if needed
+            if (current_block && !current_block->terminator()) {
+                builder.ret(nullptr);
+            }
         }
-        
-        // Add implicit return if needed
-        if (current_block && !current_block->terminator()) {
-            builder.ret(nullptr);
-        }
-        
+
         current_function = nullptr;
         current_block = nullptr;  // Clear current_block
     }

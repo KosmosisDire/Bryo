@@ -1,3 +1,10 @@
+extern fn puts(char* s) -> i32
+
+fn Print(string msg)
+{
+    puts(msg)
+}
+
 fn PrintLn(char* str)
 {
     Print(str);

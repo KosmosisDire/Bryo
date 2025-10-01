@@ -156,7 +156,7 @@ namespace Bryo
                 }
             }
 
-            // Handle pointer types - identity only if same pointer type
+            // Handle pointer types
             auto sourcePointer = sourceType->as<PointerType>();
             if (sourcePointer && targetPointer)
             {
@@ -165,7 +165,9 @@ namespace Bryo
                 {
                     return ConversionKind::Identity;
                 }
-                return ConversionKind::NoConversion;
+                // Allow explicit casts between different pointer types
+                // Pointers are inherently unsafe, so allow conversions with explicit cast
+                return ConversionKind::ExplicitReference;
             }
 
             // Handle primitive types
@@ -199,7 +201,9 @@ namespace Bryo
         static bool is_explicit_conversion(ConversionKind kind)
         {
             // TODO: Support implicit casting without forcing explicit
-            return kind == ConversionKind::ExplicitNumeric || kind == ConversionKind::ImplicitNumeric;
+            return kind == ConversionKind::ExplicitNumeric ||
+                   kind == ConversionKind::ImplicitNumeric ||
+                   kind == ConversionKind::ExplicitReference;
         }
 
         /**
