@@ -1,45 +1,51 @@
-type Calculator
+-- Test: Struct-in-Struct Assignment
+-- Expected: 13.0
+
+type Point
 {
-    f32[] values
-    
-    new()
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
     {
-        values = []
+        x = xVal
+        y = yVal
     }
-    
-    fn AddValue(f32 val)
+}
+
+type Rectangle
+{
+    Point topLeft
+    Point bottomRight
+
+    new(Point tl, Point br)
     {
-        values.push(val)
+        topLeft = tl
+        bottomRight = br
     }
-    
-    fn ComputeSum -> f32
+}
+
+type Container
+{
+    Rectangle rect
+
+    new(Rectangle r)
     {
-        var sum = 0.0
-        for var val in values
-        {
-            sum += val
-        }
-        return sum
-    }
-    
-    fn ComputeAverage -> f32
-    {
-        if values.length == 0
-        {
-            return 0.0
-        }
-        return ComputeSum() / values.length
+        rect = r
     }
 }
 
 fn Main_f32_
 {
-    var calc = new Calculator()
-    
-    for (var i = 1.0; i <= 5.0; i += 1.0)
-    {
-        calc.AddValue(i)
-    }
-    
-    return calc.ComputeAverage()
+    var r1 = new Rectangle(new Point(1.0, 2.0), new Point(3.0, 4.0))
+    var r2 = new Rectangle(new Point(5.0, 6.0), new Point(7.0, 8.0))
+
+    var c1 = new Container(r1)
+    var c2 = new Container(r2)
+
+    -- Nested struct assignment
+    c1.rect = c2.rect
+
+    -- c1.rect should now be (5,6) to (7,8)
+    -- Should return 5 + 6 + 7 - 8 + 3 = 13
+    return c1.rect.topLeft.x + c1.rect.topLeft.y + c1.rect.bottomRight.x - c1.rect.bottomRight.y + r1.topLeft.x
 }

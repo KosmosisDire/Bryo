@@ -1,0 +1,49 @@
+-- Test: Value Semantics - Modifications Don't Affect Original
+-- Expected: 3.0
+
+type Point
+{
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
+    {
+        x = xVal
+        y = yVal
+    }
+}
+
+fn ModifyPoint(Point p)
+{
+    p.x = 100.0
+    p.y = 200.0
+}
+
+fn ModifyAndReturn(Point p) -> Point
+{
+    p.x = p.x * 2.0
+    p.y = p.y * 2.0
+    return p
+}
+
+fn Main_f32_
+{
+    var original = new Point(1.0, 2.0)
+
+    -- Pass to function (should not modify original)
+    ModifyPoint(original)
+
+    -- Original should still be (1.0, 2.0)
+    var check1 = original.x + original.y
+
+    -- Get modified copy
+    var modified = ModifyAndReturn(original)
+
+    -- Original should still be (1.0, 2.0)
+    var check2 = original.x + original.y
+
+    -- Modified should be (2.0, 4.0)
+    var check3 = modified.x + modified.y
+
+    -- Should return 3 + 3 + 6 - 9 = 3
+    return check1 + check2 + check3 - 9.0
+}
