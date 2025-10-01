@@ -1,4 +1,5 @@
 #include "bound_tree_builder.hpp"
+#include <iostream>
 
 namespace Bryo
 {
@@ -37,6 +38,8 @@ namespace Bryo
         // Declarations
         if (auto func_decl = syntax->as<FunctionDeclSyntax>())
             return bind_function_declaration(func_decl);
+        if (auto ctor_decl = syntax->as<ConstructorDeclSyntax>())
+            return bind_constructor_declaration(ctor_decl);
         if (auto type_decl = syntax->as<TypeDeclSyntax>())
             return bind_type_declaration(type_decl);
         if (auto var_decl = syntax->as<VariableDeclSyntax>())
@@ -142,6 +145,62 @@ namespace Bryo
         {
             bound->returnTypeExpression = bind_type_expression(syntax->returnType);
         }
+
+        // Bind parameters
+        for (auto param : syntax->parameters)
+        {
+            if (auto param_syntax = param->as<ParameterDeclSyntax>())
+            {
+                auto bound_param = arena_.make<BoundVariableDeclaration>();
+                bound_param->location = param_syntax->location;
+                bound_param->name = param_syntax->param->name ? param_syntax->param->name->get_name() : "";
+                bound_param->typeExpression = param_syntax->param->type ? bind_type_expression(param_syntax->param->type) : nullptr;
+                bound_param->isParameter = true;
+
+                // Resolve parameter symbol
+                bound_param->symbol = symbol_table_.resolve_local(bound_param->name);
+
+                bound->parameters.push_back(bound_param);
+            }
+        }
+
+        if (syntax->body)
+        {
+            bound->body = bind_block(syntax->body);
+        }
+
+        return bound;
+    }
+
+    BoundFunctionDeclaration *BoundTreeBuilder::bind_constructor_declaration(ConstructorDeclSyntax *syntax)
+    {
+        auto bound = arena_.make<BoundFunctionDeclaration>();
+        bound->location = syntax->location;
+        bound->modifiers = syntax->modifiers;
+
+        // Constructors use the containing type's name
+        auto containing_type = get_containing_type();
+        if (containing_type)
+        {
+            bound->name = containing_type->name;
+
+            // Resolve the constructor symbol by matching parameter count
+            auto ctors = containing_type->get_functions(containing_type->name);
+            for (auto* func : ctors)
+            {
+                if (func->is_constructor && func->parameters.size() == syntax->parameters.size())
+                {
+                    bound->symbol = func;
+                    break;
+                }
+            }
+        }
+
+        // Enter function scope
+        ScopeGuard scope(symbol_table_, bound->symbol);
+
+        // Constructors implicitly return void
+        bound->returnTypeExpression = nullptr;
 
         // Bind parameters
         for (auto param : syntax->parameters)
@@ -810,11 +869,8 @@ namespace Bryo
             }
         }
 
-        // Resolve the constructor
-        if (bound->typeExpression && bound->typeExpression->type)
-        {
-            bound->constructor = resolve_constructor(bound->typeExpression->type, bound->arguments);
-        }
+        // Constructor will be resolved during type resolution when argument types are known
+        bound->constructor = nullptr;
 
         return bound;
     }

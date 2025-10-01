@@ -6,10 +6,29 @@
 namespace Bryo::HLIR
 {
     #pragma region Public Methods
-    
+
     void BoundToHLIR::build(BoundCompilationUnit* unit) {
         visit(unit);
         resolve_pending_phis();
+    }
+
+    // Helper: Get field index within a type
+    size_t BoundToHLIR::get_field_index(TypeSymbol* type_sym, Symbol* field_sym) {
+        if (!type_sym || !field_sym) return 0;
+
+        // Iterate through member_order to find the index of this field
+        size_t index = 0;
+        for (auto* member : type_sym->member_order) {
+            // Only count fields/variables (not functions, properties, etc.)
+            if (member->is<FieldSymbol>() || member->is<VariableSymbol>()) {
+                if (member == field_sym) {
+                    return index;
+                }
+                index++;
+            }
+        }
+
+        return 0; // Fallback
     }
     
     #pragma region Core Expressions
@@ -79,12 +98,12 @@ namespace Bryo::HLIR
                 auto obj_val = evaluate_expression(member->object);
                 if (obj_val && member->member) {
                     if (auto field = member->member->as<FieldSymbol>()) {
-                        size_t field_index = 0;
+                        size_t field_index = get_field_index(field->parent->as<TypeSymbol>(), field);
                         auto addr_result = builder.field_addr(obj_val, field_index, field->type);
                         current_value = builder.load(addr_result, field->type);
                     }
                     else if (auto var = member->member->as<VariableSymbol>()) {
-                        size_t field_index = 0;
+                        size_t field_index = get_field_index(var->parent->as<TypeSymbol>(), var);
                         auto addr_result = builder.field_addr(obj_val, field_index, var->type);
                         current_value = builder.load(addr_result, var->type);
                     }
@@ -128,25 +147,13 @@ namespace Bryo::HLIR
             if (obj_val && member->member) {
                 // Field assignment
                 if (auto field = member->member->as<FieldSymbol>()) {
-                    size_t field_index = 0;
-                    if (field->parent && field->parent->is<TypeSymbol>()) {
-                        // TODO: Proper field indexing - for now use 0
-                        field_index = 0;
-                    }
-
-                    // Generate field address instruction
+                    size_t field_index = get_field_index(field->parent->as<TypeSymbol>(), field);
                     auto addr_result = builder.field_addr(obj_val, field_index, field->type);
                     builder.store(final_value, addr_result);
                 }
                 // Variable member assignment
                 else if (auto var = member->member->as<VariableSymbol>()) {
-                    size_t field_index = 0;
-                    if (var->parent && var->parent->is<TypeSymbol>()) {
-                        // TODO: Proper field indexing - for now use 0
-                        field_index = 0;
-                    }
-
-                    // Generate field address instruction
+                    size_t field_index = get_field_index(var->parent->as<TypeSymbol>(), var);
                     auto addr_result = builder.field_addr(obj_val, field_index, var->type);
                     builder.store(final_value, addr_result);
                 }
@@ -228,37 +235,15 @@ namespace Bryo::HLIR
             // Field access
             if (auto field = node->member->as<FieldSymbol>()) {
                 if (obj_val) {
-                    // Get the field offset/index
-                    size_t field_index = 0;
-                    if (field->parent && field->parent->is<TypeSymbol>()) {
-                        auto type_sym = field->parent->as<TypeSymbol>();
-                        // Find field index by searching members
-                        auto field_members = type_sym->get_member(field->name);
-                        // Count fields before this one
-                        // TODO: Proper field indexing - for now use 0
-                        field_index = 0;
-                    }
-                    
-                    // Generate field address instruction
+                    size_t field_index = get_field_index(field->parent->as<TypeSymbol>(), field);
                     auto addr_result = builder.field_addr(obj_val, field_index, field->type);
-                    // Load the field value
                     result = builder.load(addr_result, field->type);
                 }
             }
             // Variable member (for compatibility)
             else if (auto var = node->member->as<VariableSymbol>()) {
                 if (obj_val) {
-                    // Treat as field access
-                    size_t field_index = 0;
-                    if (var->parent && var->parent->is<TypeSymbol>()) {
-                        auto type_sym = var->parent->as<TypeSymbol>();
-                        // Find field index by searching members
-                        auto var_members = type_sym->get_member(var->name);
-                        // TODO: Proper field indexing - for now use 0
-                        field_index = 0;
-                    }
-                    
-                    // Generate field address instruction
+                    size_t field_index = get_field_index(var->parent->as<TypeSymbol>(), var);
                     auto addr_result = builder.field_addr(obj_val, field_index, var->type);
                     result = builder.load(addr_result, var->type);
                 } else {
@@ -323,11 +308,13 @@ namespace Bryo::HLIR
             expression_values[node] = nullptr;
             return;
         }
-        
+
         // Allocate memory for the object
-        auto alloc_result = builder.alloc(obj_type);
+        // Use stack allocation for value types, heap for reference types
+        bool use_stack = obj_type->is_value_type();
+        auto alloc_result = builder.alloc(obj_type, use_stack);
         
-        // Call constructor if available
+        // Call constructor
         if (node->constructor) {
             auto ctor_func = module->find_function(node->constructor);
             if (ctor_func) {
@@ -339,15 +326,6 @@ namespace Bryo::HLIR
                     args.push_back(evaluate_expression(arg));
                 }
                 builder.call(ctor_func, args);
-            }
-        } else {
-            // Default initialization
-            // For named types with fields, initialize each field to default value
-            if (auto named_type = obj_type->as<NamedType>()) {
-                if (auto type_sym = named_type->symbol) {
-                    // TODO: Iterate through fields and initialize them
-                    // For now, just leave uninitialized
-                }
             }
         }
         
@@ -667,7 +645,7 @@ namespace Bryo::HLIR
     void BoundToHLIR::visit(BoundFunctionDeclaration* node) {
         auto func_sym = node->symbol->as<FunctionSymbol>();
         if (!func_sym) return;
-        
+
         // Look up the pre-created function
         auto func = module->find_function(func_sym);
         if (!func) return; // Function should already exist

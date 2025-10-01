@@ -203,6 +203,72 @@ namespace Bryo
         symbolTable.pop_scope();
     }
 
+    void SymbolTableBuilder::visit(ConstructorDeclSyntax *node)
+    {
+        // Constructors use the containing type's name
+        auto containing_type = symbolTable.get_current_scope()->as<TypeSymbol>();
+        if (!containing_type)
+        {
+            push_error("Constructor must be defined within a type");
+            return;
+        }
+
+        std::string name = containing_type->name;
+        TypePtr return_type = typeSystem.get_primitive("void");
+
+        auto func_symbol = symbolTable.define_function(name, return_type);
+        if (!func_symbol)
+        {
+            push_error("Failed to define constructor for type '" + name + "'");
+            return;
+        }
+
+        // Mark as constructor
+        func_symbol->is_constructor = true;
+        func_symbol->access = get_access_level(node->modifiers);
+
+        // Enter function scope
+        symbolTable.push_scope(func_symbol);
+        currentParameterIndex = 0;
+
+        // Process parameters
+        std::vector<ParameterSymbol *> params;
+        for (auto param_decl : node->parameters)
+        {
+            if (param_decl)
+            {
+                param_decl->accept(this);
+
+                // Extract the created parameter symbol
+                if (param_decl->param && param_decl->param->name)
+                {
+                    std::string param_name = param_decl->param->name->get_name();
+                    if (auto param_sym = symbolTable.resolve(param_name))
+                    {
+                        if (auto p = param_sym->as<ParameterSymbol>())
+                        {
+                            params.push_back(p);
+                        }
+                    }
+                }
+            }
+        }
+        func_symbol->parameters = std::move(params);
+
+        // Process body
+        if (node->body)
+        {
+            // Don't create a new scope - BlockSyntax will handle that
+            for (auto stmt : node->body->statements)
+            {
+                if (stmt)
+                    stmt->accept(this);
+            }
+        }
+
+        symbolTable.pop_scope();
+    }
+
     void SymbolTableBuilder::visit(ParameterDeclSyntax *node)
     {
 

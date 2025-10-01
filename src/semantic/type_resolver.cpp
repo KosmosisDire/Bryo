@@ -971,7 +971,66 @@ namespace Bryo
         TypePtr type = resolve_type_expression(node->typeExpression);
         annotate_expression(node, type);
 
-        // TODO: Resolve constructor
+        // Resolve constructor (must happen here after argument types are known)
+        if (!node->arguments.empty() || !node->constructor)
+        {
+            // Build argument type list
+            std::vector<TypePtr> argTypes;
+            for (auto arg : node->arguments)
+            {
+                if (arg && arg->type)
+                {
+                    argTypes.push_back(apply_substitution(arg->type));
+                }
+            }
+
+            // Find the type symbol to get constructors
+            if (auto named_type = type->as<NamedType>())
+            {
+                if (auto type_symbol = named_type->symbol)
+                {
+                    // Get all functions with the type's name (constructors)
+                    auto constructors = type_symbol->get_functions(type_symbol->name);
+
+                    // Filter to only constructors
+                    std::vector<FunctionSymbol*> ctors;
+                    for (auto* func : constructors)
+                    {
+                        if (func->is_constructor)
+                        {
+                            ctors.push_back(func);
+                        }
+                    }
+
+                    // Resolve to best matching constructor
+                    if (!ctors.empty())
+                    {
+                        node->constructor = resolve_overload(ctors, argTypes);
+                    }
+
+                    // Error if we need a constructor but couldn't find one
+                    if (!node->constructor && !argTypes.empty())
+                    {
+                        std::string typeName = type->get_name();
+                        report_error(node, "No matching constructor found for type '" + typeName + "' with " +
+                                     std::to_string(argTypes.size()) + " argument(s)");
+                    }
+
+                    // Type inference for constructor parameters
+                    if (node->constructor)
+                    {
+                        for (size_t i = 0; i < argTypes.size() && i < node->constructor->parameters.size(); ++i)
+                        {
+                            TypePtr paramType = apply_substitution(node->constructor->parameters[i]->type);
+                            if (paramType->is<UnresolvedType>())
+                            {
+                                unify(paramType, argTypes[i], nullptr, "constructor parameter inference");
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     void TypeResolver::visit(BoundArrayCreationExpression *node)

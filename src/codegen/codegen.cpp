@@ -252,20 +252,8 @@ namespace Bryo
         // Return type
         llvm::Type *ret_type = get_or_create_type(hlir_func->return_type());
 
-        // Parameter types
+        // Parameter types - HLIR already includes 'this' parameter explicitly for member functions
         std::vector<llvm::Type *> param_types;
-
-        // If not static, first parameter is 'this' pointer (opaque pointer in LLVM 19+)
-        if (!hlir_func->is_static && hlir_func->symbol && hlir_func->symbol->parent)
-        {
-            if (auto *type_sym = hlir_func->symbol->parent->as<TypeSymbol>())
-            {
-                // In LLVM 19+ all pointers are opaque
-                param_types.push_back(llvm::PointerType::get(context, 0));
-            }
-        }
-
-        // Regular parameters
         for (HLIR::Value *param : hlir_func->params)
         {
             llvm::Type *param_type = get_or_create_type(param->type);
@@ -866,8 +854,9 @@ namespace Bryo
             args.push_back(get_value(arg));
         }
 
-        // Create call
-        llvm::Value *call_result = builder->CreateCall(callee, args, "call");
+        // Create call - only name the result if it's not void
+        llvm::Value *call_result = builder->CreateCall(callee, args,
+            callee->getReturnType()->isVoidTy() ? "" : "call");
 
         // Map result if not void
         if (inst->result)

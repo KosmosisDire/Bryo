@@ -50,42 +50,17 @@ namespace Bryo
             }
             return nullptr;
         }
-        
-        // Constructor resolution
-        FunctionSymbol* resolve_constructor(TypePtr type, const std::vector<BoundExpression*>& arguments)
-        {
-            if (!type) return nullptr;
-            
-            if (auto symbol = symbol_table_.resolve(type->get_name()))
-            {
-                if (auto type_symbol = symbol->as<TypeSymbol>())
-                {
-                    std::vector<TypePtr> arg_types;
-                    for (auto* arg : arguments)
-                    {
-                        if (arg && arg->type)
-                        {
-                            arg_types.push_back(arg->type);
-                        }
-                    }
-                    
-                    auto funcs = type_symbol->get_functions(type_symbol->name);
-                    for (auto* func : funcs)
-                    {
-                        if (func->is_constructor && matches_signature(func, arg_types))
-                        {
-                            return func;
-                        }
-                    }
-                }
-            }
-            return nullptr;
-        }
-        
+
         // Get current containing type for 'this' expressions
         TypeSymbol* get_containing_type()
         {
             auto current = symbol_table_.get_current_scope();
+            // First check if current scope itself is a type
+            if (current && current->is<TypeSymbol>())
+            {
+                return current->as<TypeSymbol>();
+            }
+            // Otherwise look for enclosing type (for nested scopes)
             return current ? current->get_enclosing<TypeSymbol>() : nullptr;
         }
         
@@ -141,6 +116,7 @@ namespace Bryo
         BoundBlockStatement* bind_block(BlockSyntax* syntax);
         BoundVariableDeclaration* bind_variable_declaration(VariableDeclSyntax* syntax);
         BoundFunctionDeclaration* bind_function_declaration(FunctionDeclSyntax* syntax);
+        BoundFunctionDeclaration* bind_constructor_declaration(ConstructorDeclSyntax* syntax);
         BoundTypeDeclaration* bind_type_declaration(TypeDeclSyntax* syntax);
         BoundNamespaceDeclaration* bind_namespace_declaration(NamespaceDeclSyntax* syntax);
         BoundPropertyDeclaration* bind_property_declaration(PropertyDeclSyntax* syntax);

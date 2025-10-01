@@ -41,6 +41,7 @@ public:
     void visit(NamespaceDeclSyntax* node) override;
     void visit(TypeDeclSyntax* node) override;
     void visit(FunctionDeclSyntax* node) override;
+    void visit(ConstructorDeclSyntax* node) override;
     void visit(ParameterDeclSyntax* node) override;
     void visit(VariableDeclSyntax* node) override;
     void visit(PropertyDeclSyntax* node) override;
