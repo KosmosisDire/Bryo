@@ -1,0 +1,45 @@
+type Calculator
+{
+    f32[] values
+    
+    new()
+    {
+        values = []
+    }
+    
+    fn AddValue(f32 val)
+    {
+        values.push(val)
+    }
+    
+    fn ComputeSum -> f32
+    {
+        var sum = 0.0
+        for var val in values
+        {
+            sum += val
+        }
+        return sum
+    }
+    
+    fn ComputeAverage -> f32
+    {
+        if values.length == 0
+        {
+            return 0.0
+        }
+        return ComputeSum() / values.length
+    }
+}
+
+fn Main_f32_
+{
+    var calc = new Calculator()
+    
+    for (var i = 1.0; i <= 5.0; i += 1.0)
+    {
+        calc.AddValue(i)
+    }
+    
+    return calc.ComputeAverage()
+}

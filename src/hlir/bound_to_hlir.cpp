@@ -160,7 +160,27 @@ namespace Bryo::HLIR
                 }
             }
         }
-        // TODO: Handle index expressions
+        // Handle array element assignment
+        else if (auto index = node->target->as<BoundIndexExpression>()) {
+            auto obj_val = evaluate_expression(index->object);
+            auto index_val = evaluate_expression(index->index);
+
+            if (obj_val && index_val) {
+                // Get element type from array type
+                TypePtr element_type = nullptr;
+                if (auto array_type = index->object->type->as<ArrayType>()) {
+                    element_type = array_type->element;
+                } else if (auto ptr_type = index->object->type->as<PointerType>()) {
+                    element_type = ptr_type->pointee;
+                }
+
+                if (element_type) {
+                    // Generate element address and store
+                    auto addr_result = builder.element_addr(obj_val, index_val, element_type);
+                    builder.store(final_value, addr_result);
+                }
+            }
+        }
 
         expression_values[node] = final_value;
     }
@@ -335,8 +355,35 @@ namespace Bryo::HLIR
     }
     
     void BoundToHLIR::visit(BoundArrayCreationExpression* node) {
-        // TODO: Implement array creation
-        expression_values[node] = nullptr;
+        // Allocate stack space for the array (pass true for stack allocation)
+        auto alloc_result = builder.alloc(node->type, true);
+
+        // Initialize array elements if initializers are provided
+        if (!node->initializers.empty()) {
+            // Get element type from array type
+            TypePtr element_type = nullptr;
+            if (auto array_type = node->type->as<ArrayType>()) {
+                element_type = array_type->element;
+            }
+
+            // Get i32 type for array indices
+            auto i32_type = type_system->get_primitive("i32");
+
+            // Store each initializer value into the array
+            for (size_t i = 0; i < node->initializers.size(); i++) {
+                auto init_val = evaluate_expression(node->initializers[i]);
+                if (init_val && element_type) {
+                    // Create constant index with i32 type
+                    auto index_val = builder.const_int(static_cast<int64_t>(i), i32_type);
+                    // Get element address
+                    auto elem_addr = builder.element_addr(alloc_result, index_val, element_type);
+                    // Store the value
+                    builder.store(init_val, elem_addr);
+                }
+            }
+        }
+
+        expression_values[node] = alloc_result;
     }
     
     void BoundToHLIR::visit(BoundCastExpression* node) {
@@ -405,70 +452,107 @@ namespace Bryo::HLIR
     
     void BoundToHLIR::visit(BoundIfStatement* node) {
         auto cond = evaluate_expression(node->condition);
-        
+
         auto then_block = create_block("if.then");
         auto merge_block = create_block("if.merge");
-        auto else_block = node->elseStatement 
-            ? create_block("if.else") 
+        auto else_block = node->elseStatement
+            ? create_block("if.else")
             : merge_block;
-        
+
         builder.cond_br(cond, then_block, else_block);
-        
+
         // Then branch
         builder.set_block(then_block);
         current_block = then_block;
         node->thenStatement->accept(this);
-        if (!current_block->terminator()) {
+        // Check if then_block has a terminator (current_block might have changed)
+        bool then_terminated = then_block->terminator() != nullptr;
+        if (!then_terminated) {
+            builder.set_block(then_block);
             builder.br(merge_block);
         }
-        
+
         // Else branch (if exists)
+        bool else_terminated = false;
         if (node->elseStatement) {
             builder.set_block(else_block);
             current_block = else_block;
             node->elseStatement->accept(this);
-            if (!current_block->terminator()) {
+            // Check if else_block has a terminator (current_block might have changed)
+            else_terminated = else_block->terminator() != nullptr;
+            if (!else_terminated) {
+                builder.set_block(else_block);
                 builder.br(merge_block);
             }
         }
-        
-        // Continue with merge
-        builder.set_block(merge_block);
-        current_block = merge_block;
+
+        // Check if merge block is reachable
+        bool merge_reachable = !then_terminated || (node->elseStatement && !else_terminated) || !node->elseStatement;
+
+        if (merge_reachable) {
+            // Merge block is reachable, continue with it
+            builder.set_block(merge_block);
+            current_block = merge_block;
+        } else {
+            // Both branches terminated - merge block is dead code
+            // Remove it from the function's block list
+            auto& blocks = current_function->blocks;
+            blocks.erase(
+                std::remove_if(blocks.begin(), blocks.end(),
+                    [merge_block](const std::unique_ptr<BasicBlock>& blk) {
+                        return blk.get() == merge_block;
+                    }),
+                blocks.end()
+            );
+            current_block = nullptr;
+        }
     }
     
     void BoundToHLIR::visit(BoundWhileStatement* node) {
+        auto entry_block = current_block;
         auto header = create_block("while.header");
         auto body = create_block("while.body");
         auto exit = create_block("while.exit");
-        
+
         // Jump to header
         builder.br(header);
         builder.set_block(header);
         current_block = header;
-        
+
+        // Create phi helper to manage loop-carried variables
+        LoopPhiHelper phi_helper(this, entry_block, header);
+        phi_helper.create_phis();
+
         // Set up loop context
         LoopContext ctx;
         ctx.continue_target = header;
         ctx.break_target = exit;
         ctx.loop_entry_values = symbol_values;
         loop_stack.push(ctx);
-        
-        // Check condition
+
+        // Evaluate condition and branch
         auto cond = evaluate_expression(node->condition);
         builder.cond_br(cond, body, exit);
-        
-        // Body
+
+        // Process loop body
         builder.set_block(body);
         current_block = body;
         node->body->accept(this);
-        if (!current_block->terminator()) {
+
+        auto body_end_block = current_block;
+        if (body_end_block && !body_end_block->terminator()) {
             builder.br(header);
         }
-        
+
+        // Add back-edge to phi nodes
+        phi_helper.add_backedge(body_end_block);
+
         loop_stack.pop();
         builder.set_block(exit);
         current_block = exit;
+
+        // Finalize phis - variables use phi results after loop
+        phi_helper.finalize();
     }
     
     void BoundToHLIR::visit(BoundForStatement* node) {
@@ -476,50 +560,61 @@ namespace Bryo::HLIR
         if (node->initializer) {
             node->initializer->accept(this);
         }
-        
+
+        auto entry_block = current_block;
         auto header = create_block("for.header");
         auto body = create_block("for.body");
         auto update = create_block("for.update");
         auto exit = create_block("for.exit");
-        
+
         builder.br(header);
         builder.set_block(header);
         current_block = header;
-        
+
+        // Create phi helper to manage loop-carried variables
+        LoopPhiHelper phi_helper(this, entry_block, header);
+        phi_helper.create_phis();
+
         // Set up loop context
         LoopContext ctx;
         ctx.continue_target = update;
         ctx.break_target = exit;
         ctx.loop_entry_values = symbol_values;
         loop_stack.push(ctx);
-        
-        // Condition
+
+        // Evaluate condition and branch
         if (node->condition) {
             auto cond = evaluate_expression(node->condition);
             builder.cond_br(cond, body, exit);
         } else {
             builder.br(body);
         }
-        
-        // Body
+
+        // Process body
         builder.set_block(body);
         current_block = body;
         node->body->accept(this);
         if (!current_block->terminator()) {
             builder.br(update);
         }
-        
-        // Update
+
+        // Update block - increment variables and loop back
         builder.set_block(update);
         current_block = update;
         for (auto inc : node->incrementors) {
             evaluate_expression(inc);
         }
         builder.br(header);
-        
+
+        // Add back-edge to phi nodes from update block
+        phi_helper.add_backedge(update);
+
         loop_stack.pop();
         builder.set_block(exit);
         current_block = exit;
+
+        // Finalize phis - variables use phi results after loop
+        phi_helper.finalize();
     }
     
     void BoundToHLIR::visit(BoundBreakStatement* node) {

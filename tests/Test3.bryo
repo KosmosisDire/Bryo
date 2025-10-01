@@ -1,0 +1,5 @@
+fn Main_f32_
+{
+    f32 x = 5.5
+    return x
+}

@@ -1,0 +1,5 @@
+fn Main_f32_
+{
+    var x = 10.0
+    return x
+}

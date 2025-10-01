@@ -362,7 +362,16 @@ namespace Bryo
 
     bool TypeResolver::check_implicit_conversion(TypePtr from, TypePtr to, BoundNode *node, const std::string &context)
     {
-        ConversionKind kind = check_conversion(from, to);
+        TypePtr canonicalFrom = apply_substitution(from);
+        TypePtr canonicalTo = apply_substitution(to);
+
+        // Don't report errors if types are still being inferred
+        if (canonicalFrom->is<UnresolvedType>() || canonicalTo->is<UnresolvedType>())
+        {
+            return false; // Return false to indicate conversion not yet determined
+        }
+
+        ConversionKind kind = check_conversion(canonicalFrom, canonicalTo);
 
         if (Conversions::is_implicit_conversion(kind))
         {
@@ -370,21 +379,30 @@ namespace Bryo
         }
         else if (Conversions::is_explicit_conversion(kind))
         {
-            report_error(node, context + ": Implicit conversion from '" + from->get_name() +
-                                   "' to '" + to->get_name() + "' not allowed - explicit cast required");
+            report_error(node, context + ": Implicit conversion from '" + canonicalFrom->get_name() +
+                                   "' to '" + canonicalTo->get_name() + "' not allowed - explicit cast required");
             return false;
         }
         else
         {
-            report_error(node, context + ": Cannot convert '" + from->get_name() +
-                                   "' to '" + to->get_name() + "'");
+            report_error(node, context + ": Cannot convert '" + canonicalFrom->get_name() +
+                                   "' to '" + canonicalTo->get_name() + "'");
             return false;
         }
     }
 
     bool TypeResolver::check_explicit_conversion(TypePtr from, TypePtr to, BoundNode *node, const std::string &context)
     {
-        ConversionKind kind = check_conversion(from, to);
+        TypePtr canonicalFrom = apply_substitution(from);
+        TypePtr canonicalTo = apply_substitution(to);
+
+        // Don't report errors if types are still being inferred
+        if (canonicalFrom->is<UnresolvedType>() || canonicalTo->is<UnresolvedType>())
+        {
+            return false; // Return false to indicate conversion not yet determined
+        }
+
+        ConversionKind kind = check_conversion(canonicalFrom, canonicalTo);
 
         if (Conversions::is_conversion_possible(kind))
         {
@@ -392,8 +410,8 @@ namespace Bryo
         }
         else
         {
-            report_error(node, context + ": Cannot convert '" + from->get_name() +
-                                   "' to '" + to->get_name() + "' even with explicit cast");
+            report_error(node, context + ": Cannot convert '" + canonicalFrom->get_name() +
+                                   "' to '" + canonicalTo->get_name() + "' even with explicit cast");
             return false;
         }
     }
@@ -970,6 +988,24 @@ namespace Bryo
 
         TypePtr elementType = resolve_type_expression(node->elementTypeExpression);
 
+        // If no explicit element type, infer from initializers
+        if (elementType->is<UnresolvedType>() && !node->initializers.empty())
+        {
+            // Try to infer from first non-null initializer
+            for (auto init : node->initializers)
+            {
+                if (init)
+                {
+                    TypePtr initType = apply_substitution(init->type);
+                    if (initType && !initType->is<UnresolvedType>())
+                    {
+                        elementType = initType;
+                        break;
+                    }
+                }
+            }
+        }
+
         // Check size is integer
         if (node->size)
         {
@@ -983,7 +1019,15 @@ namespace Bryo
             if (init)
             {
                 TypePtr initType = apply_substitution(init->type);
-                check_implicit_conversion(initType, elementType, node, "array initializer");
+                if (!elementType->is<UnresolvedType>())
+                {
+                    check_implicit_conversion(initType, elementType, node, "array initializer");
+                }
+                else
+                {
+                    // Unify all initializers with the element type for inference
+                    unify(initType, elementType, node, "array element type inference");
+                }
             }
         }
 

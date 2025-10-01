@@ -51,6 +51,9 @@ namespace Bryo
         HLIR::Function *current_hlir_function = nullptr;
         llvm::Function *current_llvm_function = nullptr;
 
+        // Pending phi nodes (need to be resolved after all blocks are generated)
+        std::vector<std::pair<llvm::PHINode*, HLIR::PhiInst*>> pending_phis;
+
     public:
         HLIRCodeGen(llvm::LLVMContext &ctx, const std::string &module_name)
             : context(ctx)

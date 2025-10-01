@@ -1,0 +1,7 @@
+fn Main_f32_
+{
+    var a = 5.0
+    var b = 3.0
+    var c = 2.0
+    return a * b + c
+}

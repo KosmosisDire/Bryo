@@ -1,0 +1,18 @@
+type Point
+{
+    f32 x
+    f32 y
+    
+    fn Sum -> f32
+    {
+        return x + y
+    }
+}
+
+fn Main_f32_
+{
+    var p = new Point()
+    p.x = 5.0
+    p.y = 7.0
+    return p.Sum()
+}

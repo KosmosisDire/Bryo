@@ -145,12 +145,21 @@ namespace Bryo
         else if (auto *array_type = type->as<ArrayType>())
         {
             llvm::Type *elem = get_or_create_type(array_type->element);
-            // Dynamic arrays are represented as a struct { i32 length, ptr data }
-            std::vector<llvm::Type *> fields = {
-                llvm::Type::getInt32Ty(context),           // length
-                llvm::PointerType::get(context, 0)         // data pointer (opaque)
-            };
-            llvm_type = llvm::StructType::create(context, fields, "array");
+
+            if (array_type->size >= 0)
+            {
+                // Fixed-size array: [N x T] (stack allocated)
+                llvm_type = llvm::ArrayType::get(elem, array_type->size);
+            }
+            else
+            {
+                // Dynamic arrays are represented as a struct { i32 length, ptr data }
+                std::vector<llvm::Type *> fields = {
+                    llvm::Type::getInt32Ty(context),           // length
+                    llvm::PointerType::get(context, 0)         // data pointer (opaque)
+                };
+                llvm_type = llvm::StructType::create(context, fields, "array");
+            }
         }
         else if (auto *named_type = type->as<NamedType>())
         {
@@ -319,6 +328,18 @@ namespace Bryo
             generate_basic_block(hlir_block.get());
         }
 
+        // Resolve pending phi nodes now that all values are generated
+        for (const auto &[llvm_phi, hlir_phi] : pending_phis)
+        {
+            for (const auto &incoming : hlir_phi->incoming)
+            {
+                llvm::Value *value = get_value(incoming.first);
+                llvm::BasicBlock *block = get_block(incoming.second);
+                llvm_phi->addIncoming(value, block);
+            }
+        }
+        pending_phis.clear();
+
         // Reset current function
         current_hlir_function = nullptr;
         current_llvm_function = nullptr;
@@ -427,6 +448,13 @@ namespace Bryo
     void HLIRCodeGen::gen_const_int(HLIR::ConstIntInst *inst)
     {
         llvm::Type *type = get_or_create_type(inst->result->type);
+
+        // If type is void or invalid for integer constants, default to i32
+        if (!type->isIntegerTy())
+        {
+            type = llvm::Type::getInt32Ty(context);
+        }
+
         llvm::Value *const_val = llvm::ConstantInt::get(type, inst->value, true);
         value_map[inst->result] = const_val;
     }
@@ -569,8 +597,31 @@ namespace Bryo
         // Get array type info
         llvm::Type *array_llvm_type = get_or_create_type(inst->array->type);
 
+        // Get element type
+        llvm::Type *elem_type = get_or_create_type(inst->result->type);
+        if (auto *ptr_type = inst->result->type->as<PointerType>())
+        {
+            elem_type = get_or_create_type(ptr_type->pointee);
+        }
+
+        // Check if this is a fixed-size array [N x T]
+        if (array_llvm_type->isArrayTy())
+        {
+            // For fixed arrays, we need GEP with two indices: [0, index]
+            // First index (0) is because we have a pointer to the array
+            // Second index is the actual element index
+            llvm::Value *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+            llvm::Value *indices[] = { zero, index };
+            llvm::Value *elem_ptr = builder->CreateInBoundsGEP(
+                array_llvm_type,
+                array,
+                indices,
+                "elem_addr");
+
+            value_map[inst->result] = elem_ptr;
+        }
         // Check if this is a dynamic array (struct { i32, ptr })
-        if (array_llvm_type->isStructTy())
+        else if (array_llvm_type->isStructTy())
         {
             // Load the data pointer (second field of the array struct)
             llvm::Value *data_ptr_addr = builder->CreateStructGEP(
@@ -585,13 +636,6 @@ namespace Bryo
                 data_ptr_addr,
                 "data_ptr");
 
-            // Get element type
-            llvm::Type *elem_type = get_or_create_type(inst->result->type);
-            if (auto *ptr_type = inst->result->type->as<PointerType>())
-            {
-                elem_type = get_or_create_type(ptr_type->pointee);
-            }
-
             // GEP into the data pointer
             llvm::Value *elem_ptr = builder->CreateGEP(
                 elem_type,
@@ -603,13 +647,7 @@ namespace Bryo
         }
         else
         {
-            // Static array or direct pointer - simple GEP
-            llvm::Type *elem_type = get_or_create_type(inst->result->type);
-            if (auto *ptr_type = inst->result->type->as<PointerType>())
-            {
-                elem_type = get_or_create_type(ptr_type->pointee);
-            }
-
+            // Direct pointer - simple GEP
             llvm::Value *elem_ptr = builder->CreateGEP(
                 elem_type,
                 array,
@@ -874,14 +912,13 @@ namespace Bryo
         llvm::Type *phi_type = get_or_create_type(inst->result->type);
         llvm::PHINode *phi = builder->CreatePHI(phi_type, inst->incoming.size(), "phi");
 
-        for (const auto &incoming : inst->incoming)
-        {
-            llvm::Value *value = get_value(incoming.first);
-            llvm::BasicBlock *block = get_block(incoming.second);
-            phi->addIncoming(value, block);
-        }
-
+        // Register the phi node result immediately so it can be referenced
         value_map[inst->result] = phi;
+
+        // Defer adding incoming values until all blocks are processed
+        // This is necessary because incoming values might be defined in blocks
+        // that haven't been generated yet
+        pending_phis.push_back({phi, inst});
     }
 
     // ============================================================================

@@ -101,9 +101,57 @@ namespace Bryo::HLIR
         void resolve_pending_phis();
         HLIR::Opcode get_binary_opcode(BinaryOperatorKind kind);
         HLIR::Opcode get_unary_opcode(UnaryOperatorKind kind);
-        
+
         // Property helper methods
         void generate_property_getter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* getter);
         void generate_property_setter(BoundPropertyDeclaration* prop_decl, BoundPropertyAccessor* setter);
+
+        // Loop phi node helper
+        class LoopPhiHelper {
+        private:
+            BoundToHLIR* converter;
+            HLIR::BasicBlock* entry_block;
+            HLIR::BasicBlock* header_block;
+            std::unordered_map<Symbol*, HLIR::Value*> entry_values;
+            std::unordered_map<Symbol*, HLIR::PhiInst*> phi_nodes;
+
+        public:
+            LoopPhiHelper(BoundToHLIR* conv, HLIR::BasicBlock* entry, HLIR::BasicBlock* header)
+                : converter(conv), entry_block(entry), header_block(header) {
+                entry_values = conv->symbol_values;
+            }
+
+            // Create phi nodes at loop header for all current variables
+            void create_phis() {
+                for (auto& [sym, entry_val] : entry_values) {
+                    auto phi_result = converter->builder.phi(entry_val->type);
+                    auto phi_inst = static_cast<HLIR::PhiInst*>(phi_result->def);
+                    phi_nodes[sym] = phi_inst;
+
+                    // Add incoming value from entry block
+                    phi_inst->add_incoming(entry_val, entry_block);
+
+                    // Update symbol_values to use the phi result
+                    converter->symbol_values[sym] = phi_result;
+                }
+            }
+
+            // Add back-edge values from loop body
+            void add_backedge(HLIR::BasicBlock* backedge_block) {
+                if (backedge_block) {
+                    for (auto& [sym, phi_inst] : phi_nodes) {
+                        auto body_val = converter->symbol_values[sym];
+                        phi_inst->add_incoming(body_val, backedge_block);
+                    }
+                }
+            }
+
+            // Restore phi results after loop
+            void finalize() {
+                for (auto& [sym, phi_inst] : phi_nodes) {
+                    converter->symbol_values[sym] = phi_inst->result;
+                }
+            }
+        };
     };
 }
