@@ -7,7 +7,6 @@
 #include <span>
 #include <optional>
 #include <vector>
-#include "common/symbol_handle.hpp"
 #include "common/source_location.hpp"
 #include "common/token.hpp"
 #include "semantic/type.hpp"
@@ -569,7 +568,6 @@ namespace Bryo
         List<ParameterDeclSyntax *> parameters;
         BaseExprSyntax *returnType; // null = void
         BlockSyntax *body;          // Can be null (abstract)
-        SymbolHandle functionSymbol;
         ACCEPT_VISITOR
     };
 

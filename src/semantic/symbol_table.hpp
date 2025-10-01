@@ -10,6 +10,9 @@
 namespace Bryo
 {
 
+// Forward declaration
+struct BaseSyntax;
+
 class SymbolTable {
 public:
     explicit SymbolTable(TypeSystem& type_system);
@@ -38,14 +41,18 @@ public:
     
     // Access to global namespace
     NamespaceSymbol* get_global_namespace();
-    
+
     // Access to type system (needed by symbol_table_builder)
     TypeSystem& get_type_system() { return types; }
     const TypeSystem& get_type_system() const { return types; }
-    
+
+    // AST node to symbol mapping (for binding phase)
+    void map_ast_to_symbol(BaseSyntax* ast_node, Symbol* symbol);
+    Symbol* get_symbol_for_ast(BaseSyntax* ast_node);
+
     // Merge another symbol table into this one
     std::vector<std::string> merge(SymbolTable& other);
-    
+
     // Debugging
     std::string to_string() const;
     
@@ -53,11 +60,14 @@ private:
     TypeSystem& types;
     std::unique_ptr<NamespaceSymbol> global_namespace;
     Symbol* current_scope = nullptr;
-    
+
+    // Mapping from AST nodes to their corresponding symbols
+    std::unordered_map<BaseSyntax*, Symbol*> ast_to_symbol_map;
+
     // Recursively merge source namespace into target namespace
-    void merge_namespace(NamespaceSymbol* target, NamespaceSymbol* source, 
+    void merge_namespace(NamespaceSymbol* target, NamespaceSymbol* source,
                         std::vector<std::string>& conflicts);
-    
+
     // Update parent pointers recursively after moving a symbol
     void update_parent_pointers(Symbol* symbol, Symbol* new_parent);
 };

@@ -1,4 +1,5 @@
 #include "symbol_table_builder.hpp"
+#include <iostream>
 
 namespace Bryo
 {
@@ -205,7 +206,7 @@ namespace Bryo
 
     void SymbolTableBuilder::visit(ConstructorDeclSyntax *node)
     {
-        // Constructors use the containing type's name
+        // Constructors use a special "new" name to avoid collision with the type name
         auto containing_type = symbolTable.get_current_scope()->as<TypeSymbol>();
         if (!containing_type)
         {
@@ -213,7 +214,7 @@ namespace Bryo
             return;
         }
 
-        std::string name = containing_type->name;
+        std::string name = "New";  // Use "New" instead of type name to avoid collision
         TypePtr return_type = typeSystem.get_primitive("void");
 
         auto func_symbol = symbolTable.define_function(name, return_type);
@@ -226,10 +227,16 @@ namespace Bryo
         // Mark as constructor
         func_symbol->is_constructor = true;
         func_symbol->access = get_access_level(node->modifiers);
+        func_symbol->location = node->location;
+
+        // Map AST node to symbol for binding phase
+        symbolTable.map_ast_to_symbol(node, func_symbol);
+
 
         // Enter function scope
         symbolTable.push_scope(func_symbol);
         currentParameterIndex = 0;
+
 
         // Process parameters
         std::vector<ParameterSymbol *> params;
@@ -249,6 +256,12 @@ namespace Bryo
                         {
                             params.push_back(p);
                         }
+                        else
+                        {
+                        }
+                    }
+                    else
+                    {
                     }
                 }
             }
@@ -282,6 +295,9 @@ namespace Bryo
         if (!param_symbol)
         {
             push_error("Failed to define parameter '" + name + "'");
+        }
+        else
+        {
         }
 
         // Visit children for annotation

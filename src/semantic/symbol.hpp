@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include <variant>
 #include "common/source_location.hpp"
@@ -112,8 +113,9 @@ namespace Bryo
     
     struct ContainerSymbol : Symbol {
         // Children organized by name (multimap for overloads)
-        std::unordered_multimap<std::string, std::unique_ptr<Symbol>> members;
-        
+        // Using std::multimap instead of unordered_multimap to preserve insertion order
+        std::multimap<std::string, std::unique_ptr<Symbol>> members;
+
         // Ordered list for deterministic iteration
         std::vector<Symbol*> member_order;
         

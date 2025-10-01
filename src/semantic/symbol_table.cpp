@@ -1,6 +1,7 @@
 #include "symbol_table.hpp"
 #include <sstream>
 #include <functional>
+#include <iostream>
 
 namespace Bryo
 {
@@ -152,21 +153,40 @@ FunctionSymbol* SymbolTable::resolve_function(const std::string& name, const std
 }
 
 
-NamespaceSymbol* SymbolTable::get_global_namespace() { 
-    return global_namespace.get(); 
+NamespaceSymbol* SymbolTable::get_global_namespace() {
+    return global_namespace.get();
 }
 
+void SymbolTable::map_ast_to_symbol(BaseSyntax* ast_node, Symbol* symbol) {
+    if (ast_node && symbol) {
+        ast_to_symbol_map[ast_node] = symbol;
+    }
+}
+
+Symbol* SymbolTable::get_symbol_for_ast(BaseSyntax* ast_node) {
+    if (!ast_node) return nullptr;
+    auto it = ast_to_symbol_map.find(ast_node);
+    if (it != ast_to_symbol_map.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
 
 std::vector<std::string> SymbolTable::merge(SymbolTable& other) {
     std::vector<std::string> conflicts;
-    
+
+    // Merge AST to symbol mappings
+    for (auto& [ast_node, symbol] : other.ast_to_symbol_map) {
+        ast_to_symbol_map[ast_node] = symbol;
+    }
+
     // If we don't have a global namespace yet, adopt theirs
     if (!global_namespace && other.global_namespace) {
         global_namespace = std::move(other.global_namespace);
         current_scope = global_namespace.get();
         return conflicts;
     }
-    
+
     // If they don't have a global namespace, nothing to merge
     if (!other.global_namespace) {
         return conflicts;
@@ -232,36 +252,39 @@ void SymbolTable::merge_namespace(NamespaceSymbol* target, NamespaceSymbol* sour
                     // Check if all existing symbols are functions (for overloading)
                     bool all_functions = true;
                     bool has_conflict = false;
-                    
+
                     for (auto existing : existing_symbols) {
                         auto existing_func = existing->as<FunctionSymbol>();
                         if (!existing_func) {
                             all_functions = false;
                             break;
                         }
-                        
+
                         // Check for signature conflict
                         if (source_func->signature_matches(existing_func)) {
-                            conflicts.push_back("Function '" + source_func->get_mangled_name() + 
+                            conflicts.push_back("Function '" + source_func->get_mangled_name() +
                                               "' with same signature already exists in '" +
                                               target->get_qualified_name() + "'");
                             has_conflict = true;
                             break;
                         }
                     }
-                    
+
                     if (all_functions && !has_conflict) {
                         // No conflict - add as overload
                         symbol_ptr->parent = target;
                         target_container->add_member(std::move(symbol_ptr));
                         merged = true;
                     }
+                    else
+                    {
+                    }
                 }
             }
-            
+
             if (!merged && symbol_ptr) {
                 // Conflict - report it
-                conflicts.push_back("Symbol conflict: '" + name + 
+                conflicts.push_back("Symbol conflict: '" + name +
                                   "' already exists in namespace '" +
                                   target->get_qualified_name() + "'");
             }

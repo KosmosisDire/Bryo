@@ -222,6 +222,7 @@ namespace Bryo
             // Look up the type symbol
             Symbol *symbol = resolve_qualified_name(boundType->parts);
 
+
             if (symbol)
             {
                 if (auto typeSymbol = symbol->as<TypeSymbol>())
@@ -235,7 +236,9 @@ namespace Bryo
             {
                 TypePtr primitive = typeSystem.get_primitive(boundType->parts[0]);
                 if (primitive)
+                {
                     return primitive;
+                }
             }
         }
 
@@ -989,8 +992,8 @@ namespace Bryo
             {
                 if (auto type_symbol = named_type->symbol)
                 {
-                    // Get all functions with the type's name (constructors)
-                    auto constructors = type_symbol->get_functions(type_symbol->name);
+                    // Get all constructors (they're named "New")
+                    auto constructors = type_symbol->get_functions("New");
 
                     // Filter to only constructors
                     std::vector<FunctionSymbol*> ctors;

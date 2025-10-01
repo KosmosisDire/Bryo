@@ -184,16 +184,9 @@ namespace Bryo
         {
             bound->name = containing_type->name;
 
-            // Resolve the constructor symbol by matching parameter count
-            auto ctors = containing_type->get_functions(containing_type->name);
-            for (auto* func : ctors)
-            {
-                if (func->is_constructor && func->parameters.size() == syntax->parameters.size())
-                {
-                    bound->symbol = func;
-                    break;
-                }
-            }
+            // Match constructor using AST node mapping
+            // During symbol table building, we mapped each constructor AST node to its symbol
+            bound->symbol = symbol_table_.get_symbol_for_ast(syntax);
         }
 
         // Enter function scope

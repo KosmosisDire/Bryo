@@ -1,16 +1,22 @@
 
 
 #include "hlir.hpp"
+#include "../semantic/type_system.hpp"
 
 namespace Bryo::HLIR
 {
     class HLIRBuilder {
         Function* current_func = nullptr;
         BasicBlock* current_block = nullptr;
-        
+        TypeSystem* type_system = nullptr;
+
     public:
+        HLIRBuilder() = default;
+        HLIRBuilder(TypeSystem* ts) : type_system(ts) {}
+
         void set_function(Function* f) { current_func = f; }
         void set_block(BasicBlock* b) { current_block = b; }
+        void set_type_system(TypeSystem* ts) { type_system = ts; }
         
         Value* const_int(int64_t val, TypePtr type) {
             auto result = current_func->create_value(type);
@@ -77,7 +83,8 @@ namespace Bryo::HLIR
         }
         
         Value* alloc(TypePtr type, bool stack = false) {
-            auto ptr_type = type; // Should be pointer type
+            // Result type is pointer to the allocated type
+            auto ptr_type = type_system ? type_system->get_pointer(type) : type;
             auto result = current_func->create_value(ptr_type);
             auto inst = std::make_unique<AllocInst>(result, type);
             inst->on_stack = stack;
@@ -131,8 +138,8 @@ namespace Bryo::HLIR
         }
         
         Value* field_addr(Value* object, uint32_t field_index, TypePtr field_type) {
-            // Result type should be pointer to field type
-            auto ptr_type = field_type; // TODO: Should be pointer type
+            // Result type is pointer to field type
+            auto ptr_type = type_system ? type_system->get_pointer(field_type) : field_type;
             auto result = current_func->create_value(ptr_type);
             auto inst = std::make_unique<FieldAddrInst>(result, object, field_index);
             result->def = inst.get();
@@ -140,10 +147,10 @@ namespace Bryo::HLIR
             current_block->add_inst(std::move(inst));
             return result;
         }
-        
+
         Value* element_addr(Value* array, Value* index, TypePtr element_type) {
-            // Result type should be pointer to element type  
-            auto ptr_type = element_type; // TODO: Should be pointer type
+            // Result type is pointer to element type
+            auto ptr_type = type_system ? type_system->get_pointer(element_type) : element_type;
             auto result = current_func->create_value(ptr_type);
             auto inst = std::make_unique<ElementAddrInst>(result, array, index);
             result->def = inst.get();

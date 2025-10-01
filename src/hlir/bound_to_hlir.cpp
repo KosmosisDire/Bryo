@@ -58,7 +58,33 @@ namespace Bryo::HLIR
     
     void BoundToHLIR::visit(BoundNameExpression* node) {
         if (!node->symbol) return;
-        
+
+        // Check if this is a field member being accessed in a member function
+        if (node->symbol->is<FieldSymbol>() || node->symbol->is<VariableSymbol>()) {
+            auto parent = node->symbol->parent;
+            if (parent && parent->is<TypeSymbol>()) {
+                // This is a field of a type - we need 'this' pointer
+                if (current_function && !current_function->is_static && current_function->params.size() > 0) {
+                    // Get 'this' parameter (first parameter of member function)
+                    auto this_param = current_function->params[0];
+
+                    // Compute field address
+                    if (auto field = node->symbol->as<FieldSymbol>()) {
+                        size_t field_index = get_field_index(parent->as<TypeSymbol>(), field);
+                        auto field_addr = builder.field_addr(this_param, field_index, field->type);
+                        expression_values[node] = field_addr;
+                        return;
+                    } else if (auto var = node->symbol->as<VariableSymbol>()) {
+                        size_t field_index = get_field_index(parent->as<TypeSymbol>(), var);
+                        auto field_addr = builder.field_addr(this_param, field_index, var->type);
+                        expression_values[node] = field_addr;
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Otherwise, it's a regular local variable or parameter
         auto value = get_symbol_value(node->symbol);
         expression_values[node] = value;
     }
@@ -66,6 +92,14 @@ namespace Bryo::HLIR
     void BoundToHLIR::visit(BoundBinaryExpression* node) {
         auto left = evaluate_expression(node->left);
         auto right = evaluate_expression(node->right);
+
+        // check for null operands
+        if (!left || !right) {
+            std::cerr << "Error: Null operand in binary expression at "
+                      << node->location.start.to_string() << "\n";
+            expression_values[node] = nullptr;
+            return;
+        }
         
         auto opcode = get_binary_opcode(node->operatorKind);
         auto result = builder.binary(opcode, left, right);
@@ -138,7 +172,32 @@ namespace Bryo::HLIR
         // Handle simple name assignment
         if (auto name = node->target->as<BoundNameExpression>()) {
             if (name->symbol) {
-                set_symbol_value(name->symbol, final_value);
+                // Get the target address
+                auto target_addr = get_symbol_value(name->symbol);
+
+                // If both target and value are pointers to value types, we need to load from source and store to target
+                if (target_addr && target_addr->type->as<PointerType>() &&
+                    final_value && final_value->type->as<PointerType>()) {
+                    auto target_pointee = target_addr->type->as<PointerType>()->pointee;
+                    auto value_pointee = final_value->type->as<PointerType>()->pointee;
+
+                    // If both point to the same value type, do a value copy
+                    if (target_pointee->as<NamedType>() && value_pointee->as<NamedType>() &&
+                        target_pointee == value_pointee) {
+                        // Load from source, store to target
+                        auto loaded_value = builder.load(final_value, value_pointee);
+                        builder.store(loaded_value, target_addr);
+                        expression_values[node] = loaded_value;
+                        return;
+                    }
+                }
+
+                // For primitive assignments, just store the value
+                if (target_addr && target_addr->type->as<PointerType>()) {
+                    builder.store(final_value, target_addr);
+                } else {
+                    set_symbol_value(name->symbol, final_value);
+                }
             }
         }
         // Handle member field assignment
@@ -149,13 +208,33 @@ namespace Bryo::HLIR
                 if (auto field = member->member->as<FieldSymbol>()) {
                     size_t field_index = get_field_index(field->parent->as<TypeSymbol>(), field);
                     auto addr_result = builder.field_addr(obj_val, field_index, field->type);
-                    builder.store(final_value, addr_result);
+
+                    // If field is a value type and we're assigning a pointer, load the value first
+                    auto store_value = final_value;
+                    if (field->type->as<NamedType>() && field->type->is_value_type() &&
+                        final_value && final_value->type->as<PointerType>()) {
+                        auto ptr_type = final_value->type->as<PointerType>();
+                        if (ptr_type->pointee == field->type) {
+                            store_value = builder.load(final_value, field->type);
+                        }
+                    }
+                    builder.store(store_value, addr_result);
                 }
                 // Variable member assignment
                 else if (auto var = member->member->as<VariableSymbol>()) {
                     size_t field_index = get_field_index(var->parent->as<TypeSymbol>(), var);
                     auto addr_result = builder.field_addr(obj_val, field_index, var->type);
-                    builder.store(final_value, addr_result);
+
+                    // If field is a value type and we're assigning a pointer, load the value first
+                    auto store_value = final_value;
+                    if (var->type->as<NamedType>() && var->type->is_value_type() &&
+                        final_value && final_value->type->as<PointerType>()) {
+                        auto ptr_type = final_value->type->as<PointerType>();
+                        if (ptr_type->pointee == var->type) {
+                            store_value = builder.load(final_value, var->type);
+                        }
+                    }
+                    builder.store(store_value, addr_result);
                 }
                 // Property setter
                 else if (auto prop = member->member->as<PropertySymbol>()) {
@@ -194,7 +273,7 @@ namespace Bryo::HLIR
     
     void BoundToHLIR::visit(BoundCallExpression* node) {
         std::vector<HLIR::Value*> args;
-        
+
         // Check if this is a method call through member access
         if (auto member_expr = node->callee->as<BoundMemberAccessExpression>()) {
             // Evaluate the object to get 'this'
@@ -203,17 +282,42 @@ namespace Bryo::HLIR
                 args.push_back(this_val);
             }
         }
-        
+
         // Add regular arguments
         for (auto arg : node->arguments) {
-            args.push_back(evaluate_expression(arg));
+            auto arg_val = evaluate_expression(arg);
+            args.push_back(arg_val);
         }
-        
+
         if (node->method && node->method->as<FunctionSymbol>()) {
             auto func_sym = static_cast<FunctionSymbol*>(node->method);
             HLIR::Function* func = module->find_function(func_sym);
-            
+
             if (func) {
+                // Convert arguments if needed: if parameter expects value but we have pointer, load it
+                bool is_member_func = !func->is_static && func->params.size() > 0;
+                size_t param_offset = is_member_func ? 1 : 0; // Offset to skip 'this' parameter
+
+                for (size_t arg_idx = 0; arg_idx < node->arguments.size(); arg_idx++) {
+                    size_t param_idx = arg_idx + param_offset;
+                    size_t args_idx = arg_idx + (is_member_func ? 1 : 0); // args also has 'this' at index 0 for member functions
+
+                    if (param_idx < func->params.size() && args_idx < args.size()) {
+                        auto param_type = func->params[param_idx]->type;
+                        auto& arg_val = args[args_idx];
+
+                        // If parameter expects a value type but we're passing a pointer, load the value
+                        if (param_type->as<NamedType>() && param_type->is_value_type() &&
+                            arg_val && arg_val->type->as<PointerType>()) {
+                            auto ptr_type = arg_val->type->as<PointerType>();
+                            if (ptr_type->pointee == param_type) {
+                                // Load the value from the pointer
+                                arg_val = builder.load(arg_val, param_type);
+                            }
+                        }
+                    }
+                }
+
                 auto result = builder.call(func, args);
                 expression_values[node] = result;
             }
@@ -237,7 +341,16 @@ namespace Bryo::HLIR
                 if (obj_val) {
                     size_t field_index = get_field_index(field->parent->as<TypeSymbol>(), field);
                     auto addr_result = builder.field_addr(obj_val, field_index, field->type);
-                    result = builder.load(addr_result, field->type);
+
+                    // For struct fields, return the pointer so nested access works
+                    // Only load for primitive types
+                    if (field->type->as<NamedType>() && field->type->is_value_type()) {
+                        // Struct field - return pointer for chained access
+                        result = addr_result;
+                    } else {
+                        // Primitive field - load the value
+                        result = builder.load(addr_result, field->type);
+                    }
                 }
             }
             // Variable member (for compatibility)
@@ -245,7 +358,16 @@ namespace Bryo::HLIR
                 if (obj_val) {
                     size_t field_index = get_field_index(var->parent->as<TypeSymbol>(), var);
                     auto addr_result = builder.field_addr(obj_val, field_index, var->type);
-                    result = builder.load(addr_result, var->type);
+
+                    // For struct fields, return the pointer so nested access works
+                    // Only load for primitive types
+                    if (var->type->as<NamedType>() && var->type->is_value_type()) {
+                        // Struct field - return pointer for chained access
+                        result = addr_result;
+                    } else {
+                        // Primitive field - load the value
+                        result = builder.load(addr_result, var->type);
+                    }
                 } else {
                     // Static member or error
                     result = get_symbol_value(var);
@@ -325,6 +447,29 @@ namespace Bryo::HLIR
                 for (auto arg : node->arguments) {
                     args.push_back(evaluate_expression(arg));
                 }
+
+                // Convert arguments if needed: if parameter expects value but we have pointer, load it
+                // Constructor is a member function, so params[0] is 'this', params[1+] are actual args
+                for (size_t arg_idx = 0; arg_idx < node->arguments.size(); arg_idx++) {
+                    size_t param_idx = arg_idx + 1; // +1 to skip 'this' parameter
+                    size_t args_idx = arg_idx + 1;  // +1 because args[0] is 'this'
+
+                    if (param_idx < ctor_func->params.size() && args_idx < args.size()) {
+                        auto param_type = ctor_func->params[param_idx]->type;
+                        auto& arg_val = args[args_idx];
+
+                        // If parameter expects a value type but we're passing a pointer, load the value
+                        if (param_type->as<NamedType>() && param_type->is_value_type() &&
+                            arg_val && arg_val->type->as<PointerType>()) {
+                            auto ptr_type = arg_val->type->as<PointerType>();
+                            if (ptr_type->pointee == param_type) {
+                                // Load the value from the pointer
+                                arg_val = builder.load(arg_val, param_type);
+                            }
+                        }
+                    }
+                }
+
                 builder.call(ctor_func, args);
             }
         }
@@ -610,6 +755,20 @@ namespace Bryo::HLIR
     void BoundToHLIR::visit(BoundReturnStatement* node) {
         if (node->value) {
             auto val = evaluate_expression(node->value);
+
+            // If returning a value type but we have a pointer, load the value
+            if (current_function && current_function->return_type()) {
+                auto return_type = current_function->return_type();
+                if (return_type->as<NamedType>() && return_type->is_value_type() &&
+                    val && val->type->as<PointerType>()) {
+                    auto ptr_type = val->type->as<PointerType>();
+                    if (ptr_type->pointee == return_type) {
+                        // Load the value from the pointer before returning
+                        val = builder.load(val, return_type);
+                    }
+                }
+            }
+
             builder.ret(val);
         } else {
             builder.ret(nullptr);
@@ -627,18 +786,45 @@ namespace Bryo::HLIR
         if (node->symbol && node->symbol->is<FieldSymbol>()) {
             return;
         }
-        
-        HLIR::Value* init_value = nullptr;
-        
-        if (node->initializer) {
-            init_value = evaluate_expression(node->initializer);
+
+        auto var_sym = node->symbol->as<VariableSymbol>();
+        auto var_type = var_sym->type;
+
+        // For value types (structs), allocate on stack
+        if (var_type->as<NamedType>() && var_type->is_value_type()) {
+            // Allocate stack space for the variable
+            auto var_addr = builder.alloc(var_type, true);
+
+            // If there's an initializer, evaluate it and store
+            if (node->initializer) {
+                auto init_value = evaluate_expression(node->initializer);
+                // If init_value is a pointer (from 'new' expression), load it first
+                if (init_value && init_value->type->as<PointerType>()) {
+                    // Load the struct value from the pointer
+                    auto loaded_value = builder.load(init_value, var_type);
+                    builder.store(loaded_value, var_addr);
+                } else if (init_value) {
+                    builder.store(init_value, var_addr);
+                }
+            }
+            // else: uninitialized, just leave the allocated space
+
+            // Store the address for later use
+            set_symbol_value(node->symbol, var_addr);
         } else {
-            // Default initialize
-            init_value = builder.const_null(node->symbol->as<VariableSymbol>()->type);
-        }
-        
-        if (node->symbol) {
-            set_symbol_value(node->symbol, init_value);
+            // For primitive types and pointers, use the value directly
+            HLIR::Value* init_value = nullptr;
+
+            if (node->initializer) {
+                init_value = evaluate_expression(node->initializer);
+            } else {
+                // Default initialize
+                init_value = builder.const_null(var_type);
+            }
+
+            if (node->symbol) {
+                set_symbol_value(node->symbol, init_value);
+            }
         }
     }
     
@@ -674,12 +860,29 @@ namespace Bryo::HLIR
         
         // Create parameter values
         for (size_t i = 0; i < node->parameters.size(); i++) {
-            auto param = func->create_value(
-                node->parameters[i]->symbol->as<ParameterSymbol>()->type,
-                node->parameters[i]->name
-            );
-            func->params.push_back(param);
-            set_symbol_value(node->parameters[i]->symbol, param);
+            auto param_sym = node->parameters[i]->symbol->as<ParameterSymbol>();
+            auto param_type = param_sym->type;
+
+            // For value types (structs), we need to allocate stack space and store the parameter there
+            // so that we can take their address for member access
+            if (param_type->as<NamedType>() && param_type->is_value_type()) {
+                // Create parameter as value
+                auto param = func->create_value(param_type, node->parameters[i]->name);
+                func->params.push_back(param);
+
+                // Allocate stack space for the parameter
+                auto param_addr = builder.alloc(param_type, true);
+                // Store the parameter value into the stack allocation
+                builder.store(param, param_addr);
+
+                // Use the stack address for all subsequent accesses
+                set_symbol_value(param_sym, param_addr);
+            } else {
+                // For primitive types and pointers, use the parameter directly
+                auto param = func->create_value(param_type, node->parameters[i]->name);
+                func->params.push_back(param);
+                set_symbol_value(param_sym, param);
+            }
         }
         
         // Process body

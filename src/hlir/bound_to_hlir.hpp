@@ -45,8 +45,8 @@ namespace Bryo::HLIR
         std::vector<PendingPhi> pending_phis;
         
     public:
-        BoundToHLIR(HLIR::Module* mod, TypeSystem* types) 
-            : module(mod), type_system(types) {}
+        BoundToHLIR(HLIR::Module* mod, TypeSystem* types)
+            : module(mod), builder(types), type_system(types) {}
         
         void build(BoundCompilationUnit* unit);
         
