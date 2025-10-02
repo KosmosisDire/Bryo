@@ -1,10 +1,8 @@
-# Please note this is a work in progress and is not near finished or ready for use
+# Please note this is a work in progress and is not finished or ready for use in any project
 
 
-<img width="250" alt="bryo-full-planet@4x" src="https://github.com/user-attachments/assets/5f68aa97-2d24-4ad2-8ee8-1b2faed55694" />
-
-# The Bryo Programming Language
-Bryo, (name from `Bryophyta` or `Bryo` meaning moss) is a general, object oriented, statically typed, embeddable language inspired by C#, Rust, Swift, and Python.
+# The Fern Programming Language
+Fern is a general, object oriented, statically typed, embeddable language inspired by C#, Rust, Swift, and Python.
 It aims to be intuitive, performant, safe, powerful, and bring tooling along with it for easy usage. It's intended purpose is for games programming for modding, hot reloading, quick iteration, and code glue without compromise.
 
 It is currently a work in progress, but the compiler does work and is able to run JIT-compiled scripts using LLVM.
