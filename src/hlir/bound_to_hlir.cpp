@@ -960,31 +960,20 @@ namespace Bryo::HLIR
             auto param_sym = node->parameters[i]->symbol->as<ParameterSymbol>();
             auto param_type = param_sym->type;
 
-            // External functions only need the parameter signature, not stack allocation
+            // Create parameter value and add to function signature
+            auto param = func->create_value(param_type, node->parameters[i]->name);
+            func->params.push_back(param);
+
+            // For external functions, we're done - no stack allocation needed
             if (func_sym->isExtern) {
-                auto param = func->create_value(param_type, node->parameters[i]->name);
-                func->params.push_back(param);
+                continue;
             }
-            // Regular functions need full parameter setup
-            else if (param_type->as<NamedType>() && param_type->is_value_type()) {
-                // For value types (structs), we need to allocate stack space and store the parameter there
-                // so that we can take their address for member access
-                auto param = func->create_value(param_type, node->parameters[i]->name);
-                func->params.push_back(param);
 
-                // Allocate stack space for the parameter
-                auto param_addr = builder.alloc(param_type, true);
-                // Store the parameter value into the stack allocation
-                builder.store(param, param_addr);
-
-                // Use the stack address for all subsequent accesses
-                set_symbol_value(param_sym, param_addr);
-            } else {
-                // For primitive types and pointers, use the parameter directly
-                auto param = func->create_value(param_type, node->parameters[i]->name);
-                func->params.push_back(param);
+            // For regular functions with primitive/pointer parameters, use the parameter directly
+            if (!param_type->as<NamedType>() || !param_type->is_value_type()) {
                 set_symbol_value(param_sym, param);
             }
+            // Note: Value type parameters are handled after entry block is created
         }
 
         // Skip body generation for external functions
@@ -994,6 +983,23 @@ namespace Bryo::HLIR
             current_block = entry;  // Set current_block
             builder.set_function(func);
             builder.set_block(entry);
+
+            // NOW allocate stack space for value-type parameters (after entry block exists)
+            for (size_t i = 0; i < node->parameters.size(); i++) {
+                auto param_sym = node->parameters[i]->symbol->as<ParameterSymbol>();
+                auto param_type = param_sym->type;
+
+                if (param_type->as<NamedType>() && param_type->is_value_type()) {
+                    // Allocate stack space for the parameter
+                    auto param_addr = builder.alloc(param_type, true);
+                    // Store the parameter value into the stack allocation
+                    auto param_value = func->params[is_member_function && !func_sym->isStatic ? i + 1 : i];
+                    builder.store(param_value, param_addr);
+
+                    // Use the stack address for all subsequent accesses
+                    set_symbol_value(param_sym, param_addr);
+                }
+            }
 
             // Process body
             if (node->body) {
