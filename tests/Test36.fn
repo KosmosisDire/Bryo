@@ -1,0 +1,51 @@
+-- Test: Struct-in-Struct Assignment
+-- Expected: 11.0
+
+type Point
+{
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
+    {
+        x = xVal
+        y = yVal
+    }
+}
+
+type Rectangle
+{
+    Point topLeft
+    Point bottomRight
+
+    new(Point tl, Point br)
+    {
+        topLeft = tl
+        bottomRight = br
+    }
+}
+
+type Container
+{
+    Rectangle rect
+
+    new(Rectangle r)
+    {
+        rect = r
+    }
+}
+
+fn Main
+{
+    var r1 = new Rectangle(new Point(1.0, 2.0), new Point(3.0, 4.0))
+    var r2 = new Rectangle(new Point(5.0, 6.0), new Point(7.0, 8.0))
+
+    var c1 = new Container(r1)
+    var c2 = new Container(r2)
+
+    -- Nested struct assignment
+    c1.rect = c2.rect
+
+    -- c1.rect should now be (5,6) to (7,8)
+    -- Should return 5 + 6 + 7 - 8 + 1 = 11
+    return c1.rect.topLeft.x + c1.rect.topLeft.y + c1.rect.bottomRight.x - c1.rect.bottomRight.y + r1.topLeft.x
+}

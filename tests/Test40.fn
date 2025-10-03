@@ -1,0 +1,42 @@
+-- Test: Assigning to Struct Returned from Function
+-- Expected: 25.0
+
+type Point
+{
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
+    {
+        x = xVal
+        y = yVal
+    }
+}
+
+type Rectangle
+{
+    Point topLeft
+    Point bottomRight
+
+    new(Point tl, Point br)
+    {
+        topLeft = tl
+        bottomRight = br
+    }
+}
+
+fn GetRect() -> Rectangle
+{
+    return new Rectangle(new Point(1.0, 2.0), new Point(3.0, 4.0))
+}
+
+fn Main
+{
+    var r = GetRect()
+
+    -- Modify returned struct
+    r.topLeft.x = 5.0
+    r.bottomRight.y = 10.0
+
+    -- Should return 5 + 2 + 3 + 10 + 5 = 25
+    return r.topLeft.x + r.topLeft.y + r.bottomRight.x + r.bottomRight.y + 5.0
+}

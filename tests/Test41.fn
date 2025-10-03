@@ -1,0 +1,34 @@
+-- Test: Struct as Part of Expression (Temporary Values)
+-- Expected: 10.0
+
+type Point
+{
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
+    {
+        x = xVal
+        y = yVal
+    }
+
+    fn Add(Point other) -> Point
+    {
+        return new Point(x + other.x, y + other.y)
+    }
+}
+
+fn Main
+{
+    -- Access fields on temporary struct values
+    var result1 = (new Point(1.0, 2.0)).x + (new Point(3.0, 4.0)).y
+
+    -- Chain method calls on temporary values
+    var p = new Point(2.0, 3.0)
+    var result2 = p.Add(new Point(1.0, 1.0)).x
+
+    -- Nested temporary structs
+    var result3 = (new Point((new Point(5.0, 0.0)).x, 0.0)).x
+
+    -- Should return 1 + 4 + 3 + 5 - 3 = 10
+    return result1 + result2 + result3 - 3.0
+}

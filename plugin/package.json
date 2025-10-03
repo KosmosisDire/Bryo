@@ -2,8 +2,8 @@
   "name": "fern-syntax",
   "displayName": "Fern Language Support",
   "description": "Syntax highlighting for Fern language",
-  "version": "0.1.0",
-  "publisher": "your-name",
+  "version": "0.0.1",
+  "publisher": "Nathan George",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -13,7 +13,7 @@
       {
         "id": "fern",
         "aliases": ["Fern", "fern"],
-        "extensions": [".fern", ".bry"],
+        "extensions": [".fern", ".fn"],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/fern-icon.svg",

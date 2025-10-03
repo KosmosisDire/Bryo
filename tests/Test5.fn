@@ -1,0 +1,4 @@
+fn Main
+{
+    return 20.0 - 8.0
+}

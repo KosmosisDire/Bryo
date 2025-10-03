@@ -1,0 +1,4 @@
+fn Main
+{
+    return 15.0 / 3.0
+}

@@ -56,7 +56,7 @@ TestResult TestRunner::run_single_test(const std::string& test_file) {
         }
 
         // Try to execute the test
-        auto jit_result = compile_result->execute_jit<float>("Main_f32_");
+        auto jit_result = compile_result->execute_jit<float>("Main");
 
         if (jit_result.has_value()) {
             result.return_value = jit_result.value();
@@ -65,7 +65,7 @@ TestResult TestRunner::run_single_test(const std::string& test_file) {
             result.passed = (result.return_value >= 0.0f);
         } else {
             result.crashed = true;
-            result.error_message = "JIT execution failed or Main_f32_ not found";
+            result.error_message = "JIT execution failed or Main not found";
         }
 
     } catch (const std::exception& e) {

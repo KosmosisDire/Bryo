@@ -1,0 +1,4 @@
+fn Main
+{
+    return 4.0 * 3.0
+}

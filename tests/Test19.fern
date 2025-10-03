@@ -1,5 +1,0 @@
-fn Main_f32_
-{
-    var arr = [1.0, 2.0, 3.0]
-    return arr[0]
-}

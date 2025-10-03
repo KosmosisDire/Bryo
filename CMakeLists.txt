@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Define FERN_DEBUG macro for debug builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(FERN_DEBUG)
+endif()
+
 # Try to find LLVM, but make it optional for basic functionality
 find_package(LLVM CONFIG)
 

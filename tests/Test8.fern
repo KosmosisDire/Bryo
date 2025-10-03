@@ -1,6 +1,0 @@
-fn Main_f32_
-{
-    var a = 10.0
-    var b = 5.0
-    return a + b
-}

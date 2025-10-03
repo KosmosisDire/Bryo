@@ -199,13 +199,17 @@ void Logger::fatal(const std::string& message, LogCategory category) {
 }
 
 // Special formatting helpers
-void Logger::header(const std::string& title, LogCategory category) {
+void Logger::header(const std::string& title, LogCategory category)
+{
+    if (!should_log(LogLevel::INFO, category, true)) return;
     std::string separator_line(10, '=');
     
     std::cout << "\n" << Colors::BOLD + separator_line + " " + title + " " + separator_line + Colors::RESET << "\n\n";
 }
 
-void Logger::subheader(const std::string& title, LogCategory category) {
+void Logger::subheader(const std::string& title, LogCategory category)
+{
+    if (!should_log(LogLevel::INFO, category, true)) return;
     std::string separator_line(5, '-');
     
     std::cout << "\n\t\t" << Colors::DIM << separator_line + " " + title + " " + separator_line << Colors::RESET << "\n\n";
@@ -213,11 +217,13 @@ void Logger::subheader(const std::string& title, LogCategory category) {
 
 void Logger::separator(char character, int length, LogCategory category)
 {
+    if (!should_log(LogLevel::INFO, category, true)) return;
     length += 4 + category_to_string(category).length() + 2;
     std::cout << Colors::DIM << std::string(length, character) << Colors::RESET << "\n";
 }
 
-void Logger::blank_line() {
+void Logger::blank_line()
+{
     std::lock_guard<std::mutex> lock(log_mutex_);
     std::cout << std::endl;
     if (initialized_) {

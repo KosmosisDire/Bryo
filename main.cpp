@@ -16,7 +16,6 @@
 
 using namespace Fern; 
 
-
 std::string read_file(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -27,12 +26,25 @@ std::string read_file(const std::string& filename) {
     return buffer.str();
 }
 
+void show_help(const std::string& program_name) {
+    std::cout << "Usage: " << program_name << " [options] <source files>\n";
+    std::cout << "Options:\n";
+    std::cout << "  --help, -h          Show this help message\n";
+    std::cout << "  --test, -t [dir]    Run tests in the specified directory (default: tests)\n";
+    std::cout << "\nIf no source files are provided, the compiler will attempt to compile 'simple.fern'.\n";
+}
+
 int main(int argc, char* argv[])
 {
     Logger& logger = Logger::get_instance();
     logger.initialize();
-    logger.set_console_level(LogLevel::TRACE);
+    #ifdef FERN_DEBUG
+        logger.set_console_level(LogLevel::TRACE);
+    #else
+        logger.set_console_level(LogLevel::NONE);
+    #endif
 
+    #ifdef FERN_DEBUG
     // Check for --test argument
     if (argc > 1 && (std::strcmp(argv[1], "--test") == 0 || std::strcmp(argv[1], "-t") == 0)) {
         // Test mode - run all tests in the tests directory
@@ -50,11 +62,14 @@ int main(int argc, char* argv[])
             [](const TestResult& r) { return r.passed; });
         return all_passed ? 0 : 1;
     }
+    #endif
 
     Compiler compiler;
-    compiler.set_print_ast(true);
-    compiler.set_print_symbols(true);
-    compiler.set_print_hlir(true);
+    #ifdef FERN_DEBUG
+        compiler.set_print_ast(true);
+        compiler.set_print_symbols(true);
+        compiler.set_print_hlir(true);
+    #endif
 
     // Use command line arguments if provided, otherwise default to simple.fern
     std::vector<std::string> filenames;
@@ -62,8 +77,15 @@ int main(int argc, char* argv[])
         for (int i = 1; i < argc; i++) {
             filenames.push_back(argv[i]);
         }
-    } else {
+    } else
+    {
+        #ifdef FERN_DEBUG
         filenames = {"minimal.fern", "runtime/basic_print.fern"};
+        #else
+        // show help
+        show_help(argv[0]);
+        return 0;
+        #endif
     }
     
     std::vector<SourceFile> source_files;
@@ -77,24 +99,28 @@ int main(int argc, char* argv[])
 
     if (result && result->is_valid())
     {
-        result->dump_ir();
-        result->write_object_file("out/output.o");
-        auto ret = result->execute_jit<float>("Main_f32_").value_or(-1.0f);
-        std::cout << "JIT execution returned: " << ret << std::endl;
+        #ifdef FERN_DEBUG
+            result->dump_ir();
+            result->write_object_file("out/output.o");
+        #endif
+        auto ret = result->execute_jit<float>("Main").value_or(-1.0f);
+        std::cout << "\n";
+        std::cout << "______________________________\n\n";
+        std::cout << "Program returned: " << ret << std::endl;
         return static_cast<int>(ret);
     }
     else if (result)
     {
-        LOG_HEADER("Compilation failed with errors:");
+        std::cerr << "Compilation failed with errors:" << std::endl;
         for (const auto& error : result->get_errors())
         {
-            LOG_ERROR(error, LogCategory::COMPILER);
+            std::cerr << " - " << error << std::endl;
         }
         return 1;
     }
     else    
     {
-        LOG_HEADER("No result from compilation.");
+        std::cerr << "No result from compilation." << std::endl;
         return 1;
     }
 }

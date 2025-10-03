@@ -1,0 +1,34 @@
+-- Test: Array of Structs
+-- Expected: 21.0
+
+type Point
+{
+    f32 x, y
+
+    new(f32 xVal, f32 yVal)
+    {
+        x = xVal
+        y = yVal
+    }
+}
+
+fn Main
+{
+    -- Array of struct values
+    var points = [new Point(1.0, 2.0), new Point(3.0, 4.0), new Point(5.0, 6.0)]
+
+    -- Access array elements
+    var p1 = points[0]
+    var p2 = points[1]
+    var p3 = points[2]
+
+    -- Modify local copy (should not affect array)
+    p1.x = 100.0
+
+    -- Access array element field directly
+    var direct = points[0].x
+
+    -- Should return 1 + 2 + 3 + 4 + 5 + 6 - (100 - 100) = 21
+    -- (direct should still be 1.0, not 100.0, proving value semantics)
+    return direct + p1.y + p2.x + p2.y + p3.x + p3.y - (100.0 - p1.x)
+}
