@@ -1,108 +1,37 @@
-# Please note this is a work in progress and is not finished or ready for use in any project
+<div align="center">
+  <img src="https://docs.fern-lang.org/fern-icon.svg" width="64" />
+  <h1>The Fern Programming Language</h1>
+</div>
 
-
-# The Fern Programming Language
 Fern is a general, object oriented, statically typed, embeddable language inspired by C#, Rust, Swift, and Python.
 It aims to be intuitive, performant, safe, powerful, and bring tooling along with it for easy usage. It's intended purpose is for games programming for modding, hot reloading, quick iteration, and code glue without compromise.
 
-It is currently a work in progress, but the compiler does work and is able to run JIT-compiled scripts using LLVM.
+> [!WARNING]
+> The Fern compiler is in early development, the compiler does work and is able to run JIT-compiled scripts using LLVM, but is not ready for any serious usage.
 
 
-## Syntax Examples
-
-### Comments
-
-```lua
--- this is a comment
-
----
-This is a fantastic
-multiline comment!
----
-```
-
-### Variables
+## Quick Example
 
 ```lua
-i32 x = 10;        -- semicolons are optional
-var y = x + 10     -- type is inferred
-```
-
-### Functions
-
-```lua
-fn TestFunction: i32 -- parentheses () on a function are optional if the function has no arguments
+type Person
 {
-    return 42
-}
+    string name
+    i32 age
 
-fn InferredReturn(i32 input) -- return type is inferred
-{
-    -- do stuff
-    return TestFunction()
-}
-```
-
-### Types
-
-```lua
-type Point
-{
-    f32 x, y
-
-    -- member functions work as you'd expect
-    fn Move(f32 byX, f32 byY)
+    fn HaveBirthday
     {
-        x += byX
-        y += byY
-    }
-
-    var SqrMagnitude => x * x + y * y -- Arrow properties act like variables but they return calcualted read only data (it is caluclated every time it is read)
-
-    -- you can also make getter and setter properties (this shows a setter only property. It cannot be read from only written to)
-    f32[] vector
-    {
-        set
-        {
-            x = value[0]
-            y = value[1]
-        }
+        age += 1
+        Print("Happy birthday {name}! You're now {age}")
     }
 }
 
-fn Main
-{
-    var p = new Point()
-    p.vector = [10.0, 5.0]
-    
-    Print("Hello World")
-
-    return 0.0
-}
+var alice = new Person("Alice", 30)
+alice.HaveBirthday()  -- "Happy birthday Alice! You're now 31"
 ```
 
-### Loops
+## Documentation
 
-```lua
+I made a simple website with an overview of the syntax of Fern:
+[docs.fern-lang.org](https://docs.fern-lang.org/)
 
-for (var i = 0; i < 10; i += 1)
-{
-    -- do stuff
-}
-
-var x = 0
-while (x < 10)
-{
-    -- do stuff
-    x += 1
-}
-
--- In the future this for loop syntax will be added
-for (5) -- run a loop 5 times
-for (var i in ..5) -- run a loop 5 times with an iterator variable
-for (var i in 10..20 by 2) -- run a loop from 10 - 20 jumping by twos (10, 12, 14, 16, 18, 20) 
-for (var item in iterable) -- loop through items in an iterable (list, array, etc)
-for (var item in iterable at var i) -- loop through items in an iterable and track the index too
-```
-
-
+Not everything shown there is implemented yet, but it shows the spec I am using when developing the language.
