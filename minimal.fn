@@ -1,5 +1,25 @@
+type Person
+{
+    string name
+    i32 age
+
+    new (string n, i32 a)
+    {
+        name = n
+        age = a
+    }
+
+    fn HaveBirthday
+    {
+        age += 1
+        Print("Happy birthday {name}! You're now {age}")
+    }
+}
+
 fn Main
 {
-    Print("Hello World\n\n")
+    var alice = new Person("Alice", 30)su
+    alice.HaveBirthday()  -- "Happy birthday Alice! You're now 31"
+
     return 0.0
 }

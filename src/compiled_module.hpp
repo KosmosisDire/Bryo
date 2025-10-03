@@ -31,6 +31,9 @@ namespace Fern
         CompiledModule()
             : context(nullptr), module(nullptr), has_errors(true) {}
 
+        CompiledModule(const std::vector<std::string> &compilation_errors)
+            : context(nullptr), module(nullptr), has_errors(true), errors(compilation_errors) {}
+
         CompiledModule(std::unique_ptr<llvm::LLVMContext> ctx,
                        std::unique_ptr<llvm::Module> mod,
                        const std::string &name,

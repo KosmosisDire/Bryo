@@ -156,7 +156,7 @@ namespace Fern
             {
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         // // === Build local symbol tables sequentially ===
@@ -207,7 +207,7 @@ namespace Fern
             {
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         // === Merge symbol tables ===
@@ -243,7 +243,7 @@ namespace Fern
             {
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         // Add built-in functions to global symbol table
@@ -301,7 +301,7 @@ namespace Fern
             {
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         // === Type resolution with global symbol table ===
@@ -354,7 +354,7 @@ namespace Fern
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
 
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         // === Convert bound tree to HLIR ===
@@ -406,7 +406,7 @@ namespace Fern
             {
                 LOG_ERROR(error, LogCategory::COMPILER);
             }
-            return std::make_unique<CompiledModule>();
+            return std::make_unique<CompiledModule>(all_errors);
         }
 
         return std::make_unique<CompiledModule>(

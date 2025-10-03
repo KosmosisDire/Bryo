@@ -27,11 +27,16 @@ std::string read_file(const std::string& filename) {
 }
 
 void show_help(const std::string& program_name) {
-    std::cout << "Usage: " << program_name << " [options] <source files>\n";
+    std::cout << "Fern Programming Language Compiler\n\n";
+    std::cout << "Usage: " << program_name << " [options] <source files>\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h          Show this help message\n";
+    #ifdef FERN_DEBUG
     std::cout << "  --test, -t [dir]    Run tests in the specified directory (default: tests)\n";
-    std::cout << "\nIf no source files are provided, the compiler will attempt to compile 'simple.fern'.\n";
+    #endif
+    std::cout << "\nExamples:\n";
+    std::cout << "  " << program_name << " main.fn\n";
+    std::cout << "  " << program_name << " runtime/std.fn main.fn\n";
 }
 
 int main(int argc, char* argv[])
@@ -71,28 +76,50 @@ int main(int argc, char* argv[])
         compiler.set_print_hlir(true);
     #endif
 
-    // Use command line arguments if provided, otherwise default to simple.fern
+    // Parse command line arguments
     std::vector<std::string> filenames;
+
     if (argc > 1) {
+        // Check for help flag
+        if (std::strcmp(argv[1], "--help") == 0 || std::strcmp(argv[1], "-h") == 0) {
+            show_help(argv[0]);
+            return 0;
+        }
+
+        // Collect source file arguments
         for (int i = 1; i < argc; i++) {
             filenames.push_back(argv[i]);
         }
     } else
     {
         #ifdef FERN_DEBUG
-        filenames = {"minimal.fern", "runtime/basic_print.fern"};
+        filenames = {"minimal.fn", "runtime/basic_print.fn"};
         #else
-        // show help
         show_help(argv[0]);
         return 0;
         #endif
     }
     
+    // Read all source files
     std::vector<SourceFile> source_files;
     for (const auto& filename : filenames)
     {
-        auto source = read_file(filename);
-        source_files.push_back({filename, source});
+        try
+        {
+            auto source = read_file(filename);
+            source_files.push_back({filename, source});
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return 1;
+        }
+    }
+
+    if (source_files.empty())
+    {
+        std::cerr << "Error: No source files to compile" << std::endl;
+        return 1;
     }
 
     auto result = compiler.compile(source_files);
@@ -109,18 +136,21 @@ int main(int argc, char* argv[])
         std::cout << "Program returned: " << ret << std::endl;
         return static_cast<int>(ret);
     }
-    else if (result)
+    else
     {
-        std::cerr << "Compilation failed with errors:" << std::endl;
-        for (const auto& error : result->get_errors())
+        std::cerr << "Compilation failed with errors:\n" << std::endl;
+        const auto& errors = result->get_errors();
+        if (errors.empty())
         {
-            std::cerr << " - " << error << std::endl;
+            std::cerr << "  (No error details available)" << std::endl;
         }
-        return 1;
-    }
-    else    
-    {
-        std::cerr << "No result from compilation." << std::endl;
+        else
+        {
+            for (const auto& error : errors)
+            {
+                std::cerr << "  " << error << std::endl;
+            }
+        }
         return 1;
     }
 }
