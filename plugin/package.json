@@ -1,7 +1,7 @@
 {
-  "name": "bryo-syntax",
-  "displayName": "Bryo Language Support",
-  "description": "Syntax highlighting for Bryo language",
+  "name": "fern-syntax",
+  "displayName": "Fern Language Support",
+  "description": "Syntax highlighting for Fern language",
   "version": "0.1.0",
   "publisher": "your-name",
   "engines": {
@@ -11,21 +11,21 @@
   "contributes": {
     "languages": [
       {
-        "id": "bryo",
-        "aliases": ["Bryo", "bryo"],
-        "extensions": [".bryo", ".bry"],
+        "id": "fern",
+        "aliases": ["Fern", "fern"],
+        "extensions": [".fern", ".bry"],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/bryo-icon.svg",
-          "dark": "./icons/bryo-icon.svg"
+          "light": "./icons/fern-icon.svg",
+          "dark": "./icons/fern-icon.svg"
         }
       }
     ],
     "grammars": [
       {
-        "language": "bryo",
-        "scopeName": "source.bryo",
-        "path": "./syntaxes/bryo.tmLanguage.json"
+        "language": "fern",
+        "scopeName": "source.fern",
+        "path": "./syntaxes/fern.tmLanguage.json"
       }
     ]
   }

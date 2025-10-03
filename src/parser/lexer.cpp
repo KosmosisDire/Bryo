@@ -5,7 +5,7 @@
 #include <cctype>
 #include <algorithm>
 
-namespace Bryo
+namespace Fern
 {
 
     Lexer::Lexer(std::string_view source, LexerOptions options)
@@ -905,4 +905,4 @@ namespace Bryo
         return TokenStream(std::move(tokens));
     }
 
-} // namespace Bryo
+} // namespace Fern

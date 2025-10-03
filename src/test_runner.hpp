@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace Bryo {
+namespace Fern {
 
 struct TestResult {
     std::string test_name;
@@ -32,4 +32,4 @@ private:
     TestResult run_single_test(const std::string& test_file);
 };
 
-} // namespace Bryo
+} // namespace Fern

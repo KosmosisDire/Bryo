@@ -1,6 +1,6 @@
 #include "common/token.hpp"
 #include <string>
 
-namespace Bryo {
+namespace Fern {
 
-} // namespace Bryo
+} // namespace Fern

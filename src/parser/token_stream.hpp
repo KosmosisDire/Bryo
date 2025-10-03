@@ -4,7 +4,7 @@
 #include <vector>
 #include <initializer_list>
 
-namespace Bryo
+namespace Fern
 {
     class TokenStream
     {

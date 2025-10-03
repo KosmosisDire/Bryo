@@ -7,7 +7,7 @@
 #include <new>
 #include "bound_tree.hpp"
 
-namespace Bryo
+namespace Fern
 {
     class BindingArena
     {

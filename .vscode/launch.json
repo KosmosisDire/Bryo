@@ -2,10 +2,10 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Build and Run Bryo",
+			"name": "Build and Run Fern",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/build/Bryo",
+			"program": "${workspaceFolder}/build/Fern",
 			"args": [],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",

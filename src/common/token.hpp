@@ -7,7 +7,7 @@
 #include <array>
 #include "source_location.hpp"
 
-namespace Bryo
+namespace Fern
 {
     // Token kinds - all possible tokens in Mycelium language
     enum class TokenKind
@@ -1116,7 +1116,7 @@ namespace Bryo
 
         std::string_view to_string() const
         {
-            return Bryo::to_string(kind);
+            return Fern::to_string(kind);
         }
 
         static TokenKind get_keyword_kind(std::string_view keyword)
@@ -1172,4 +1172,4 @@ namespace Bryo
             {"true", TokenKind::LiteralBool},
             {"false", TokenKind::LiteralBool}};
 
-} // namespace Bryo
+} // namespace Fern

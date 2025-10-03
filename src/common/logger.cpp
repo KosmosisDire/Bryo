@@ -1,7 +1,7 @@
 #include "common/logger.hpp"
 #include <filesystem>
 
-namespace Bryo {
+namespace Fern {
 
 std::unique_ptr<Logger> Logger::instance_ = nullptr;
 std::mutex Logger::instance_mutex_;
@@ -340,4 +340,4 @@ Logger::~Logger() {
     }
 }
 
-} // namespace Bryo
+} // namespace Fern

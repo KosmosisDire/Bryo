@@ -8,7 +8,7 @@
 #include "type.hpp"
 #include "symbol.hpp"
 
-namespace Bryo
+namespace Fern
 {
     class TypeSystem {
     private:
@@ -65,4 +65,4 @@ namespace Bryo
         bool is_assignable(TypePtr from, TypePtr to) const;
     };
     
-} // namespace Bryo
+} // namespace Fern

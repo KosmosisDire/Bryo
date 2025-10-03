@@ -11,7 +11,7 @@
 #include <string>
 #include <memory>
 
-namespace Bryo
+namespace Fern
 {
 
     class Parser;
@@ -66,4 +66,4 @@ namespace Bryo
         void set_print_hlir(bool p) { print_hlir = p; }
     };
 
-} // namespace Bryo
+} // namespace Fern

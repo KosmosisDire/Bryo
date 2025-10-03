@@ -3,7 +3,7 @@
 #include "hlir.hpp"
 #include "../semantic/type_system.hpp"
 
-namespace Bryo::HLIR
+namespace Fern::HLIR
 {
     class HLIRBuilder {
         Function* current_func = nullptr;

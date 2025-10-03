@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Bryo C CXX)
+project(Fern C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,10 +117,10 @@ set(RUNTIME_FILES
 
 
 # Main executable
-add_executable(Bryo ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
+add_executable(Fern ${SOURCE_FILES} ${RUNTIME_FILES} main.cpp)
 
 if(LLVM_AVAILABLE)
-    target_link_libraries(Bryo PRIVATE ${LLVM_LIBS})
+    target_link_libraries(Fern PRIVATE ${LLVM_LIBS})
 endif()
 
-target_include_directories(Bryo PRIVATE "src" "lib")
+target_include_directories(Fern PRIVATE "src" "lib")

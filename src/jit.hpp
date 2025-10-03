@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-namespace Bryo
+namespace Fern
 {
     class JIT
     {

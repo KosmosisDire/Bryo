@@ -35,14 +35,14 @@ jobs:
     - name: Package Linux binary
       run: |
         mkdir -p artifacts/linux
-        cp build/Bryo artifacts/linux/bryo-linux-x64
-        chmod +x artifacts/linux/bryo-linux-x64
+        cp build/Fern artifacts/linux/fern-linux-x64
+        chmod +x artifacts/linux/fern-linux-x64
 
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
       with:
-        name: bryo-linux-x64
-        path: artifacts/linux/bryo-linux-x64
+        name: fern-linux-x64
+        path: artifacts/linux/fern-linux-x64
 
   build-windows:
     runs-on: windows-latest
@@ -85,13 +85,13 @@ jobs:
     - name: Package Windows binary
       run: |
         mkdir artifacts\windows
-        copy build\Release\Bryo.exe artifacts\windows\bryo-windows-x64.exe
+        copy build\Release\Fern.exe artifacts\windows\fern-windows-x64.exe
 
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
-        name: bryo-windows-x64
-        path: artifacts/windows/bryo-windows-x64.exe
+        name: fern-windows-x64
+        path: artifacts/windows/fern-windows-x64.exe
 
   create-release:
     needs: [build-linux, build-windows]
@@ -104,21 +104,21 @@ jobs:
     - name: Download Linux artifact
       uses: actions/download-artifact@v4
       with:
-        name: bryo-linux-x64
+        name: fern-linux-x64
         path: ./
 
     - name: Download Windows artifact
       uses: actions/download-artifact@v4
       with:
-        name: bryo-windows-x64
+        name: fern-windows-x64
         path: ./
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          bryo-linux-x64
-          bryo-windows-x64.exe
+          fern-linux-x64
+          fern-windows-x64.exe
         draft: false
         prerelease: false
         generate_release_notes: true

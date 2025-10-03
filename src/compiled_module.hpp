@@ -13,7 +13,7 @@
 #include "jit.hpp"
 #include "common/logger.hpp"
 
-namespace Bryo
+namespace Fern
 {
     // Forward declaration
     class JIT;
@@ -201,4 +201,4 @@ namespace Bryo
         }
     }
 
-} // namespace Bryo
+} // namespace Fern

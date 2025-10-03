@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Bryo",
+  "name": "Fern",
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
@@ -20,25 +20,25 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.block.documentation.bryo",
+          "name": "comment.block.documentation.fern",
           "begin": "---+",
           "end": "---+",
           "patterns": [
             {
-              "name": "comment.block.documentation.region.bryo",
+              "name": "comment.block.documentation.region.fern",
               "match": "^---\\s+(.+?)\\s+---$",
               "captures": {
-                "1": { "name": "entity.name.section.bryo" }
+                "1": { "name": "entity.name.section.fern" }
               }
             }
           ]
         },
         {
-          "name": "comment.line.double-dash.bryo",
+          "name": "comment.line.double-dash.fern",
           "match": "--.*$",
           "patterns": [
             {
-              "name": "keyword.other.documentation.bryo",
+              "name": "keyword.other.documentation.fern",
               "match": "\\b(TODO|FIXME|NOTE|HACK|XXX)\\b"
             }
           ]
@@ -48,23 +48,23 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.bryo",
+          "name": "string.quoted.double.fern",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.bryo",
+              "name": "constant.character.escape.fern",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.backtick.bryo",
+          "name": "string.quoted.backtick.fern",
           "begin": "`",
           "end": "`",
           "patterns": [
             {
-              "name": "constant.character.escape.bryo",
+              "name": "constant.character.escape.fern",
               "match": "\\\\."
             }
           ]
@@ -74,11 +74,11 @@
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.float.bryo",
+          "name": "constant.numeric.float.fern",
           "match": "\\b\\d+\\.\\d+[lL]?\\b"
         },
         {
-          "name": "constant.numeric.integer.bryo",
+          "name": "constant.numeric.integer.fern",
           "match": "\\b\\d+[uU]?[lL]?\\b"
         }
       ]
@@ -86,19 +86,19 @@
     "constants": {
       "patterns": [
         {
-          "name": "constant.language.boolean.bryo",
+          "name": "constant.language.boolean.fern",
           "match": "\\b(true|false)\\b"
         },
         {
-          "name": "variable.language.this.bryo",
+          "name": "variable.language.this.fern",
           "match": "\\b(this)\\b"
         },
         {
-          "name": "variable.other.field.bryo",
+          "name": "variable.other.field.fern",
           "match": "\\b(field)\\b"
         },
         {
-          "name": "variable.other.value.bryo",
+          "name": "variable.other.value.fern",
           "match": "\\b(value)\\b"
         }
       ]
@@ -106,23 +106,23 @@
     "keywords": {
       "patterns": [
         {
-          "name": "keyword.control.bryo",
+          "name": "keyword.control.fern",
           "match": "\\b(if|else|while|for|in|at|by|step|return|break|continue)\\b"
         },
         {
-          "name": "keyword.other.bryo",
+          "name": "keyword.other.fern",
           "match": "\\b(var|fn|type|ref|op|implicit|explicit|cast|public|private|protected|get|set)\\b"
         },
         {
-          "name": "storage.type.primitive.bryo",
+          "name": "storage.type.primitive.fern",
           "match": "\\b(i32|i64|u32|u64|f32|f64|bool|string|int|float|double|uint|long|ulong)\\b"
         },
         {
-          "name": "keyword.operator.arrow.bryo",
+          "name": "keyword.operator.arrow.fern",
           "match": "=>"
         },
         {
-          "name": "keyword.operator.return-type.bryo",
+          "name": "keyword.operator.return-type.fern",
           "match": "->"
         }
       ]
@@ -130,12 +130,12 @@
     "type-declarations": {
       "patterns": [
         {
-          "name": "meta.type-declaration.bryo",
+          "name": "meta.type-declaration.fern",
           "match": "\\b(type|ref\\s+type)\\s+([A-Z][A-Za-z0-9_]*)\\s*(<[^>]+>)?",
           "captures": {
-            "1": { "name": "keyword.other.bryo" },
-            "2": { "name": "entity.name.type.bryo" },
-            "3": { "name": "meta.type.parameters.bryo" }
+            "1": { "name": "keyword.other.fern" },
+            "2": { "name": "entity.name.type.fern" },
+            "3": { "name": "meta.type.parameters.fern" }
           }
         }
       ]
@@ -145,8 +145,8 @@
         {
           "match": "\\b(new)\\s+([A-Z][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "keyword.other.new.bryo" },
-            "2": { "name": "entity.name.type.bryo" }
+            "1": { "name": "keyword.other.new.fern" },
+            "2": { "name": "entity.name.type.fern" }
           },
           "comment": "new Type constructor calls"
         }
@@ -155,12 +155,12 @@
     "properties": {
       "patterns": [
         {
-          "name": "meta.property.declaration.bryo",
+          "name": "meta.property.declaration.fern",
           "begin": "\\b(var)\\s+([A-Z][A-Za-z0-9_]*)\\s*(=|=>)",
           "beginCaptures": {
-            "1": { "name": "keyword.other.bryo" },
-            "2": { "name": "variable.other.property.bryo" },
-            "3": { "name": "keyword.operator.bryo" }
+            "1": { "name": "keyword.other.fern" },
+            "2": { "name": "variable.other.property.fern" },
+            "3": { "name": "keyword.operator.fern" }
           },
           "end": "(?=[;}])|(?=\\{)",
           "patterns": [
@@ -172,20 +172,20 @@
     "types": {
       "patterns": [
         {
-          "name": "storage.type.bryo",
+          "name": "storage.type.fern",
           "match": "\\b([A-Z][A-Za-z0-9_]*)(\\[\\])?\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=|;|\\)|,|$)",
           "captures": {
-            "1": { "name": "entity.name.type.bryo" },
-            "2": { "name": "punctuation.definition.array.bryo" },
-            "3": { "name": "variable.other.bryo" }
+            "1": { "name": "entity.name.type.fern" },
+            "2": { "name": "punctuation.definition.array.fern" },
+            "3": { "name": "variable.other.fern" }
           },
           "comment": "Type when used in variable declarations like 'Animal stuff = ...'"
         },
         {
-          "name": "entity.name.type.bryo",
+          "name": "entity.name.type.fern",
           "match": "(?<=->)\\s*([A-Z][A-Za-z0-9_]*(?:\\[\\])?)",
           "captures": {
-            "1": { "name": "entity.name.type.bryo" }
+            "1": { "name": "entity.name.type.fern" }
           },
           "comment": "Return type after ->"
         }
@@ -194,16 +194,16 @@
     "functions": {
       "patterns": [
         {
-          "name": "meta.function.definition.generic.bryo",
+          "name": "meta.function.definition.generic.fern",
           "begin": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(<)",
           "beginCaptures": {
-            "1": { "name": "keyword.other.bryo" },
-            "2": { "name": "entity.name.function.bryo" },
-            "3": { "name": "punctuation.definition.generic.begin.bryo" }
+            "1": { "name": "keyword.other.fern" },
+            "2": { "name": "entity.name.function.fern" },
+            "3": { "name": "punctuation.definition.generic.begin.fern" }
           },
           "end": "(>)",
           "endCaptures": {
-            "1": { "name": "punctuation.definition.generic.end.bryo" }
+            "1": { "name": "punctuation.definition.generic.end.fern" }
           },
           "patterns": [
             { "include": "#generic-parameters" }
@@ -211,41 +211,41 @@
           "comment": "Function definition with generics"
         },
         {
-          "name": "meta.function.definition.simple.bryo",
+          "name": "meta.function.definition.simple.fern",
           "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "keyword.other.bryo" },
-            "2": { "name": "entity.name.function.bryo" }
+            "1": { "name": "keyword.other.fern" },
+            "2": { "name": "entity.name.function.fern" }
           },
           "comment": "Simple function definition - just fn and name"
         },
         {
-          "name": "meta.constructor.definition.bryo",
+          "name": "meta.constructor.definition.fern",
           "match": "\\b(new)(?=\\s*\\()",
           "captures": {
-            "1": { "name": "keyword.other.bryo" }
+            "1": { "name": "keyword.other.fern" }
           },
           "comment": "Constructor definition"
         },
         {
-          "name": "meta.operator.definition.bryo",
+          "name": "meta.operator.definition.fern",
           "match": "\\b(op)\\s+([+\\-*/!<>=&|^%]+|[A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "keyword.other.bryo" },
-            "2": { "name": "entity.name.function.bryo" }
+            "1": { "name": "keyword.other.fern" },
+            "2": { "name": "entity.name.function.fern" }
           },
           "comment": "Operator overload definition"
         },
         {
-          "name": "meta.function.call.generic.bryo",
+          "name": "meta.function.call.generic.fern",
           "begin": "\\b([A-Z][A-Za-z0-9_]*)\\s*(<)(?=[^<>=]*>\\s*\\()",
           "beginCaptures": {
-            "1": { "name": "entity.name.function.bryo" },
-            "2": { "name": "punctuation.definition.generic.begin.bryo" }
+            "1": { "name": "entity.name.function.fern" },
+            "2": { "name": "punctuation.definition.generic.begin.fern" }
           },
           "end": "(>)",
           "endCaptures": {
-            "1": { "name": "punctuation.definition.generic.end.bryo" }
+            "1": { "name": "punctuation.definition.generic.end.fern" }
           },
           "patterns": [
             { "include": "#generic-arguments" }
@@ -253,7 +253,7 @@
           "comment": "Generic function call like Generic<int, float>(...)"
         },
         {
-          "name": "entity.name.function.bryo",
+          "name": "entity.name.function.fern",
           "match": "\\b[A-Z][A-Za-z0-9_]*(?=\\s*\\()",
           "comment": "Function call with PascalCase"
         }
@@ -264,13 +264,13 @@
         {
           "match": "\\b([A-Z][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "entity.name.type.parameter.bryo" }
+            "1": { "name": "entity.name.type.parameter.fern" }
           },
           "comment": "Generic type parameter"
         },
         {
           "match": ",",
-          "name": "punctuation.separator.comma.bryo"
+          "name": "punctuation.separator.comma.fern"
         }
       ]
     },
@@ -279,44 +279,44 @@
         {
           "match": "\\b([A-Za-z_][A-Za-z0-9_\\[\\]]*)\\b",
           "captures": {
-            "1": { "name": "entity.name.type.bryo" }
+            "1": { "name": "entity.name.type.fern" }
           },
           "comment": "Generic type argument"
         },
         {
           "match": ",",
-          "name": "punctuation.separator.comma.bryo"
+          "name": "punctuation.separator.comma.fern"
         }
       ]
     },
     "operators": {
       "patterns": [
         {
-          "name": "keyword.operator.assignment.compound.bryo",
+          "name": "keyword.operator.assignment.compound.fern",
           "match": "(\\+=|-=|\\*=|/=|%=|\\*\\*=|&=|\\|=|\\^=|<<=|>>=)"
         },
         {
-          "name": "keyword.operator.comparison.bryo",
+          "name": "keyword.operator.comparison.fern",
           "match": "(==|!=|<=|>=|<|>)"
         },
         {
-          "name": "keyword.operator.logical.bryo",
+          "name": "keyword.operator.logical.fern",
           "match": "(&&|\\|\\||!)"
         },
         {
-          "name": "keyword.operator.bitwise.bryo",
+          "name": "keyword.operator.bitwise.fern",
           "match": "(&|\\||\\^|~|<<|>>)"
         },
         {
-          "name": "keyword.operator.arithmetic.bryo",
+          "name": "keyword.operator.arithmetic.fern",
           "match": "(\\+|-|\\*|/|%|\\*\\*)"
         },
         {
-          "name": "keyword.operator.assignment.bryo",
+          "name": "keyword.operator.assignment.fern",
           "match": "="
         },
         {
-          "name": "keyword.operator.range.bryo",
+          "name": "keyword.operator.range.fern",
           "match": "\\.\\.(=)?"
         }
       ]
@@ -324,23 +324,23 @@
     "punctuation": {
       "patterns": [
         {
-          "name": "punctuation.definition.array.bryo",
+          "name": "punctuation.definition.array.fern",
           "match": "[\\[\\]]"
         },
         {
-          "name": "punctuation.definition.block.bryo",
+          "name": "punctuation.definition.block.fern",
           "match": "[{}]"
         },
         {
-          "name": "punctuation.definition.parameters.bryo",
+          "name": "punctuation.definition.parameters.fern",
           "match": "[()]"
         },
         {
-          "name": "punctuation.separator.bryo",
+          "name": "punctuation.separator.fern",
           "match": "[,;]"
         },
         {
-          "name": "punctuation.accessor.bryo",
+          "name": "punctuation.accessor.fern",
           "match": "\\."
         }
       ]
@@ -348,12 +348,12 @@
     "variables": {
       "patterns": [
         {
-          "name": "variable.other.member.bryo",
+          "name": "variable.other.member.fern",
           "match": "(?<=\\.)\\b[A-Za-z_][A-Za-z0-9_]*\\b",
           "comment": "Member access after dot"
         },
         {
-          "name": "variable.other.bryo",
+          "name": "variable.other.fern",
           "match": "\\b[a-z][a-zA-Z0-9_]*\\b"
         }
       ]
@@ -363,8 +363,8 @@
         {
           "match": "([A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.type.bryo" },
-            "2": { "name": "variable.parameter.bryo" }
+            "1": { "name": "storage.type.fern" },
+            "2": { "name": "variable.parameter.fern" }
           }
         }
       ]
@@ -372,14 +372,14 @@
     "generics": {
       "patterns": [
         {
-          "name": "meta.type.parameters.bryo",
+          "name": "meta.type.parameters.fern",
           "begin": "<",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.generic.begin.bryo" }
+            "0": { "name": "punctuation.definition.generic.begin.fern" }
           },
           "end": ">",
           "endCaptures": {
-            "0": { "name": "punctuation.definition.generic.end.bryo" }
+            "0": { "name": "punctuation.definition.generic.end.fern" }
           },
           "patterns": [
             { "include": "#types" },
@@ -390,5 +390,5 @@
       ]
     }
   },
-  "scopeName": "source.bryo"
+  "scopeName": "source.fern"
 }

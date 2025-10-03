@@ -9,7 +9,7 @@
     requireSemicolonIfSameLine();
 #endif
 
-namespace Bryo
+namespace Fern
 {
 
     #pragma region Public API
@@ -2103,4 +2103,4 @@ namespace Bryo
     }
     #pragma endregion
 
-} // namespace Bryo
+} // namespace Fern

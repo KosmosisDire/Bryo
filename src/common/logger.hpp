@@ -11,7 +11,7 @@
 #include <vector>
 #include <functional>
 
-namespace Bryo
+namespace Fern
 {
     enum class LogLevel
     {
@@ -197,4 +197,4 @@ namespace Bryo
 #define LOG_BEGIN_CAPTURE() Logger::get_instance().begin_string_capture()
 #define LOG_END_CAPTURE() Logger::get_instance().end_string_capture()
 
-} // namespace Bryo
+} // namespace Fern

@@ -4,7 +4,7 @@
 #include <sstream>
 #include <iomanip>
 
-namespace Bryo
+namespace Fern
 {
     const Token &TokenStream::current() const
     {
@@ -230,4 +230,4 @@ namespace Bryo
         return oss.str();
     }
 
-} // namespace Bryo
+} // namespace Fern

@@ -14,7 +14,7 @@
 #include <cstring>
 #include <algorithm>
 
-using namespace Bryo; 
+using namespace Fern; 
 
 
 std::string read_file(const std::string& filename) {
@@ -56,14 +56,14 @@ int main(int argc, char* argv[])
     compiler.set_print_symbols(true);
     compiler.set_print_hlir(true);
 
-    // Use command line arguments if provided, otherwise default to simple.bryo
+    // Use command line arguments if provided, otherwise default to simple.fern
     std::vector<std::string> filenames;
     if (argc > 1) {
         for (int i = 1; i < argc; i++) {
             filenames.push_back(argv[i]);
         }
     } else {
-        filenames = {"minimal.bryo", "runtime/basic_print.bryo"};
+        filenames = {"minimal.fern", "runtime/basic_print.fern"};
     }
     
     std::vector<SourceFile> source_files;

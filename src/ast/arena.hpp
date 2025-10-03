@@ -10,7 +10,7 @@
 #include <string_view>
 #include "ast.hpp"
 
-namespace Bryo
+namespace Fern
 {
 
     class Arena
@@ -140,4 +140,4 @@ namespace Bryo
         }
     };
 
-} // namespace Bryo::AST
+} // namespace Fern::AST

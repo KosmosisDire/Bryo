@@ -5,7 +5,7 @@
 #include "binding_arena.hpp"
 #include "semantic/symbol_table.hpp"
 
-namespace Bryo
+namespace Fern
 {
     class BoundTreeBuilder
     {
@@ -154,4 +154,4 @@ namespace Bryo
         BoundTypeExpression* bind_type_expression(BaseExprSyntax* syntax);
     };
     
-} // namespace Bryo
+} // namespace Fern

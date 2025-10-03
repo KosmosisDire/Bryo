@@ -11,7 +11,7 @@
 #include <set>
 #include <sstream>
 
-namespace Bryo::HLIR
+namespace Fern::HLIR
 {
     struct Value;
     struct Instruction;
@@ -924,4 +924,4 @@ namespace Bryo::HLIR
         }
     };
 
-} // namespace Bryo::HLIR
+} // namespace Fern::HLIR

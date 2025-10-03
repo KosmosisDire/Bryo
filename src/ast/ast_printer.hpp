@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace Bryo
+namespace Fern
 {
     /**
      * @brief A visitor that traverses an AST and produces a human-readable string representation,
@@ -370,4 +370,4 @@ namespace Bryo
         leaf(node, "TypeParameterDeclSyntax", " (" + node->name->get_name() + ")");
     }
 
-} // namespace Bryo
+} // namespace Fern

@@ -3,7 +3,7 @@
 #include <cassert>
 #include <iostream>
 
-namespace Bryo::HLIR
+namespace Fern::HLIR
 {
     #pragma region Public Methods
 

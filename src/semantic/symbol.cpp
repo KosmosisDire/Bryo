@@ -1,6 +1,6 @@
 #include "symbol.hpp"
 
-namespace Bryo
+namespace Fern
 {
     // Symbol implementation
     std::string Symbol::get_qualified_name() const {
@@ -144,4 +144,4 @@ namespace Bryo
         this->name = name;
     }
 
-} // namespace Bryo
+} // namespace Fern

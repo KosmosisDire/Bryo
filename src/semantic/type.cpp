@@ -1,7 +1,7 @@
 #include "type.hpp"
 #include "symbol.hpp"
 
-namespace Bryo
+namespace Fern
 {
     bool Type::is_void() const {
         return is<PrimitiveType>() && as<PrimitiveType>()->kind == PrimitiveKind::Void;
@@ -98,4 +98,4 @@ namespace Bryo
         return 4;
     }
 
-} // namespace Bryo
+} // namespace Fern

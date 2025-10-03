@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 
-namespace Bryo
+namespace Fern
 {
 
     /**
@@ -120,4 +120,4 @@ namespace Bryo
         bool is_float(TypePtr type);
     };
 
-} // namespace Bryo
+} // namespace Fern

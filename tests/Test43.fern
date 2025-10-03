@@ -1,7 +1,7 @@
 
 fn Main_f32_
 {
-    Print("Hello from Bryo!")
+    Print("Hello from Fern!")
     Print("External functions work! ✅")
     Print("Printing functions works! ✅")
     PrintInt(123)

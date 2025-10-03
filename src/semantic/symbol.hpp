@@ -9,7 +9,7 @@
 #include "common/source_location.hpp"
 #include "type.hpp"
 
-namespace Bryo
+namespace Fern
 {
     // Forward declarations
     struct Symbol;
@@ -252,4 +252,4 @@ namespace Bryo
     };
     
 
-} // namespace Bryo
+} // namespace Fern

@@ -4,7 +4,7 @@
 #include <string_view>
 #include <memory>
 
-namespace Bryo
+namespace Fern
 {
 
     // Forward declaration
@@ -156,4 +156,4 @@ namespace Bryo
         void report_warning(const std::string &message);
     };
 
-} // namespace Bryo
+} // namespace Fern

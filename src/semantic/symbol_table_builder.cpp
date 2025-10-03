@@ -1,7 +1,7 @@
 #include "symbol_table_builder.hpp"
 #include <iostream>
 
-namespace Bryo
+namespace Fern
 {
 
     // === Core Helper Methods ===
@@ -488,4 +488,4 @@ namespace Bryo
         return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
     }
 
-} // namespace Bryo
+} // namespace Fern

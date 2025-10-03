@@ -7,7 +7,7 @@
 #include "symbol.hpp"
 #include "type_system.hpp"
 
-namespace Bryo
+namespace Fern
 {
 
 // Forward declaration
@@ -73,4 +73,4 @@ private:
     void update_parent_pointers(Symbol* symbol, Symbol* new_parent);
 };
 
-} // namespace Bryo
+} // namespace Fern

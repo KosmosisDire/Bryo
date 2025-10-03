@@ -6,7 +6,7 @@
 #include <sstream>
 #include <variant>
 
-namespace Bryo
+namespace Fern
 {
 
     class AstToCodePrinter : public Visitor
@@ -678,4 +678,4 @@ namespace Bryo
         }
     };
 
-} // namespace Bryo
+} // namespace Fern

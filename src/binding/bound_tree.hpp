@@ -12,7 +12,7 @@
 #include "conversions.hpp"
 #include "semantic/type.hpp"
 
-namespace Bryo
+namespace Fern
 {
     // Forward declarations
     class BoundVisitor;
@@ -722,4 +722,4 @@ namespace Bryo
         }
     };
 
-} // namespace Bryo
+} // namespace Fern

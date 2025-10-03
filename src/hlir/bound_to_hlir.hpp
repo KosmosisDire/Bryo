@@ -9,7 +9,7 @@
 #include <stack>
 #include <vector>
 
-namespace Bryo::HLIR
+namespace Fern::HLIR
 {
     class BoundToHLIR : public BoundVisitor {
     private:

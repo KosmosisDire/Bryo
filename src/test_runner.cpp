@@ -9,7 +9,7 @@
 
 namespace fs = std::filesystem;
 
-namespace Bryo {
+namespace Fern {
 
 static std::string read_file(const std::string& filename) {
     std::ifstream file(filename);
@@ -83,10 +83,10 @@ std::vector<TestResult> TestRunner::run_all_tests(const std::string& test_dir) {
     std::vector<TestResult> results;
     std::vector<std::string> test_files;
 
-    // Collect all .bryo files in the test directory
+    // Collect all .fern files in the test directory
     try {
         for (const auto& entry : fs::directory_iterator(test_dir)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".bryo") {
+            if (entry.is_regular_file() && entry.path().extension() == ".fern") {
                 test_files.push_back(entry.path().string());
             }
         }
@@ -161,4 +161,4 @@ void TestRunner::print_summary(const std::vector<TestResult>& results) {
     std::cout << "========================================" << std::endl;
 }
 
-} // namespace Bryo
+} // namespace Fern

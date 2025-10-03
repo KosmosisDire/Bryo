@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 
-namespace Bryo
+namespace Fern
 {
 
     class TypeResolver : public BoundVisitor
@@ -105,4 +105,4 @@ namespace Bryo
         void visit(BoundCompilationUnit* node) override;
     };
     
-} // namespace Bryo
+} // namespace Fern

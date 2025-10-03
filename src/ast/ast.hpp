@@ -11,7 +11,7 @@
 #include "common/token.hpp"
 #include "semantic/type.hpp"
 
-namespace Bryo
+namespace Fern
 {
 #pragma region Forward Declarations
     class Visitor;
@@ -1111,4 +1111,4 @@ namespace Bryo
     }
 #pragma endregion
 
-} // namespace Bryo
+} // namespace Fern

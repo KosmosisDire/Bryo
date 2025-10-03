@@ -1,7 +1,7 @@
 #include "semantic/type_resolver.hpp"
 #include <sstream>
 
-namespace Bryo
+namespace Fern
 {
     // === Main Resolution Entry Point ===
 
@@ -1634,4 +1634,4 @@ namespace Bryo
         }
     }
 
-} // namespace Bryo
+} // namespace Fern

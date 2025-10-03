@@ -1,7 +1,7 @@
 #include "bound_tree_builder.hpp"
 #include <iostream>
 
-namespace Bryo
+namespace Fern
 {
     BoundTreeBuilder::BoundTreeBuilder(SymbolTable &symbol_table)
         : arena_(), symbol_table_(symbol_table) {}
@@ -992,4 +992,4 @@ namespace Bryo
 
 #pragma endregion
 
-} // namespace Bryo
+} // namespace Fern

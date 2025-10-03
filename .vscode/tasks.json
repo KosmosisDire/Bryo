@@ -9,7 +9,7 @@
 				"--build",
 				"build",
 				"--target",
-				"Bryo",
+				"Fern",
 				"-j",
 				"18"
 			],

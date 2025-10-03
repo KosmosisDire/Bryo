@@ -5,7 +5,7 @@
 #include <memory>
 #include <variant>
 
-namespace Bryo
+namespace Fern
 {
     struct Type;
     struct TypeSymbol;
@@ -92,4 +92,4 @@ namespace Bryo
         int get_alignment() const;
     };
 
-} // namespace Bryo
+} // namespace Fern

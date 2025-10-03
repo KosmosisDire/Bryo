@@ -3,7 +3,7 @@
 #include <string>
 #include <sstream>
 
-namespace Bryo
+namespace Fern
 {
     class BoundTreePrinter : public DefaultBoundVisitor
     {
@@ -801,4 +801,4 @@ namespace Bryo
         root->accept(&printer);
     }
     
-} // namespace Bryo
+} // namespace Fern

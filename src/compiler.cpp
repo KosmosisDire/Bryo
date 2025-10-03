@@ -25,7 +25,7 @@
 #include <llvm/TargetParser/Host.h>
 #include <optional>
 
-namespace Bryo
+namespace Fern
 {
 
     // void Compiler::add_builtin_functions(SymbolTable& global_symbols)
@@ -361,7 +361,7 @@ namespace Bryo
         LOG_HEADER("HLIR generation", LogCategory::COMPILER);
 
         // Create HLIR module
-        auto hlir_module = std::make_unique<HLIR::Module>("BryoProgram", global_symbols->get_global_namespace());
+        auto hlir_module = std::make_unique<HLIR::Module>("FernProgram", global_symbols->get_global_namespace());
         
         // Convert each bound tree to HLIR
         for (auto &state : file_states)
@@ -386,7 +386,7 @@ namespace Bryo
         LOG_HEADER("LLVM code generation", LogCategory::COMPILER);
 
         auto llvm_context = std::make_unique<llvm::LLVMContext>();
-        HLIRCodeGen codegen(*llvm_context, "BryoProgram");
+        HLIRCodeGen codegen(*llvm_context, "FernProgram");
 
         std::unique_ptr<llvm::Module> llvm_module;
         try
@@ -412,8 +412,8 @@ namespace Bryo
         return std::make_unique<CompiledModule>(
             std::move(llvm_context),
             std::move(llvm_module),
-            "BryoProgram",
+            "FernProgram",
             all_errors);
     }
 
-} // namespace Bryo
+} // namespace Fern

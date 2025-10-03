@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 
-namespace Bryo
+namespace Fern
 {
 
 class SymbolTableBuilder : public DefaultVisitor
@@ -51,4 +51,4 @@ public:
     void visit(ForStmtSyntax* node) override;
 };
 
-} // namespace Bryo
+} // namespace Fern

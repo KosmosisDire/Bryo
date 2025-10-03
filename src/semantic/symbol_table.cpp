@@ -3,7 +3,7 @@
 #include <functional>
 #include <iostream>
 
-namespace Bryo
+namespace Fern
 {
 
 SymbolTable::SymbolTable(TypeSystem& type_system) 
@@ -487,4 +487,4 @@ std::string SymbolTable::to_string() const {
     return ss.str();
 }
 
-} // namespace Bryo
+} // namespace Fern

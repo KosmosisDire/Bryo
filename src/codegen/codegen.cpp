@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <iostream>
 
-namespace Bryo
+namespace Fern
 {
 
     // ============================================================================
@@ -231,7 +231,7 @@ namespace Bryo
         }
         else
         {
-            func_name = hlir_func->name(); // Qualified name for Bryo functions
+            func_name = hlir_func->name(); // Qualified name for Fern functions
         }
 
         // Create function
@@ -981,4 +981,4 @@ namespace Bryo
         return false;
     }
 
-} // namespace Bryo
+} // namespace Fern

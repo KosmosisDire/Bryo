@@ -4,7 +4,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <iostream>
 
-namespace Bryo
+namespace Fern
 {
 
     JIT::JIT()
@@ -60,4 +60,4 @@ namespace Bryo
         return jit->lookup(name);
     }
 
-} // namespace Bryo
+} // namespace Fern

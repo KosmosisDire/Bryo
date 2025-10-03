@@ -1,6 +1,6 @@
 #include "type_system.hpp"
 
-namespace Bryo
+namespace Fern
 {
 
 TypeSystem::TypeSystem() {
@@ -164,4 +164,4 @@ bool TypeSystem::is_assignable(TypePtr from, TypePtr to) const {
     return false;
 }
 
-} // namespace Bryo
+} // namespace Fern
